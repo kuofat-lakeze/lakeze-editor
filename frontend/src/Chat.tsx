@@ -13,12 +13,13 @@ const TOOL_LABEL: Record<string, string> = {
   render_captions: '燒字幕', export_video: '輸出成品', make_cover: '做封面',
 }
 
-export function Chat({ projectId, onUsage }: { projectId: string; onUsage: () => void }) {
+export function Chat({ projectId, onUsage, onTopUp }: { projectId: string; onUsage: () => void; onTopUp: () => void }) {
   const [proj, setProj] = useState<ProjectDetail | null>(null)
   const [live, setLive] = useState<Live>(emptyLive())
   const [running, setRunning] = useState(false)
   const [text, setText] = useState('')
   const [err, setErr] = useState('')
+  const [needCredits, setNeedCredits] = useState<{ needed: number; balance: number } | null>(null)
   const [upload, setUpload] = useState<number | null>(null)
   const bottom = useRef<HTMLDivElement>(null)
   const liveAssets = useRef<Asset[]>([])
@@ -42,6 +43,8 @@ export function Chat({ projectId, onUsage }: { projectId: string; onUsage: () =>
           return { ...l, tools }
         }); break
         case 'asset': liveAssets.current.push(ev.asset); setLive(l => ({ ...l })); break
+        case 'credits': onUsage(); break
+        case 'need_credits': setNeedCredits({ needed: ev.needed, balance: ev.balance }); break
         case 'error': setErr(ev.message); break
         case 'idle': es.close(); setRunning(false); break
         case 'done': es.close(); setRunning(false); setLive(emptyLive()); liveAssets.current = []; reload(); onUsage(); break
@@ -52,7 +55,7 @@ export function Chat({ projectId, onUsage }: { projectId: string; onUsage: () =>
 
   const send = async () => {
     const t = text.trim(); if (!t || running) return
-    setErr(''); setText('')
+    setErr(''); setText(''); setNeedCredits(null)
     setProj(p => p && { ...p, messages: [...p.messages, { id: 'tmp', role: 'user', parts: [{ type: 'text', text: t }], created_at: '' }] })
     try { await api.send(projectId, t); setLive(emptyLive()); listen() } catch (e) { setErr((e as Error).message) }
   }
@@ -76,7 +79,15 @@ export function Chat({ projectId, onUsage }: { projectId: string; onUsage: () =>
 
   return (
     <div className="chat">
-      <header><h2>{proj.name}</h2>{running && <button className="btn small" onClick={() => api.cancel(projectId)}>停止</button>}</header>
+      <header>
+        <h2>{proj.name}</h2>
+        <span className="muted small">
+          {proj.credits.in_free
+            ? (proj.credits.free_revisions_left === null ? '免費專案：第一版 + 封面免費' : `免費修改還剩 ${proj.credits.free_revisions_left} 輪`)
+            : '照價目扣點'}
+        </span>
+        {running && <button className="btn small" onClick={() => api.cancel(projectId)}>停止</button>}
+      </header>
       <div className="thread">
         {proj.messages.length === 0 && !running && (
           <div className="hint card">
@@ -102,6 +113,13 @@ export function Chat({ projectId, onUsage }: { projectId: string; onUsage: () =>
             {liveAssets.current.map(a => <AssetCard key={a.id} a={a} />)}
             {live.text && <Md text={live.text} />}
             {!live.text && live.tools.every(t => t.status !== 'run') && <span className="muted">…</span>}
+          </div>
+        )}
+        {needCredits && (
+          <div className="card need">
+            點數不足：這一步需要 {needCredits.needed} 點，目前 {needCredits.balance} 點。
+            <button className="btn primary small" onClick={onTopUp}>儲值</button>
+            <span className="muted small">儲值後輸入「繼續」即可接著做。</span>
           </div>
         )}
         {err && <div className="error">{err}</div>}

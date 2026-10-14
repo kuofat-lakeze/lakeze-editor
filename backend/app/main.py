@@ -11,10 +11,14 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 
-from . import config
+import hashlib
+import hmac
+
+from . import config, pricing
+from .admin import router as admin_router
 from .agent.runner import TurnRunner
 from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
-from .db import Asset, Message, Project, Session, Store, Usage, User, asset_dict, init_db
+from .db import Asset, CreditTx, Message, Project, Session, Store, Usage, User, add_credits, asset_dict, balance, init_db
 from .pipeline.fonts import ensure_fonts
 from .storage import project_dir, safe_join
 
@@ -33,6 +37,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Lakeze Editor", lifespan=lifespan)
+app.include_router(admin_router)
 
 # ---- live turn registry -------------------------------------------------------
 _turns: dict[str, dict] = {}  # project_id -> {"task", "subs": set[Queue], "events": list}
@@ -64,7 +69,7 @@ async def signup(c: Creds, request: Request):
     async with Session() as s:
         if (await s.execute(select(User).where(User.email == c.email.lower()))).scalar_one_or_none():
             raise HTTPException(409, "email 已註冊")
-        u = User(email=c.email.lower(), pw_hash=hash_pw(c.password))
+        u = User(email=c.email.lower(), pw_hash=hash_pw(c.password), is_admin=c.email.lower() in config.ADMIN_EMAILS)
         s.add(u)
         await s.commit()
     resp = JSONResponse({"id": u.id, "email": u.email})
@@ -76,8 +81,13 @@ async def signup(c: Creds, request: Request):
 async def login(c: Creds, request: Request):
     async with Session() as s:
         u = (await s.execute(select(User).where(User.email == c.email.lower()))).scalar_one_or_none()
+        if u and u.email in config.ADMIN_EMAILS and not u.is_admin:
+            u.is_admin = True
+            await s.commit()
     if not u or not check_pw(c.password, u.pw_hash):
         raise HTTPException(401, "email 或密碼錯誤")
+    if u.disabled:
+        raise HTTPException(403, "帳號已停用")
     resp = JSONResponse({"id": u.id, "email": u.email})
     set_session(resp, u.id, request.url.scheme == "https")
     return resp
@@ -92,9 +102,70 @@ async def logout():
 
 @app.get("/api/me")
 async def me(user: User = CurrentUser):
+    if user.disabled:
+        raise HTTPException(403, "帳號已停用")
+    return {"id": user.id, "email": user.email, "is_admin": user.is_admin, "balance": await balance(user.id),
+            "free_project_id": user.free_project_id}
+
+
+@app.get("/api/pricing")
+async def get_pricing():
+    packs = []
+    for pid, p in pricing.PACKS.items():
+        packs.append({"id": pid, **p, "checkout_url": config.CHECKOUT_URLS.get(pid)})
+    return {"point_twd": pricing.POINT_TWD, "menu": [{"item": i, "points": p} for i, p in pricing.MENU],
+            "free_revision_turns": pricing.FREE_REVISION_TURNS, "packs": packs,
+            "provider_configured": bool(config.CHECKOUT_URLS), "note": config.TOPUP_NOTE}
+
+
+@app.get("/api/credits")
+async def my_credits(user: User = CurrentUser):
     async with Session() as s:
-        cost = (await s.execute(select(func.coalesce(func.sum(Usage.cost_usd), 0.0)).where(Usage.user_id == user.id))).scalar()
-    return {"id": user.id, "email": user.email, "spent_usd": round(cost or 0, 4)}
+        tx = (await s.execute(select(CreditTx).where(CreditTx.user_id == user.id).order_by(CreditTx.id.desc()).limit(100))).scalars()
+        return {"balance": await balance(user.id),
+                "ledger": [{"delta": t.delta, "waived": t.points_waived, "kind": t.kind, "reason": t.reason,
+                            "project_id": t.project_id, "created_at": t.created_at.isoformat()} for t in tx]}
+
+
+@app.get("/api/checkout/{pack_id}")
+async def checkout(pack_id: str, user: User = CurrentUser):
+    """Hosted checkout link with the user id attached so the webhook can credit the right account."""
+    url = config.CHECKOUT_URLS.get(pack_id)
+    if not url:
+        raise HTTPException(404, "此方案未開放線上付款")
+    sep = "&" if "?" in url else "?"
+    return {"url": f"{url}{sep}checkout[custom][user_id]={user.id}&checkout[email]={user.email}"}
+
+
+@app.post("/api/webhooks/lemonsqueezy")
+async def lemonsqueezy_webhook(request: Request):
+    """Credits a pack on `order_created`. Verifies X-Signature (HMAC-SHA256 of the raw body)."""
+    body = await request.body()
+    if not config.LS_WEBHOOK_SECRET:
+        raise HTTPException(503, "webhook not configured")
+    sig = request.headers.get("X-Signature", "")
+    expected = hmac.new(config.LS_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        raise HTTPException(401, "bad signature")
+    ev = json.loads(body)
+    if ev.get("meta", {}).get("event_name") != "order_created":
+        return {"ignored": True}
+    attrs = ev["data"]["attributes"]
+    order_id = str(ev["data"]["id"])
+    user_id = (ev["meta"].get("custom_data") or {}).get("user_id")
+    variant = str((attrs.get("first_order_item") or {}).get("variant_id"))
+    pack_id = config.LS_VARIANTS.get(variant)
+    if not user_id or not pack_id or pack_id not in pricing.PACKS:
+        log.warning("webhook: unmapped order %s variant=%s user=%s", order_id, variant, user_id)
+        return {"ignored": True}
+    async with Session() as s:  # idempotent on order id
+        dup = (await s.execute(select(CreditTx).where(CreditTx.meta.contains(f'"order_id": "{order_id}"')))).first()
+    if dup:
+        return {"duplicate": True}
+    pack = pricing.PACKS[pack_id]
+    await add_credits(user_id, pack["points"], "purchase", f"lemonsqueezy {pack_id}", amount_twd=pack["twd"],
+                      meta={"order_id": order_id, "total": attrs.get("total"), "currency": attrs.get("currency")})
+    return {"ok": True}
 
 
 # ---- projects --------------------------------------------------------------------
@@ -122,9 +193,15 @@ async def create_project(body: NewProject, user: User = CurrentUser):
     async with Session() as s:
         p = Project(user_id=user.id, name=body.name.strip()[:200] or "未命名")
         s.add(p)
+        await s.flush()
+        u = await s.get(User, user.id)
+        free = False
+        if u.free_project_id is None:  # the first project runs on the free-trial allowance
+            u.free_project_id = p.id
+            free = True
         await s.commit()
     project_dir(p.id)
-    return {"id": p.id, "name": p.name}
+    return {"id": p.id, "name": p.name, "free": free}
 
 
 @app.get("/api/projects/{project_id}")
@@ -134,8 +211,10 @@ async def get_project(project_id: str, user: User = CurrentUser):
         msgs = (await s.execute(select(Message).where(Message.project_id == p.id).order_by(Message.id))).scalars()
         assets = (await s.execute(select(Asset).where(Asset.project_id == p.id).order_by(Asset.created_at))).scalars()
         out_msgs = [_public_message(m) for m in msgs]
+    st = await Store(user.id).credit_state(p.id)
     return {"id": p.id, "name": p.name, "messages": [m for m in out_msgs if m],
-            "assets": [asset_dict(a) for a in assets], "running": project_id in _turns and not _turns[project_id]["task"].done()}
+            "assets": [asset_dict(a) for a in assets], "running": project_id in _turns and not _turns[project_id]["task"].done(),
+            "credits": st}
 
 
 def _public_message(m: Message) -> dict | None:

@@ -53,6 +53,26 @@ class FakeStore:
     async def record_usage(self, pid, kind, units, cost, meta):
         self.usage.append((kind, units, cost))
 
+    balance_points = 100
+    charges: list = []
+
+    async def credit_state(self, pid):
+        return {"balance": self.balance_points, "free_project": False, "in_free": False,
+                "free_revisions_left": None, "exports": 0}
+
+    async def note_user_turn(self, pid):
+        pass
+
+    async def charge(self, pid, points, reason):
+        if points > self.balance_points:
+            return False, self.balance_points
+        self.balance_points -= points
+        self.charges.append((reason, points))
+        return True, self.balance_points
+
+    async def note_export(self, pid):
+        pass
+
 
 def test_tool_round_trip(monkeypatch, tmp_path: Path):
     usage = NS(input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0)
@@ -67,6 +87,7 @@ def test_tool_round_trip(monkeypatch, tmp_path: Path):
     def fake_stream(**kw):
         assert kw["tools"][0]["strict"] is True
         assert "fallbacks" in kw
+        assert kw["messages"][-1]["role"] == "system" and "點數" in kw["messages"][-1]["content"]
         calls["n"] += 1
         return FakeStream(turns[calls["n"] - 1])
 
@@ -92,3 +113,28 @@ def test_tool_round_trip(monkeypatch, tmp_path: Path):
     assert "沒有影片" in tool_result["content"][0]["text"]  # probe on empty dir
     assert [e["type"] for e in events if e["type"] in ("tool_run", "tool_end", "done")] == ["tool_run", "tool_end", "done"]
     assert len(store.usage) == 2 and store.usage[0][2] > 0
+    assert store.charges == [("probe_footage", 6)] and store.balance_points == 94
+    assert any(e["type"] == "credits" and e["balance"] == 94 for e in events)
+
+
+def test_insufficient_credits(monkeypatch, tmp_path: Path):
+    usage = NS(input_tokens=1, output_tokens=1, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+    turns = [
+        NS(stop_reason="tool_use", usage=usage, content=[Block(type="tool_use", id="t1", name="make_cover", input={"clip": 1, "t": 0, "title": ["x"]})]),
+        NS(stop_reason="end_turn", usage=usage, content=[Block(type="text", text="請儲值")]),
+    ]
+    it = iter(turns)
+    monkeypatch.setattr(R.anthropic, "AsyncAnthropic",
+                        lambda: NS(beta=NS(messages=NS(stream=lambda **kw: FakeStream(next(it)))), messages=NS(stream=None)))
+    store = FakeStore()
+    store.balance_points = 2
+    events = []
+
+    async def emit(ev):
+        events.append(ev)
+
+    asyncio.run(R.TurnRunner("p1", tmp_path, store, emit).run([{"type": "text", "text": "封面"}]))
+    tr = store.saved[2][1][0]
+    assert tr["is_error"] and "點數不足" in tr["content"][0]["text"]
+    assert any(e["type"] == "need_credits" and e["needed"] == 4 for e in events)
+    assert store.balance_points == 2

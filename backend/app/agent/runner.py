@@ -14,6 +14,7 @@ from typing import Awaitable, Callable
 import anthropic
 
 from .. import config
+from ..pricing import tool_cost
 from .prompt import SYSTEM
 from .tools import ToolContext, TOOLS, dispatch
 
@@ -41,8 +42,9 @@ class TurnRunner:
         self.project_id, self.root, self.store, self.emit = project_id, root, store, emit
         self.client = anthropic.AsyncAnthropic()
         self.ctx = ToolContext(root=root, add_asset=self._add_asset_sync, record_usage=self._usage_sync)
-        self._loop = asyncio.get_event_loop()
+        self._loop: asyncio.AbstractEventLoop | None = None  # set in run()
         self.cancelled = False
+        self._state_as_system = True  # mid-conversation system messages; falls back if the model rejects them
 
     # Tools run in a worker thread; these bridge back to the async store.
     def _add_asset_sync(self, path, kind, name, meta=None):
@@ -55,13 +57,15 @@ class TurnRunner:
         asyncio.run_coroutine_threadsafe(self.store.record_usage(self.project_id, kind, units, 0.0, meta), self._loop).result()
 
     async def run(self, user_blocks: list[dict]) -> None:
+        self._loop = asyncio.get_running_loop()
         messages = await self.store.load_messages(self.project_id)
         messages.append({"role": "user", "content": user_blocks})
         await self.store.save_message(self.project_id, "user", user_blocks)
+        await self.store.note_user_turn(self.project_id)
         for _round in range(40):  # hard cap on tool rounds per turn
             if self.cancelled:
                 break
-            msg = await self._stream_once(messages)
+            msg = await self._stream_once(messages + [await self._credit_note()])
             content = [b.model_dump(exclude_none=True) for b in msg.content]
             messages.append({"role": "assistant", "content": content})
             await self.store.save_message(self.project_id, "assistant", content)
@@ -87,10 +91,25 @@ class TurnRunner:
             await self.store.save_message(self.project_id, "user", results)
         await self.emit({"type": "done"})
 
+    async def _credit_note(self) -> dict:
+        """Operator note with the live credit state, appended (not persisted) to every request."""
+        st = await self.store.credit_state(self.project_id)
+        if st["in_free"]:
+            left = st["free_revisions_left"]
+            txt = "免費專案，目前在免費額度內" + (f"，免費修改還剩 {left} 輪" if left is not None else "（第一版尚未輸出）") + \
+                  f"。餘額 {st['balance']} 點。"
+        else:
+            txt = f"本專案照價目扣點。餘額 {st['balance']} 點。"
+        self._state_txt = txt
+        return {"role": "system", "content": f"[點數狀態] {txt}"}
+
     async def _stream_once(self, messages):
+        if not self._state_as_system:  # model rejected role=system mid-conversation: fold into the prompt
+            messages = messages[:-1]
         kwargs = dict(
             model=config.ANTHROPIC_MODEL, max_tokens=32000,
-            system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
+            system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}]
+            + ([] if self._state_as_system else [{"type": "text", "text": f"[點數狀態] {self._state_txt}"}]),
             tools=_tools_strict(), messages=messages,
             thinking={"type": "adaptive", "display": "summarized"},
             output_config={"effort": config.ANTHROPIC_EFFORT},
@@ -100,7 +119,12 @@ class TurnRunner:
         try:
             return await self._consume(self.client.beta.messages.stream(**kwargs, **fb))
         except anthropic.BadRequestError as e:
-            if "fallback" not in str(e).lower():
+            s = str(e).lower()
+            if "role" in s and "system" in s and self._state_as_system:
+                log.warning("mid-conversation system message rejected; folding state into system prompt")
+                self._state_as_system = False
+                return await self._stream_once(messages)
+            if "fallback" not in s:
                 raise
             log.warning("fallbacks rejected, retrying without: %s", e)
             return await self._consume(self.client.messages.stream(**kwargs))
@@ -124,8 +148,20 @@ class TurnRunner:
         await self.emit({"type": "tool_run", "name": tu.name, "input": _brief(tu.input)})
         try:
             inp = tu.input if isinstance(tu.input, dict) else json.loads(tu.input)
-            content = await asyncio.to_thread(dispatch, tu.name, inp, self.ctx)
-            ok = True
+            cost = tool_cost(tu.name, inp)
+            charged, bal = await self.store.charge(self.project_id, cost, tu.name)
+            if not charged:
+                await self.emit({"type": "need_credits", "needed": cost, "balance": bal})
+                content = [{"type": "text", "text": f"點數不足：此動作需 {cost} 點，目前餘額 {bal} 點。"
+                                                    "請用戶按側欄「儲值」，儲值後說「繼續」再執行。"}]
+                ok = False
+            else:
+                if cost:
+                    await self.emit({"type": "credits", "balance": bal, "charged": cost, "tool": tu.name})
+                content = await asyncio.to_thread(dispatch, tu.name, inp, self.ctx)
+                ok = True
+                if tu.name == "export_video":
+                    await self.store.note_export(self.project_id)
         except Exception as e:  # tool failures go back to the model, not the user
             log.exception("tool %s failed", tu.name)
             content, ok = [{"type": "text", "text": f"錯誤：{type(e).__name__}: {str(e)[:1200]}"}], False

@@ -1,4 +1,5 @@
 """Runtime settings, all from environment variables."""
+import json
 import os
 from pathlib import Path
 
@@ -20,3 +21,12 @@ ALLOW_SIGNUP = _env("ALLOW_SIGNUP", "true").lower() == "true"
 # Cap per-user spend recorded in usage events (USD); 0 disables the cap.
 USER_BUDGET_USD = float(_env("USER_BUDGET_USD", "0"))
 MAX_UPLOAD_MB = int(_env("MAX_UPLOAD_MB", "4096"))
+# Comma-separated emails that become admins on signup/login.
+ADMIN_EMAILS = {e.strip().lower() for e in _env("ADMIN_EMAILS").split(",") if e.strip()}
+# Lemon Squeezy: hosted checkout URL per pack (JSON {"p500": "https://...buy/..."}), variant→pack map,
+# and the webhook signing secret. Leave empty to sell manually (admin grants credits).
+CHECKOUT_URLS = json.loads(_env("CHECKOUT_URLS", "{}"))
+LS_VARIANTS = json.loads(_env("LS_VARIANTS", "{}"))
+LS_WEBHOOK_SECRET = _env("LEMONSQUEEZY_WEBHOOK_SECRET")
+# Shown on the top-up page when no checkout URL is configured (bank transfer / LINE Pay instructions).
+TOPUP_NOTE = _env("TOPUP_NOTE", "儲值請聯絡客服，入帳後點數會自動出現在側欄。")

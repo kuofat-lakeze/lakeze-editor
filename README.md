@@ -54,6 +54,21 @@ cd /opt/lakeze-editor && ./deploy/up.sh
 
 資料（SQLite、專案素材與成品）在 Docker volume `data`；備份用 `docker run --rm -v lakeze-editor_data:/data -v $PWD:/b alpine tar czf /b/data.tgz /data`。要換 Postgres 設 `DATABASE_URL=postgresql+asyncpg://...`。
 
+## 點數與收費
+
+1 點 = NT$10。每個工具呼叫按 `backend/app/pricing.py` 的價目扣點（素材分析 6、腳本+剪輯 9、旁白 6、試聽 1/聲音、配樂 3、混音 3、字幕 2、輸出 3、封面 4）。第一版完整影片約 39 點，修改一輪約 8 點。
+
+- **免費體驗**：每個帳號的第一個專案，第一版 + 封面 + 4 輪修改免費；第 5 輪起照價目扣點，餘額不足時剪輯師會請用戶儲值，儲值後說「繼續」就接著做。
+- **儲值包**：NT$500→50、1,000→110、3,000→360、10,000→1,300 點。線上付款接 Lemon Squeezy（`CHECKOUT_URLS`、`LS_VARIANTS`、`LEMONSQUEEZY_WEBHOOK_SECRET`）；沒設定時用戶看到 `TOPUP_NOTE`，管理員在後台手動加點。
+- 價目可用 `PRICING_JSON` 覆寫，不用改程式。
+
+## 管理後台
+
+`ADMIN_EMAILS` 裡的帳號登入後，側欄會出現「管理後台」：
+- 總覽：用戶數、影片輸出數、營收、售出／已用／免費送出的點數、Claude 與 ElevenLabs 成本、毛利率
+- 用戶列表：餘額、已付金額、API 成本、影片數；點開看專案、點數紀錄、對話內容
+- 操作：手動加點（可記錄實收金額）、停用／啟用、設管理員、再送一次免費專案、備註
+
 ## 費用與限制
 
 - Claude：每回合依 token 計費，用量記在 `usage` 表；`USER_BUDGET_USD` 可設每位用戶上限。

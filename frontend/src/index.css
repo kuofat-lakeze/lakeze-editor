@@ -47,7 +47,35 @@ textarea { resize: none; flex: 1; }
 .asset audio { width: 100%; display: block; }
 .asset-meta { display: flex; justify-content: space-between; padding: 6px 10px; font-size: 12px; }
 footer { display: flex; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); align-items: flex-end; }
+.balance { padding: 12px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.big { font-size: 26px; font-weight: 800; color: var(--accent); }
+.tag { font-size: 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; margin-left: 6px; color: var(--muted); }
+.tag.err { color: var(--err); }
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 10; }
+.modal { width: 520px; max-width: 94vw; max-height: 88vh; overflow: auto; }
+.modal-head { display: flex; justify-content: space-between; align-items: center; } .modal-head h3 { margin: 0; }
+.tabs { display: flex; gap: 14px; margin: 12px 0; border-bottom: 1px solid var(--line); }
+.tabs a { padding: 6px 2px; color: var(--muted); } .tabs a.active { color: var(--text); border-bottom: 2px solid var(--accent); }
+.packs { display: flex; flex-direction: column; gap: 8px; }
+.pack { display: flex; justify-content: space-between; align-items: center; background: var(--panel2); border-radius: 8px; padding: 10px 12px; }
+table.price { width: 100%; border-collapse: collapse; font-size: 13px; } table.price td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.r { text-align: right; } .ok { color: var(--ok); }
+.need { display: flex; gap: 10px; align-items: center; border-color: var(--accent); }
+.admin { height: 100%; display: flex; flex-direction: column; }
+.admin header { padding: 12px 20px; border-bottom: 1px solid var(--line); } .admin header h2 { margin: 0; font-size: 16px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; padding: 16px 20px 0; }
+.stat { padding: 12px; } .stat .big { font-size: 22px; }
+.admin-body { display: grid; grid-template-columns: 1fr 440px; gap: 16px; padding: 16px 20px; overflow: hidden; flex: 1; min-height: 0; }
+.users { overflow: auto; } .users input { width: 100%; margin-bottom: 8px; }
+.admin table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin th, .admin td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.admin tbody tr { cursor: pointer; } .admin tbody tr:hover, .admin tbody tr.active { background: var(--panel2); }
+.detail { overflow: auto; display: flex; flex-direction: column; gap: 10px; } .detail h4 { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.row { display: flex; gap: 6px; align-items: center; }
+.log { background: var(--panel2); border-radius: 8px; padding: 8px; font-size: 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+.log .user { color: var(--accent2); margin-top: 6px; } .log .assistant { color: var(--text); }
 @media (max-width: 720px) {
+  .admin-body { grid-template-columns: 1fr; }
   .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .sidebar { flex-direction: row; align-items: center; overflow: auto; } .sidebar nav { flex-direction: row; } .me { display: none; }
   .bubble { max-width: 100%; }
