@@ -1,0 +1,20 @@
+# Auto-deploy on push to main. Needs repo secrets:
+#   DEPLOY_HOST  server IP or hostname
+#   DEPLOY_USER  ssh user (root, or a user in the docker group)
+#   DEPLOY_KEY   private SSH key whose public half is in ~/.ssh/authorized_keys on the server
+name: deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    steps:
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+      - run: |
+          ssh -o StrictHostKeyChecking=accept-new "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'cd /opt/lakeze-editor && ./deploy/up.sh'

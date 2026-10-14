@@ -1,0 +1,13 @@
+# DOMAIN=localhost serves plain HTTP on :80; a real domain gets automatic HTTPS (Let's Encrypt).
+{$DOMAIN} {
+    encode gzip
+    request_body {
+        max_size 5GB
+    }
+    reverse_proxy frontend:80 {
+        flush_interval -1
+        transport http {
+            read_timeout 3600s
+        }
+    }
+}

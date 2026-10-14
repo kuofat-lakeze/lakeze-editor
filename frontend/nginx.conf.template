@@ -1,0 +1,18 @@
+server {
+    listen ${PORT};
+    client_max_body_size 5g;
+    root /usr/share/nginx/html;
+
+    location /api/ {
+        proxy_pass http://${API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;            # SSE
+        proxy_read_timeout 3600s;       # long tool runs
+        proxy_request_buffering off;    # large uploads stream through
+    }
+    location / {
+        try_files $uri /index.html;
+    }
+}

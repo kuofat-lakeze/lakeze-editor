@@ -1,0 +1,13 @@
+anthropic>=1.13,<2
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pydantic[email]>=2.7
+sqlalchemy[asyncio]>=2.0
+aiosqlite>=0.20
+asyncpg>=0.29
+itsdangerous>=2.2
+bcrypt>=4.1
+requests>=2.32
+gdown>=5.2
+opencc-python-reimplemented>=0.1.7
