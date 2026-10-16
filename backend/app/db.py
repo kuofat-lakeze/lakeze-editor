@@ -50,6 +50,7 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
     exports: Mapped[int] = mapped_column(Integer, default=0)          # export_video calls so far
     revision_turns: Mapped[int] = mapped_column(Integer, default=0)   # revision turns (with tool work) after the first export
+    final_version: Mapped[int | None] = mapped_column(Integer, nullable=True)  # the export marked as the delivered one
 
 
 class CreditTx(Base):
@@ -86,6 +87,34 @@ class Asset(Base):
     rel_path: Mapped[str] = mapped_column(String(500))
     meta: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # Deliverables (exported videos, covers) are grouped into versions: v1 = first export, v2 = next…
+    version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class Share(Base):
+    """A client-facing link to a project's deliverables. No login: the token is the credential."""
+    __tablename__ = "shares"
+    id: Mapped[str] = mapped_column(String(12), primary_key=True, default=uid)
+    token: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    version: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None = the project's final version
+    allow_download: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ShareComment(Base):
+    """What the client wrote on the share page. Shown to the owner in the project; not fed to the agent."""
+    __tablename__ = "share_comments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    share_id: Mapped[str] = mapped_column(String(12))
+    name: Mapped[str] = mapped_column(String(80), default="")
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class Usage(Base):
@@ -105,6 +134,7 @@ _MIGRATIONS = [
     ("users", "is_admin", "BOOLEAN DEFAULT 0"), ("users", "disabled", "BOOLEAN DEFAULT 0"),
     ("users", "free_project_id", "VARCHAR(12)"), ("users", "note", "TEXT DEFAULT ''"),
     ("projects", "exports", "INTEGER DEFAULT 0"), ("projects", "revision_turns", "INTEGER DEFAULT 0"),
+    ("projects", "final_version", "INTEGER"), ("assets", "version", "INTEGER"),
 ]
 
 
@@ -134,7 +164,8 @@ async def add_credits(user_id: str, delta: int, kind: str, reason: str, *, proje
 
 
 def asset_dict(a: Asset) -> dict:
-    return {"id": a.id, "kind": a.kind, "name": a.name, "meta": json.loads(a.meta or "{}"),
+    meta = json.loads(a.meta or "{}")
+    return {"id": a.id, "kind": a.kind, "name": a.name, "meta": meta, "version": a.version, "role": meta.get("role"),
             "url": f"/api/projects/{a.project_id}/assets/{a.id}", "created_at": a.created_at.isoformat()}
 
 
@@ -166,9 +197,17 @@ class Store:
             shutil.copy2(path, dest)
         else:
             path.replace(dest)
-        a = Asset(project_id=project_id, kind=kind, name=name, rel_path=str(dest.relative_to(root)),
-                  meta=json.dumps(meta or {}, ensure_ascii=False))
+        meta = meta or {}
+        version = None
         async with Session() as s:
+            p = await s.get(Project, project_id)
+            exports = (p.exports if p else 0) or 0
+            if meta.get("deliverable"):      # export_video output: the export counter is bumped after the tool returns
+                version = exports + 1
+            elif meta.get("cover"):          # a cover belongs to the latest export (or v1 before any export)
+                version = max(exports, 1)
+            a = Asset(project_id=project_id, kind=kind, name=name, rel_path=str(dest.relative_to(root)),
+                      meta=json.dumps(meta, ensure_ascii=False), version=version)
             s.add(a)
             await s.commit()
         return asset_dict(a)

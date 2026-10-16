@@ -281,7 +281,7 @@ def _export(inp, ctx):
     r = mix.mux_and_export(video, mixw, ctx.root / "out", inp.get("stem", "final"))
     sizes = {k: round(p.stat().st_size / 2**20, 1) for k, p in r.items()}  # before add_asset moves the files
     ids = {k: ctx.add_asset(p, "video", {"master": "母帶", "upload": "上傳用 1080p", "preview": "預覽 720p"}[k],
-                            {"size_mb": sizes[k]})["id"] for k, p in r.items()}
+                            {"size_mb": sizes[k], "role": k, "deliverable": True})["id"] for k, p in r.items()}
     return [_text(f"輸出完成：{_j(sizes)} MB，卡片 {_j(ids)}")]
 
 
@@ -291,7 +291,7 @@ def _cover(inp, ctx):
                              super_text=inp.get("super_text", ""), title=(inp.get("title") or None) and inp["title"][:2],
                              sub_text=inp.get("sub_text", ""), price_text=inp.get("price_text", ""),
                              crop_x=inp.get("crop_x", 0.5), warm=inp.get("warm", False))
-    a = ctx.add_asset(r["cover"], "image", f"封面 {name}")
+    a = ctx.add_asset(r["cover"], "image", f"封面 {name}", {"role": "cover", "cover": True})
     return [_text(f"封面卡片 {a['id']}。裁切檢查（9:16 / 4:5 / 3:4）："), _image(r["check"])]
 
 

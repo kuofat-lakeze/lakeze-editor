@@ -13,12 +13,14 @@ from sqlalchemy import func, select
 
 import hashlib
 import hmac
+import secrets
+from datetime import datetime, timedelta, timezone
 
 from . import config, pricing
 from .admin import router as admin_router
 from .agent.runner import TurnRunner
 from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
-from .db import Asset, CreditTx, Message, Project, Session, Store, Usage, User, add_credits, asset_dict, balance, init_db
+from .db import Asset, CreditTx, Message, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict, balance, init_db
 from .pipeline import eleven
 from .pipeline.fonts import ensure_fonts
 from .storage import project_dir, safe_join
@@ -263,7 +265,8 @@ async def _own(project_id: str, user: User) -> Project:
 async def list_projects(user: User = CurrentUser):
     async with Session() as s:
         rows = (await s.execute(select(Project).where(Project.user_id == user.id).order_by(Project.updated_at.desc()))).scalars()
-        return [{"id": p.id, "name": p.name, "updated_at": p.updated_at.isoformat()} for p in rows]
+        return [{"id": p.id, "name": p.name, "updated_at": p.updated_at.isoformat(), "exports": p.exports,
+                 "final_version": p.final_version} for p in rows]
 
 
 @app.post("/api/projects")
@@ -289,10 +292,12 @@ async def get_project(project_id: str, user: User = CurrentUser):
         msgs = (await s.execute(select(Message).where(Message.project_id == p.id).order_by(Message.id))).scalars()
         assets = (await s.execute(select(Asset).where(Asset.project_id == p.id).order_by(Asset.created_at))).scalars()
         out_msgs = [_public_message(m) for m in msgs]
+        comments = (await s.execute(select(ShareComment).where(ShareComment.project_id == p.id).order_by(ShareComment.id))).scalars()
+        client_comments = [{"id": c.id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat()} for c in comments]
     st = await Store(user.id).credit_state(p.id)
     return {"id": p.id, "name": p.name, "messages": [m for m in out_msgs if m],
             "assets": [asset_dict(a) for a in assets], "running": project_id in _turns and not _turns[project_id]["task"].done(),
-            "credits": st}
+            "credits": st, "final_version": p.final_version, "exports": p.exports, "client_comments": client_comments}
 
 
 def _public_message(m: Message) -> dict | None:
@@ -417,6 +422,182 @@ async def stream(project_id: str, request: Request, user: User = CurrentUser):
 
 def _sse(ev: dict) -> str:
     return f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+
+
+# ---- deliverables & client share links ------------------------------------------------------
+def _versions(assets: list[Asset]) -> list[dict]:
+    """Group deliverable assets (exports + covers) by version, newest first."""
+    by: dict[int, dict] = {}
+    for a in assets:
+        if a.version is None:
+            continue
+        v = by.setdefault(a.version, {"version": a.version, "created_at": a.created_at.isoformat(), "videos": [], "covers": []})
+        d = asset_dict(a)
+        (v["covers"] if a.kind == "image" else v["videos"]).append(d)
+        v["created_at"] = max(v["created_at"], a.created_at.isoformat())
+    for v in by.values():
+        order = {"upload": 0, "master": 1, "preview": 2}
+        v["videos"].sort(key=lambda x: order.get(x.get("role") or "", 9))
+        v["main"] = next((x for x in v["videos"] if x.get("role") == "upload"), v["videos"][0] if v["videos"] else None)
+    return [by[k] for k in sorted(by, reverse=True)]
+
+
+def _share_dict(sh: Share) -> dict:
+    return {"id": sh.id, "token": sh.token, "url": f"/s/{sh.token}", "version": sh.version, "allow_download": sh.allow_download,
+            "note": sh.note, "expires_at": sh.expires_at.isoformat() if sh.expires_at else None, "revoked": sh.revoked,
+            "views": sh.views, "created_at": sh.created_at.isoformat()}
+
+
+@app.get("/api/projects/{project_id}/deliverables")
+async def deliverables(project_id: str, user: User = CurrentUser):
+    p = await _own(project_id, user)
+    async with Session() as s:
+        assets = (await s.execute(select(Asset).where(Asset.project_id == p.id).order_by(Asset.created_at))).scalars().all()
+        shares = (await s.execute(select(Share).where(Share.project_id == p.id).order_by(Share.created_at.desc()))).scalars().all()
+    return {"project": {"id": p.id, "name": p.name, "final_version": p.final_version, "exports": p.exports},
+            "versions": _versions(assets), "shares": [_share_dict(x) for x in shares]}
+
+
+class FinalBody(BaseModel):
+    version: int | None
+
+
+@app.post("/api/projects/{project_id}/final")
+async def set_final(project_id: str, body: FinalBody, user: User = CurrentUser):
+    await _own(project_id, user)
+    async with Session() as s:
+        p = await s.get(Project, project_id)
+        p.final_version = body.version
+        await s.commit()
+    return {"ok": True, "final_version": body.version}
+
+
+class ShareBody(BaseModel):
+    version: int | None = None       # None = follow the project's final version
+    allow_download: bool = True
+    expires_days: int | None = None  # None = never
+    note: str = ""
+
+
+@app.post("/api/projects/{project_id}/share")
+async def create_share(project_id: str, body: ShareBody, user: User = CurrentUser):
+    await _own(project_id, user)
+    sh = Share(token=secrets.token_urlsafe(12), project_id=project_id, version=body.version, allow_download=body.allow_download,
+               note=body.note.strip()[:1000],
+               expires_at=(datetime.now(timezone.utc) + timedelta(days=body.expires_days)) if body.expires_days else None)
+    async with Session() as s:
+        s.add(sh)
+        await s.commit()
+    return _share_dict(sh)
+
+
+@app.post("/api/projects/{project_id}/share/{share_id}/revoke")
+async def revoke_share(project_id: str, share_id: str, user: User = CurrentUser):
+    await _own(project_id, user)
+    async with Session() as s:
+        sh = await s.get(Share, share_id)
+        if not sh or sh.project_id != project_id:
+            raise HTTPException(404)
+        sh.revoked = True
+        await s.commit()
+    return {"ok": True}
+
+
+async def _share_by_token(token: str) -> tuple[Share, Project]:
+    async with Session() as s:
+        sh = (await s.execute(select(Share).where(Share.token == token))).scalar_one_or_none()
+        if not sh or sh.revoked:
+            raise HTTPException(404, "連結不存在或已停用")
+        exp = sh.expires_at
+        if exp is not None and exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp and exp < datetime.now(timezone.utc):
+            raise HTTPException(410, "連結已過期")
+        p = await s.get(Project, sh.project_id)
+    return sh, p
+
+
+def _share_versions(sh: Share, p: Project, assets: list[Asset]) -> list[dict]:
+    vs = _versions(assets)
+    want = sh.version if sh.version is not None else p.final_version
+    if want is not None:
+        vs = [v for v in vs if v["version"] == want]
+    elif vs:
+        vs = vs[:1]  # nothing marked final yet: show the latest
+    for v in vs:  # rewrite urls to the public file endpoint
+        for a in v["videos"] + v["covers"]:
+            a["url"] = f"/api/s/{sh.token}/file/{a['id']}"
+        if v.get("main"):
+            v["main"]["url"] = f"/api/s/{sh.token}/file/{v['main']['id']}"
+    return vs
+
+
+@app.get("/api/s/{token}")
+async def share_view(token: str):
+    sh, p = await _share_by_token(token)
+    async with Session() as s:
+        assets = (await s.execute(select(Asset).where(Asset.project_id == p.id).order_by(Asset.created_at))).scalars().all()
+        row = await s.get(Share, sh.id)
+        row.views = (row.views or 0) + 1
+        await s.commit()
+    return {"project_name": p.name, "note": sh.note, "allow_download": sh.allow_download,
+            "brand": {"name": "人客多", "tagline": "專業旅遊剪輯 AI"}, "versions": _share_versions(sh, p, assets)}
+
+
+@app.get("/api/s/{token}/file/{asset_id}")
+async def share_file(token: str, asset_id: str, download: int = 0):
+    sh, p = await _share_by_token(token)
+    async with Session() as s:
+        a = await s.get(Asset, asset_id)
+        assets = (await s.execute(select(Asset).where(Asset.project_id == p.id))).scalars().all()
+    if not a or a.project_id != p.id or a.version is None:
+        raise HTTPException(404)
+    allowed = {x["id"] for v in _share_versions(sh, p, assets) for x in v["videos"] + v["covers"]}
+    if a.id not in allowed:
+        raise HTTPException(404)
+    if download and not sh.allow_download:
+        raise HTTPException(403, "此連結不允許下載")
+    path = safe_join(project_dir(p.id), a.rel_path)
+    nice = f"{p.name}_v{a.version}_{a.name}{path.suffix}".replace("/", "-")
+    return FileResponse(path, filename=nice if download else None, content_disposition_type="attachment" if download else "inline")
+
+
+class CommentBody(BaseModel):
+    name: str = ""
+    text: str
+
+
+@app.post("/api/s/{token}/comment")
+async def share_comment(token: str, body: CommentBody):
+    sh, p = await _share_by_token(token)
+    text_ = body.text.strip()
+    if not text_:
+        raise HTTPException(400, "留言不能是空的")
+    async with Session() as s:
+        s.add(ShareComment(project_id=p.id, share_id=sh.id, name=body.name.strip()[:80], text=text_[:2000]))
+        await s.commit()
+    return {"ok": True}
+
+
+@app.get("/api/gallery")
+async def gallery(user: User = CurrentUser):
+    """Every project's delivered (or latest) version with its cover, for the 作品庫 wall."""
+    async with Session() as s:
+        projects = (await s.execute(select(Project).where(Project.user_id == user.id).order_by(Project.updated_at.desc()))).scalars().all()
+        assets = (await s.execute(select(Asset).where(Asset.project_id.in_([p.id for p in projects]) if projects else False)
+                                  .order_by(Asset.created_at))).scalars().all()
+    by_proj: dict[str, list[Asset]] = {}
+    for a in assets:
+        by_proj.setdefault(a.project_id, []).append(a)
+    out = []
+    for p in projects:
+        vs = _versions(by_proj.get(p.id, []))
+        if not vs:
+            continue
+        v = next((x for x in vs if x["version"] == p.final_version), vs[0])
+        out.append({"project_id": p.id, "name": p.name, "version": v["version"], "final": v["version"] == p.final_version,
+                    "cover": v["covers"][-1] if v["covers"] else None, "video": v.get("main"), "updated_at": p.updated_at.isoformat()})
+    return out
 
 
 # ---- assets -----------------------------------------------------------------------------

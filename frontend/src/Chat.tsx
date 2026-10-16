@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { api, type Asset, type Msg, type ProjectDetail, type Voice } from './api'
+import { Deliverables } from './Deliverables'
 
 type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string; charged?: number; balance?: number; startedAt?: number }[] }
 const fmtDur = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${String(s % 60).padStart(2, '0')} 秒` }
@@ -47,7 +48,8 @@ const TOOL_LABEL: Record<string, string> = {
   render_captions: '燒字幕', export_video: '輸出成品', make_cover: '做封面',
 }
 
-export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { projectId: string; name?: string; onUsage: () => void; onTopUp: () => void; onCredits?: () => void }) {
+export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsChanged }: { projectId: string; name?: string; onUsage: () => void; onTopUp: () => void; onCredits?: () => void; onProjectsChanged?: () => void }) {
+  const [tab, setTab] = useState<'chat' | 'files'>('chat')
   const [proj, setProj] = useState<ProjectDetail | null>(null)
   const [live, setLive] = useState<Live>(emptyLive())
   const [running, setRunning] = useState(false)
@@ -222,6 +224,10 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
     <div className="chat">
       <header>
         <h2>{name ?? proj.name}</h2>
+        <div className="seg mini">
+          <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>對話</a>
+          <a className={tab === 'files' ? 'on' : ''} onClick={() => setTab('files')}>成品{(proj.exports ?? 0) > 0 && <span className="cnt">{proj.exports}</span>}</a>
+        </div>
         <span className={`chip ${proj.credits.in_free ? '' : 'pay'}`} onClick={onCredits} role="button">
           {proj.credits.in_free
             ? (proj.credits.free_revisions_left === null ? '免費：第一版 + 封面' : `免費修改剩 ${proj.credits.free_revisions_left} 輪`)
@@ -230,6 +236,8 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
         {running && <span className="working-chip"><span className="spinner" />工作中 {turnStart.current ? fmtDur(now - turnStart.current) : ''}</span>}
         {running && <button className="btn small" onClick={() => api.cancel(projectId)}>停止</button>}
       </header>
+      {tab === 'files' && <Deliverables projectId={projectId} onChanged={() => { reload(); onProjectsChanged?.() }} />}
+      {tab === 'chat' && <>
       <div className="thread" ref={threadRef} onScroll={onScroll}>
         {IN_APP && (
           <div className="card need">
@@ -304,7 +312,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
             </section>
           </div>
         )}
-        {proj.messages.map((m, i) => <Bubble key={m.id} m={m} assets={assetsFor(m, i)} />)}
+        {proj.messages.map((m, i) => <Bubble key={m.id} m={m} assets={assetsFor(m, i)} onOpenFiles={() => setTab('files')} />)}
         {running && (
           <div className="bubble assistant">
             {(() => { const cur = [...live.tools].reverse().find(t => t.status === 'run'); return (
@@ -323,9 +331,21 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
                 {t.charged ? <span className="charge">−{t.charged} 點 · 餘額 {t.balance}</span> : null}
               </div>
             ))}
-            {liveAssets.current.map(a => <AssetCard key={a.id} a={a} />)}
+            {liveAssets.current.map(a => <AssetCard key={a.id} a={a} onOpenFiles={() => setTab('files')} />)}
             {live.text && <Md text={live.text} />}
             {!live.text && live.tools.every(t => t.status !== 'run') && <span className="muted">…</span>}
+          </div>
+        )}
+        {(proj.client_comments?.length ?? 0) > 0 && stage !== 'working' && (
+          <div className="card client-comments">
+            <b>客戶留言</b>
+            {proj.client_comments!.slice(-3).map(c => (
+              <div key={c.id} className="cc-row">
+                <div><span className="cc-name">{c.name || '客戶'}</span><span className="muted small"> {new Date(c.created_at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                  <div>{c.text}</div></div>
+                <a className="small" onClick={() => setText(t => (t ? t + '\n' : '') + `客戶說：${c.text}。請照這個改。`)}>照這個改</a>
+              </div>
+            ))}
           </div>
         )}
         {needCredits && (
@@ -399,17 +419,18 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
         <button className="btn primary" onClick={send} disabled={running || uploading || !text.trim()}>送出</button>
       </footer>}
+      </>}
     </div>
   )
 }
 
-function Bubble({ m, assets }: { m: Msg; assets: Asset[] }) {
+function Bubble({ m, assets, onOpenFiles }: { m: Msg; assets: Asset[]; onOpenFiles?: () => void }) {
   return (
     <div className={`bubble ${m.role}`}>
       {m.parts.map((p, i) => p.type === 'text'
         ? <Md key={i} text={p.text} />
         : <div key={i} className="tool ok"><span className="dot" /> {TOOL_LABEL[p.name] ?? p.name}</div>)}
-      {assets.map(a => <AssetCard key={a.id} a={a} />)}
+      {assets.map(a => <AssetCard key={a.id} a={a} onOpenFiles={onOpenFiles} />)}
     </div>
   )
 }
@@ -419,8 +440,18 @@ function Md({ text }: { text: string }) {
   return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-export function AssetCard({ a }: { a: Asset }) {
+export function AssetCard({ a, onOpenFiles }: { a: Asset; onOpenFiles?: () => void }) {
   const mb = a.meta?.size_mb ? ` · ${a.meta.size_mb} MB` : ''
+  if (a.version != null) {  // exported videos & covers live in the 成品 tab; keep the thread light
+    if (a.role && a.role !== 'upload' && a.kind === 'video') return null
+    return (
+      <div className="deliv-note">
+        <span className="pill final">v{a.version}</span>
+        <span>{a.kind === 'image' ? a.name : `影片已輸出${mb}`}</span>
+        <a onClick={onOpenFiles}>看成品</a>
+      </div>
+    )
+  }
   return (
     <div className="asset">
       {a.kind === 'video' && <video src={a.url} controls preload="metadata" />}

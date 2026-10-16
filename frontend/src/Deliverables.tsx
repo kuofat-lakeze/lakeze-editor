@@ -1,0 +1,154 @@
+import { useEffect, useState } from 'react'
+import { api, type Asset, type DeliverablesData, type ShareLink } from './api'
+
+const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+
+export function Deliverables({ projectId, onChanged }: { projectId: string; onChanged?: () => void }) {
+  const [data, setData] = useState<DeliverablesData | null>(null)
+  const [sharing, setSharing] = useState<number | null | 'final'>(null)  // version being shared ('final' = follow final)
+  const [copied, setCopied] = useState<string | null>(null)
+  const load = () => api.deliverables(projectId).then(setData)
+  useEffect(() => { load() }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!data) return <div className="center muted">載入中…</div>
+  const { project, versions, shares } = data
+  const live = shares.filter(s => !s.revoked && (!s.expires_at || Date.parse(s.expires_at) > Date.now()))
+
+  const setFinal = async (v: number | null) => { await api.setFinal(projectId, v); await load(); onChanged?.() }
+  const copy = async (s: ShareLink) => {
+    const url = `${location.origin}${s.url}`
+    try { await navigator.clipboard.writeText(url) } catch { /* fall back to showing the url */ }
+    setCopied(s.id); setTimeout(() => setCopied(null), 1800)
+  }
+
+  return (
+    <div className="deliv">
+      {versions.length === 0 && (
+        <div className="card empty-deliv">
+          <b>還沒有成品</b>
+          <div className="muted small">剪輯師輸出第一版後，影片與封面會自動整理到這裡，之後每次重新輸出都是新的一版。</div>
+        </div>
+      )}
+      {versions.map(v => {
+        const isFinal = project.final_version === v.version
+        return (
+          <section key={v.version} className={`card ver ${isFinal ? 'final' : ''}`}>
+            <div className="ver-head">
+              <div className="ver-title">
+                <b>v{v.version}</b>
+                {isFinal && <span className="pill final">最終版</span>}
+                {!isFinal && project.final_version == null && v === versions[0] && <span className="pill">最新</span>}
+                <span className="muted small">{fmtDate(v.created_at)}</span>
+              </div>
+              <div className="ver-actions">
+                {isFinal
+                  ? <button className="btn small" onClick={() => setFinal(null)}>取消最終版</button>
+                  : <button className="btn small" onClick={() => setFinal(v.version)}>標成最終版</button>}
+                <button className="btn primary small" onClick={() => setSharing(v.version)}>分享給客戶</button>
+              </div>
+            </div>
+            <div className="ver-body">
+              <div className="ver-video">
+                {v.main ? <video src={v.main.url} controls preload="metadata" playsInline /> : <div className="muted small">沒有影片</div>}
+                {v.main && <div className="ver-meta">
+                  <span>{v.main.name}{v.main.meta?.size_mb ? ` · ${v.main.meta.size_mb} MB` : ''}</span>
+                  <a href={v.main.url} download>下載</a>
+                </div>}
+                {v.videos.length > 1 && (
+                  <details className="others">
+                    <summary className="small">其他格式</summary>
+                    {v.videos.filter(x => x !== v.main).map(x => (
+                      <div key={x.id} className="ver-meta"><span>{x.name}{x.meta?.size_mb ? ` · ${x.meta.size_mb} MB` : ''}</span><a href={x.url} download>下載</a></div>))}
+                  </details>
+                )}
+              </div>
+              <div className="ver-covers">
+                {v.covers.length === 0 && <div className="muted small">這版沒有封面</div>}
+                {v.covers.map((c: Asset) => (
+                  <figure key={c.id} className="cover">
+                    <img src={c.url} alt={c.name} loading="lazy" />
+                    <figcaption><span>{c.name}</span><a href={c.url} download>下載</a></figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          </section>
+        )
+      })}
+
+      {live.length > 0 && (
+        <section className="card links">
+          <b>客戶連結</b>
+          {live.map(s => (
+            <div key={s.id} className="link-row">
+              <div className="link-main">
+                <div className="link-url">{location.host}{s.url}</div>
+                <div className="muted small">
+                  {s.version ? `v${s.version}` : '跟著最終版'} · {s.allow_download ? '可下載' : '只能看'} · {s.expires_at ? `到 ${s.expires_at.slice(0, 10)}` : '永久'} · 看過 {s.views} 次
+                  {s.note ? ` · ${s.note}` : ''}
+                </div>
+              </div>
+              <button className="btn small" onClick={() => copy(s)}>{copied === s.id ? '已複製' : '複製'}</button>
+              <a className="btn small" href={s.url} target="_blank" rel="noreferrer">開啟</a>
+              <button className="btn small ghost" onClick={async () => { if (confirm('停用這條連結？客戶將無法再打開。')) { await api.revokeShare(projectId, s.id); load() } }}>停用</button>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {sharing !== null && (
+        <ShareDialog projectId={projectId} version={sharing === 'final' ? null : sharing} hasFinal={project.final_version != null}
+          onClose={() => setSharing(null)} onCreated={() => { setSharing(null); load() }} />
+      )}
+    </div>
+  )
+}
+
+function ShareDialog({ projectId, version, hasFinal, onClose, onCreated }:
+  { projectId: string; version: number | null; hasFinal: boolean; onClose: () => void; onCreated: () => void }) {
+  const [follow, setFollow] = useState(hasFinal && version === null)
+  const [download, setDownload] = useState(true)
+  const [days, setDays] = useState<string>('0')
+  const [note, setNote] = useState('')
+  const [made, setMade] = useState<ShareLink | null>(null)
+  const [busy, setBusy] = useState(false)
+  const create = async () => {
+    setBusy(true)
+    try { setMade(await api.createShare(projectId, { version: follow ? null : version, allow_download: download, expires_days: Number(days) || null, note })) }
+    finally { setBusy(false) }
+  }
+  const url = made ? `${location.origin}${made.url}` : ''
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal card share-dlg" onClick={e => e.stopPropagation()}>
+        <div className="modal-head"><h3>分享給客戶</h3><a onClick={onClose}>✕</a></div>
+        {!made ? (
+          <>
+            <p className="muted small">客戶不用登入，用連結就能在手機上看影片、下載封面。頁面會帶 Lakeze 人客多 標示。</p>
+            <label className="opt"><input type="checkbox" checked={download} onChange={e => setDownload(e.target.checked)} /> 允許下載</label>
+            {hasFinal && <label className="opt"><input type="checkbox" checked={follow} onChange={e => setFollow(e.target.checked)} /> 跟著最終版（之後改最終版，同一條連結會自動更新）</label>}
+            <label className="opt">連結有效期
+              <select value={days} onChange={e => setDays(e.target.value)}>
+                <option value="0">永久</option><option value="7">7 天</option><option value="30">30 天</option><option value="90">90 天</option>
+              </select>
+            </label>
+            <textarea rows={2} placeholder="給客戶的一句話（選填），例如：這是第一版，請看價格和旁白語氣。" value={note} onChange={e => setNote(e.target.value)} />
+            <button className="btn primary block" disabled={busy} onClick={create}>產生連結</button>
+          </>
+        ) : (
+          <>
+            <div className="made">
+              <div className="link-url big-url">{url}</div>
+              <div className="row">
+                <button className="btn primary" onClick={() => navigator.clipboard?.writeText(url)}>複製連結</button>
+                <a className="btn" href={made.url} target="_blank" rel="noreferrer">預覽</a>
+                {typeof navigator.share === 'function' && <button className="btn" onClick={() => navigator.share({ title: '影片成品', url })}>傳送…</button>}
+              </div>
+            </div>
+            <button className="btn block" onClick={onCreated}>完成</button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
