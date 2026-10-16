@@ -234,17 +234,8 @@ export function Credits({ initialTab = 'plans', onClose, onOpenProject }: { init
         {tab === 'plans' && (
           <>
             <section className="plans-head">
-              <b>包月最划算：每支含 2 輪修改，成品空間一起送</b>
-              <span className="muted small">{sub5.label} 每支 {twd(sub5.per_video_twd)}，比按次省 {sub5.save_pct}%。偶爾才剪一支的，往下看「{p.tiers.payg.label}」。</span>
-            </section>
-            <section className="plans-grid subs">
-              {p.subscriptions.map((s, i) => (
-                <PlanCard key={s.id} s={s} prev={i === 0 ? p.tiers.payg.label : p.subscriptions[i - 1].label} current={sub?.id === s.id} onBuy={buy} />))}
-            </section>
-
-            <section className="plans-head small">
-              <b>不包月的話</b>
-              <span className="muted small">用多少付多少；第一支先免費試。</span>
+              <b>單次購買</b>
+              <span className="muted small">第一支免費試；之後用多少付多少，點數不過期。</span>
             </section>
             <section className="tiers-row">
               <div className={`plan card tier payg ${!sub && !inFree ? 'cur' : ''}`}>
@@ -252,9 +243,10 @@ export function Credits({ initialTab = 'plans', onClose, onOpenProject }: { init
                 <div className="plan-name">{p.tiers.payg.label}</div>
                 <div className="plan-who">{p.tiers.payg.who}</div>
                 <div className="plan-price">{twd(p.first_video_twd)}<small>/ 支</small></div>
+                <div className="plan-sub muted small">含 2 輪修改 {twd(p.first_video_twd + 2 * p.revision_twd)}（修改一輪 {twd(p.revision_twd)}）</div>
                 <div className="plan-incl">包含 {p.tiers.free.label} 的全部，加上</div>
                 <ul className="plan-list">
-                  <li>按次扣點：第一版含封面 {FIRST} 點，修改一輪 {twd(p.revision_twd)}</li>
+                  <li>按次扣點，點數不過期</li>
                   <li className="star">用自己的聲音生成配音語音</li>
                   <li>成品空間可加購</li>
                 </ul>
@@ -269,12 +261,21 @@ export function Credits({ initialTab = 'plans', onClose, onOpenProject }: { init
                   <li>第一支影片＋封面免費，含 {p.free_revision_turns} 輪修改</li>
                   <li>{p.free_storage_gb} GB 成品空間</li>
                 </ul>
-                <div className="plan-note muted small">用完後自動照按次計費，不用綁卡。</div>
+                <div className="plan-note muted small">用完後自動照單次計費，不用綁卡。</div>
               </div>
             </section>
 
+            <section className="plans-head">
+              <b>包月更便宜</b>
+              <span className="muted small">同樣一支影片含 2 輪修改：單次 {twd(p.first_video_twd + 2 * p.revision_twd)}，包月 <b>{twd(sub5.per_video_twd)}</b>，省 {Math.round((1 - sub5.per_video_twd / (p.first_video_twd + 2 * p.revision_twd)) * 100)}%。成品空間一起送，加買點數享會員價。</span>
+            </section>
+            <section className="plans-grid subs">
+              {p.subscriptions.map((s, i) => (
+                <PlanCard key={s.id} s={s} prev={i === 0 ? p.tiers.payg.label : p.subscriptions[i - 1].label} single={p.first_video_twd + 2 * p.revision_twd} current={sub?.id === s.id} onBuy={buy} />))}
+            </section>
+
             <section className="card compare">
-              <b>以一個月 {sub5.videos} 支影片算</b>
+              <b>以一個月 {sub5.videos} 支影片、每支改 2 輪算</b>
               <table className="price cmp">
                 <thead><tr><th></th><th className="r">{p.tiers.payg.label}（按次）</th><th className="r">{sub5.label}（訂閱）</th></tr></thead>
                 <tbody>
@@ -345,7 +346,7 @@ export function Credits({ initialTab = 'plans', onClose, onOpenProject }: { init
   )
 }
 
-function PlanCard({ s, prev, current, onBuy }: { s: Subscription; prev: string; current: boolean; onBuy: (id: string) => void }) {
+function PlanCard({ s, prev, single, current, onBuy }: { s: Subscription; prev: string; single: number; current: boolean; onBuy: (id: string) => void }) {
   const best = s.id === 'sub5'
   return (
     <div className={`plan card sub ${best ? 'best' : ''} ${current ? 'cur' : ''}`}>
@@ -353,7 +354,7 @@ function PlanCard({ s, prev, current, onBuy }: { s: Subscription; prev: string; 
       <div className="plan-name">{s.label}</div>
       <div className="plan-who">{s.who}</div>
       <div className="plan-price">{twd(s.twd)}<small>/ 月</small></div>
-      <div className="plan-sub muted small">每支 {twd(s.per_video_twd)}，含 2 輪修改</div>
+      <div className="plan-sub"><b>每支 {twd(s.per_video_twd)}</b> 含 2 輪修改<s className="muted">單次 {twd(single)}</s></div>
       <div className="plan-incl">包含 {prev} 的全部，加上</div>
       <ul className="plan-list">
         <li>每月 <b>{s.videos} 支</b>影片，每支含 <b>2 輪</b>修改</li>
