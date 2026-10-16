@@ -740,3 +740,5 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .plan-price s { font-size: 13px; font-weight: 400; letter-spacing: 0; margin-left: 2px; }
 .need-banner { display: flex; align-items: center; gap: 12px; border-color: var(--brand-2); background: #FFF9F4; } .need-banner > div { flex: 1; } .need-banner .pill { background: var(--brand); color: #fff; }
 @media (max-width: 760px) { .free-line { flex-wrap: wrap; } .free-line .pill { margin-left: 0; } }
+.plan-sub { font-size: 14px; } .plan-list s { margin-left: 6px; font-size: 12.5px; }
+.plans-grid.subs .plan-price { font-size: 34px; }
