@@ -9,6 +9,7 @@
 #   OUT             output dir (default ./e2e_out) — log.txt, project.json, stats.json, final_1080.mp4, cover.jpg, summary.json
 #   PROJECT_NAME    BRIEF  (first message)   REVISION (second message)   MAX_FOLLOWUPS (auto "可以，照建議做" replies, default 10)
 #   MODE=revision   with PROJECT_ID (and optional GRANT_POINTS, granted by the admin account first): only the revision round
+#   MODE=upload     upload probe: POSTs random files of UPLOAD_SIZES_MB (default "5 60 250 1100") and logs the HTTP codes
 #   TURN_TIMEOUT    seconds per streamed turn (default 5400)
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -69,6 +70,24 @@ echo "$ME" > "$OUT/me.json"
 if [ "$(echo "$ME" | jq -r '.free_project_id')" != null ]; then  # re-run: give the account a fresh free trial
   UID_=$(echo "$ME" | jq -r .id)
   say "free trial already used → admin reset: $(api -X POST "$BASE/api/admin/users/$UID_" -d '{"reset_free_project":true}')"
+fi
+
+if [ "$MODE" = upload ]; then
+# ---- upload-size probe: does a multipart upload of N MB reach the backend through the edge? -----------------
+P=$(api -X POST "$BASE/api/projects" -d '{"name":"upload probe"}'); PID=$(echo "$P" | jq -r .id); echo "$PID" > "$OUT/project_id.txt"
+for mb in ${UPLOAD_SIZES_MB:-5 60 250 1100}; do
+  f=${RUNNER_TEMP:-/tmp}/probe_${mb}.mp4; head -c $((mb*1024*1024)) /dev/urandom > "$f"
+  t0=$(date +%s)
+  code=$(curl -sS -m 1800 -o "$OUT/upload_${mb}.txt" -w '%{http_code} %{size_upload} %{speed_upload}' -b "$JAR" -F "files=@$f;type=video/mp4" "$BASE/api/projects/$PID/upload" 2>>"$LOG" || echo "curl-exit $?")
+  say "upload ${mb}MB → $code ($(( $(date +%s) - t0 ))s) body=$(head -c 200 "$OUT/upload_${mb}.txt" 2>/dev/null)"
+  rm -f "$f"
+done
+# chunked / unknown-length transfer (what browsers do for streams) and a plain large JSON body for comparison
+head -c $((60*1024*1024)) /dev/urandom > "${RUNNER_TEMP:-/tmp}/probe_chunked.mp4"
+code=$(curl -sS -m 600 -o /dev/null -w '%{http_code}' -b "$JAR" -H 'Transfer-Encoding: chunked' -F "files=@${RUNNER_TEMP:-/tmp}/probe_chunked.mp4;type=video/mp4" "$BASE/api/projects/$PID/upload" 2>>"$LOG" || echo "curl-exit $?")
+say "upload 60MB chunked → $code"
+proj "$PID" > "$OUT/project.json"
+jq -n --arg pid "$PID" --rawfile log "$LOG" '{project_id:$pid, log:$log}' > "$OUT/summary.json"; rm -f "$JAR"; exit 0
 fi
 
 if [ "$MODE" = full ]; then
