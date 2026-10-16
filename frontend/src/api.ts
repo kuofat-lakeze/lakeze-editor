@@ -70,21 +70,38 @@ export const api = {
     patch: (id: string, body: Record<string, unknown>) => post(`/api/admin/users/${id}`, body).then(j<{ ok: boolean }>),
     messages: (pid: string) => fetch(`/api/admin/projects/${pid}/messages`).then(j<{ role: string; text?: string; tool?: string; at: string }[]>),
   },
-  // One file per request: a phone on mobile data can't hold a single multi-GB request open for
-  // 20 minutes, and per-file progress/errors are what the user needs to see.
-  uploadOne: (id: string, file: File, onProgress: (loaded: number, total: number) => void) =>
-    new Promise<void>((resolve, reject) => {
-      const fd = new FormData()
-      fd.append('files', file, file.name || 'clip.mp4')
+  // Chunked upload. Railway's edge drops any request whose body takes more than 5 minutes to
+  // arrive, so a big clip goes up in 8 MB pieces: one short request each, each retried on its own,
+  // so a phone on mobile data can lose a few packets without losing the file.
+  uploadOne: async (id: string, file: File, onProgress: (loaded: number, total: number) => void) => {
+    const CHUNK = 8 * 2 ** 20
+    const begin = await post(`/api/projects/${id}/upload/begin`, { name: file.name || 'clip.mp4', size: file.size }).then(j<{ upload_id: string }>)
+    const putChunk = (offset: number, blob: Blob) => new Promise<void>((resolve, reject) => {
       const x = new XMLHttpRequest()
-      x.open('POST', `/api/projects/${id}/upload`)
-      x.upload.onprogress = e => onProgress(e.loaded, e.lengthComputable ? e.total : file.size)
+      x.open('PUT', `/api/projects/${id}/upload/${begin.upload_id}/chunk?offset=${offset}`)
+      x.setRequestHeader('content-type', 'application/octet-stream')
+      x.timeout = 240000
+      x.upload.onprogress = e => onProgress(offset + e.loaded, file.size)
       x.onload = () => (x.status < 300 ? resolve() : reject(new Error(`HTTP ${x.status} ${x.responseText.slice(0, 200)}`)))
       x.onerror = () => reject(new Error(`連線中斷（status ${x.status || 0}，readyState ${x.readyState}）`))
       x.onabort = () => reject(new Error('上傳被中止'))
       x.ontimeout = () => reject(new Error('上傳逾時'))
-      x.send(fd)
-    }),
+      x.send(blob)
+    })
+    for (let offset = 0; offset < file.size; offset += CHUNK) {
+      const blob = file.slice(offset, Math.min(offset + CHUNK, file.size))
+      let attempt = 0
+      for (;;) {
+        try { await putChunk(offset, blob); break } catch (e) {
+          const status = Number((/HTTP (\d+)/.exec((e as Error).message) || [])[1] || 0)
+          if (++attempt > 4 || (status >= 400 && status < 500 && status !== 408 && status !== 429)) throw e
+          await new Promise(r => setTimeout(r, 1500 * attempt))
+        }
+      }
+    }
+    await post(`/api/projects/${id}/upload/${begin.upload_id}/complete`, {}).then(j<{ saved: unknown[] }>)
+    onProgress(file.size, file.size)
+  },
   // Fire-and-forget diagnostics from the browser (shows up in the backend log as "client ...").
   clientLog: (event: string, detail: Record<string, unknown> = {}) => {
     const body = JSON.stringify({ event, detail: { ...detail, ua: navigator.userAgent, url: location.pathname } })

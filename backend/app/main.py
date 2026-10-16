@@ -361,6 +361,86 @@ async def upload(project_id: str, files: list[UploadFile], user: User = CurrentU
     return {"saved": saved}
 
 
+# Chunked uploads. Railway's edge closes any request whose body takes longer than 5 minutes to
+# arrive, which a 1 GB clip on mobile data never makes in one request. The browser sends the file
+# in small pieces (one request each, each retried on its own); the server appends them to a part
+# file and renames it into raw/uploads on completion. State is in memory plus the part file; a
+# backend restart means the browser starts that file over.
+_UPLOAD_ID = re.compile(r"^[0-9a-f]{16}$")
+_uploads: dict[str, dict] = {}  # upload_id -> {project, name, size, received, part}
+
+
+class UploadBegin(BaseModel):
+    name: str
+    size: int
+
+
+def _unique_dest(root: Path, name: str) -> Path:
+    dest = safe_join(root, f"raw/uploads/{name}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():  # same file name picked twice (phones do this): keep both, suffix the new one
+        stem, suffix, k = dest.stem, dest.suffix, 2
+        while dest.exists():
+            dest = dest.with_name(f"{stem}_{k}{suffix}"); k += 1
+    return dest
+
+
+@app.post("/api/projects/{project_id}/upload/begin")
+async def upload_begin(project_id: str, body: UploadBegin, user: User = CurrentUser):
+    await _own(project_id, user)
+    if body.size <= 0:
+        raise HTTPException(400, "empty file")
+    if body.size > config.MAX_UPLOAD_MB << 20:
+        raise HTTPException(413, f"超過 {config.MAX_UPLOAD_MB}MB")
+    root = project_dir(project_id)
+    uid = secrets.token_hex(8)
+    part = safe_join(root, f"raw/uploads/.part/{uid}")
+    part.parent.mkdir(parents=True, exist_ok=True)
+    part.write_bytes(b"")
+    name = _SAFE.sub("_", Path(body.name or "clip.mp4").name) or "clip.mp4"
+    _uploads[uid] = {"project": project_id, "name": name, "size": body.size, "received": 0, "part": part}
+    return {"upload_id": uid, "received": 0}
+
+
+def _upload_state(project_id: str, upload_id: str) -> dict:
+    st = _uploads.get(upload_id) if _UPLOAD_ID.match(upload_id) else None
+    if not st or st["project"] != project_id:
+        raise HTTPException(404, "upload not found, start again")
+    return st
+
+
+@app.put("/api/projects/{project_id}/upload/{upload_id}/chunk")
+async def upload_chunk(project_id: str, upload_id: str, offset: int, request: Request, user: User = CurrentUser):
+    await _own(project_id, user)
+    st = _upload_state(project_id, upload_id)
+    if offset > st["received"]:
+        raise HTTPException(409, f"gap: have {st['received']}, got offset {offset}")
+    # offset < received happens when the browser retries a chunk whose response was lost: overwrite in place
+    size = offset
+    with open(st["part"], "r+b") as w:
+        w.seek(offset)
+        async for piece in request.stream():
+            size += len(piece)
+            if size > st["size"]:
+                w.close(); st["part"].unlink(missing_ok=True); _uploads.pop(upload_id, None)
+                raise HTTPException(413, "more bytes than announced")
+            w.write(piece)
+    st["received"] = max(st["received"], size)
+    return {"received": st["received"]}
+
+
+@app.post("/api/projects/{project_id}/upload/{upload_id}/complete")
+async def upload_complete(project_id: str, upload_id: str, user: User = CurrentUser):
+    await _own(project_id, user)
+    st = _upload_state(project_id, upload_id)
+    if st["received"] != st["size"]:
+        raise HTTPException(409, f"incomplete: {st['received']}/{st['size']}")
+    dest = _unique_dest(project_dir(project_id), st["name"])
+    st["part"].rename(dest)
+    _uploads.pop(upload_id, None)
+    return {"saved": [{"name": dest.name, "mb": round(st["size"] / 2**20, 1)}]}
+
+
 # ---- chat ----------------------------------------------------------------------------
 class Turn(BaseModel):
     text: str

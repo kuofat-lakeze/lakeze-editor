@@ -123,10 +123,17 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
   }
   const jump = () => { atBottom.current = true; setUnseen(false); bottom.current?.scrollIntoView({ behavior: 'smooth' }) }
 
+  // The stream endpoint replays the whole turn on every connect, so (re)connecting always starts
+  // from an empty live state. Railway's edge closes any HTTP request after 15 minutes, and phones
+  // drop connections when the screen locks; both just mean "connect again", the turn keeps running
+  // on the server.
+  const retries = useRef(0)
   function listen() {
     setRunning(true)
+    setLive(emptyLive()); liveAssets.current = []
     const es = new EventSource(`/api/projects/${projectId}/stream`)
     es.onmessage = e => {
+      retries.current = 0
       const ev = JSON.parse(e.data)
       switch (ev.type) {
         case 'text': setLive(l => ({ ...l, text: l.text + ev.text })); break
@@ -149,7 +156,11 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
         case 'done': es.close(); setRunning(false); setLive(emptyLive()); liveAssets.current = []; reload(); onUsage(); break
       }
     }
-    es.onerror = () => { es.close(); setRunning(false); reload() }
+    es.onerror = () => {
+      es.close()
+      if (retries.current < 30) { const n = ++retries.current; setTimeout(listen, Math.min(n, 5) * 2000); return }
+      retries.current = 0; setRunning(false); reload()
+    }
   }
 
   const okUploads = uploads.filter(u => u.status === 'ok').length
