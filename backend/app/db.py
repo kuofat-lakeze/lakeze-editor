@@ -49,7 +49,7 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
     exports: Mapped[int] = mapped_column(Integer, default=0)          # export_video calls so far
-    revision_turns: Mapped[int] = mapped_column(Integer, default=0)   # user turns after the first export
+    revision_turns: Mapped[int] = mapped_column(Integer, default=0)   # revision turns (with tool work) after the first export
 
 
 class CreditTx(Base):
@@ -195,8 +195,9 @@ class Store:
         return {"balance": await balance(self.user_id), "free_project": free, "in_free": in_free,
                 "free_revisions_left": free_left, "exports": p.exports if p else 0}
 
-    async def note_user_turn(self, project_id: str) -> None:
-        """Called once per user message: counts revision turns after the first export."""
+    async def note_revision_turn(self, project_id: str) -> None:
+        """Count one revision turn: called by the runner the first time a turn that started after the
+        first export runs a chargeable tool. Turns that only answer questions don't consume a revision."""
         async with Session() as s:
             p = await s.get(Project, project_id)
             if p and p.exports:

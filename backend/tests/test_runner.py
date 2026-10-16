@@ -58,10 +58,13 @@ class FakeStore:
 
     async def credit_state(self, pid):
         return {"balance": self.balance_points, "free_project": False, "in_free": False,
-                "free_revisions_left": None, "exports": 0}
+                "free_revisions_left": None, "exports": self.exports}
 
-    async def note_user_turn(self, pid):
-        pass
+    revisions = 0
+    exports = 0
+
+    async def note_revision_turn(self, pid):
+        self.revisions += 1
 
     async def charge(self, pid, points, reason):
         if points > self.balance_points:
@@ -85,7 +88,7 @@ def test_tool_round_trip(monkeypatch, tmp_path: Path):
     calls = {"n": 0}
 
     def fake_stream(**kw):
-        assert kw["tools"][0]["strict"] is True
+        assert "strict" not in kw["tools"][0]  # strict schemas are capped at 24 optional params
         assert "fallbacks" in kw
         assert kw["messages"][-1]["role"] == "system" and "點數" in kw["messages"][-1]["content"]
         calls["n"] += 1
@@ -97,7 +100,7 @@ def test_tool_round_trip(monkeypatch, tmp_path: Path):
         events.append(ev)
 
     store = FakeStore()
-    monkeypatch.setattr(R.anthropic, "AsyncAnthropic", lambda: NS(beta=NS(messages=NS(stream=fake_stream)), messages=NS(stream=None)))
+    monkeypatch.setattr(R.anthropic, "AsyncAnthropic", lambda **kw: NS(beta=NS(messages=NS(stream=fake_stream)), messages=NS(stream=None)))
 
     async def main():
         tr = R.TurnRunner("p1", tmp_path, store, emit)
@@ -125,7 +128,7 @@ def test_insufficient_credits(monkeypatch, tmp_path: Path):
     ]
     it = iter(turns)
     monkeypatch.setattr(R.anthropic, "AsyncAnthropic",
-                        lambda: NS(beta=NS(messages=NS(stream=lambda **kw: FakeStream(next(it)))), messages=NS(stream=None)))
+                        lambda **_kw: NS(beta=NS(messages=NS(stream=lambda **kw: FakeStream(next(it)))), messages=NS(stream=None)))
     store = FakeStore()
     store.balance_points = 2
     events = []
@@ -138,3 +141,34 @@ def test_insufficient_credits(monkeypatch, tmp_path: Path):
     assert tr["is_error"] and "點數不足" in tr["content"][0]["text"]
     assert any(e["type"] == "need_credits" and e["needed"] == 4 for e in events)
     assert store.balance_points == 2
+
+
+def test_revision_turn_counted_once_and_only_with_tool_work(monkeypatch, tmp_path: Path):
+    """After the first export, a turn consumes a revision only if it runs a chargeable tool, and only once."""
+    usage = NS(input_tokens=1, output_tokens=1, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+
+    def run_turn(turns, store):
+        it = iter(turns)
+        monkeypatch.setattr(R.anthropic, "AsyncAnthropic",
+                            lambda **kw: NS(beta=NS(messages=NS(stream=lambda **k: FakeStream(next(it)))), messages=NS(stream=None)))
+        asyncio.run(R.TurnRunner("p1", tmp_path, store, lambda ev: asyncio.sleep(0)).run([{"type": "text", "text": "改"}]))
+
+    store = FakeStore()
+    store.exports = 1
+    # question-only turn: no revision consumed
+    run_turn([NS(stop_reason="end_turn", usage=usage, content=[Block(type="text", text="要改哪裡？")])], store)
+    assert store.revisions == 0
+    # a turn with two chargeable tools counts exactly one revision
+    run_turn([
+        NS(stop_reason="tool_use", usage=usage, content=[Block(type="tool_use", id="t1", name="probe_footage", input={})]),
+        NS(stop_reason="tool_use", usage=usage, content=[Block(type="tool_use", id="t2", name="probe_footage", input={})]),
+        NS(stop_reason="end_turn", usage=usage, content=[Block(type="text", text="好了")]),
+    ], store)
+    assert store.revisions == 1
+    # before the first export nothing is counted even with tool work
+    store2 = FakeStore()
+    run_turn([
+        NS(stop_reason="tool_use", usage=usage, content=[Block(type="tool_use", id="t1", name="probe_footage", input={})]),
+        NS(stop_reason="end_turn", usage=usage, content=[Block(type="text", text="ok")]),
+    ], store2)
+    assert store2.revisions == 0

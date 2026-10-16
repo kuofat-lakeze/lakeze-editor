@@ -8,6 +8,7 @@
 #   E2E_EMAIL       admin email (must be in ADMIN_EMAILS)   E2E_PASSWORD  password (signup, or login if it exists)
 #   OUT             output dir (default ./e2e_out) — log.txt, project.json, stats.json, final_1080.mp4, cover.jpg, summary.json
 #   PROJECT_NAME    BRIEF  (first message)   REVISION (second message)   MAX_FOLLOWUPS (auto "可以，照建議做" replies, default 10)
+#   MODE=revision   with PROJECT_ID (and optional GRANT_POINTS, granted by the admin account first): only the revision round
 #   TURN_TIMEOUT    seconds per streamed turn (default 5400)
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -18,6 +19,7 @@ BRIEF=${BRIEF:-請先列出專案狀態}
 REVISION=${REVISION:-把價格字幕改成金色、大一點}
 MAX_FOLLOWUPS=${MAX_FOLLOWUPS:-10}
 TURN_TIMEOUT=${TURN_TIMEOUT:-5400}
+MODE=${MODE:-full}   # full: new project, first version + revision; revision: PROJECT_ID (+ GRANT_POINTS) revision only
 FOLLOWUP_TEXT="可以，照建議做"
 JAR=${JAR:-${RUNNER_TEMP:-/tmp}/e2e_cookies_$$.txt}
 LOG=$OUT/log.txt; : > "$LOG"
@@ -69,6 +71,7 @@ if [ "$(echo "$ME" | jq -r '.free_project_id')" != null ]; then  # re-run: give 
   say "free trial already used → admin reset: $(api -X POST "$BASE/api/admin/users/$UID_" -d '{"reset_free_project":true}')"
 fi
 
+if [ "$MODE" = full ]; then
 # ---- 2. project + first turn --------------------------------------------------------------------------------
 P=$(api -X POST "$BASE/api/projects" -d "$(jq -cn --arg n "$PROJECT_NAME" '{name:$n}')"); say "project: $P"
 PID=$(echo "$P" | jq -r .id); echo "$PID" > "$OUT/project_id.txt"
@@ -85,6 +88,18 @@ FRL1=$(jq -r '.credits.free_revisions_left' "$OUT/project_v1.json"); EXP1=$(jq -
 check free_revisions_left_v1 "$([ "$FRL1" = 4 ] && echo true || echo false)" "free_revisions_left=$FRL1 exports=$EXP1 followups=$n credits=$(jq -c .credits "$OUT/project_v1.json")"
 ST1=$(api "$BASE/api/admin/stats"); echo "$ST1" > "$OUT/stats_v1.json"; say "stats: $ST1"
 check admin_stats "$(echo "$ST1" | jq -r '(.exports>=1) and (.points_waived>0) and (.claude_cost_usd>0)')" "$ST1"
+else
+# ---- revision-only mode: existing project, optionally topped up by the admin first --------------------------
+PID=${PROJECT_ID:?MODE=revision needs PROJECT_ID}; echo "$PID" > "$OUT/project_id.txt"; rc=0
+if [ "${GRANT_POINTS:-0}" -gt 0 ]; then
+  UID_=$(echo "$ME" | jq -r .id)
+  say "admin grant $GRANT_POINTS points → $(api -X POST "$BASE/api/admin/users/$UID_/credits" -d "$(jq -cn --argjson d "$GRANT_POINTS" '{delta:$d, reason:"e2e revision test"}')")"
+fi
+proj "$PID" > "$OUT/project_v1.json"
+EXP1=$(jq -r '.credits.exports' "$OUT/project_v1.json"); FRL1=$(jq -r '.credits.free_revisions_left' "$OUT/project_v1.json")
+BAL1=$(jq -r '.credits.balance' "$OUT/project_v1.json")
+say "project before revision: exports=$EXP1 free_revisions_left=$FRL1 balance=$BAL1"
+fi
 
 # ---- 3. one revision round -----------------------------------------------------------------------------------
 if [ "$EXP1" != 0 ] && [ "$rc" != 4 ]; then
@@ -95,8 +110,13 @@ if [ "$EXP1" != 0 ] && [ "$rc" != 4 ]; then
   done
   proj "$PID" > "$OUT/project_v2.json"
   FRL2=$(jq -r '.credits.free_revisions_left' "$OUT/project_v2.json"); EXP2=$(jq -r '.credits.exports' "$OUT/project_v2.json")
+  BAL2=$(jq -r '.credits.balance' "$OUT/project_v2.json")
   check revision_exported "$([ "$EXP2" -gt "$EXP1" ] && echo true || echo false)" "exports $EXP1 → $EXP2 followups=$m"
-  check free_revisions_left_v2 "$([ "$FRL2" = 3 ] && echo true || echo false)" "free_revisions_left=$FRL2 credits=$(jq -c .credits "$OUT/project_v2.json")"
+  if [ "$MODE" = full ]; then
+    check free_revisions_left_v2 "$([ "$FRL2" = 3 ] && echo true || echo false)" "free_revisions_left=$FRL2 credits=$(jq -c .credits "$OUT/project_v2.json")"
+  elif [ "$(jq -r .credits.in_free "$OUT/project_v1.json")" != true ]; then
+    check points_charged "$([ "$BAL2" -lt "$BAL1" ] && echo true || echo false)" "balance $BAL1 → $BAL2 (paid revision) credits=$(jq -c .credits "$OUT/project_v2.json")"
+  fi
 else
   say "skipping revision round (no export yet or credits needed)"
 fi

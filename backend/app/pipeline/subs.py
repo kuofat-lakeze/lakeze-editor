@@ -25,6 +25,7 @@ Style: Sub,{VO_FONT},92,&H00FFFFFF,&H000000FF,&H00101C2E,&H8C000000,-1,0,0,0,100
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
+_COLORS = {"gold": "3FD8FF", "white": "FFFFFF", "red": "3C3CFF", "blue": "F5A623"}  # ASS &HBBGGRR&
 POP = r"{\fad(50,50)\fscx118\fscy118\t(0,120,\fscx100\fscy100)}"
 
 
@@ -54,12 +55,15 @@ def build_ass(vo: list[dict], supers: list[dict], counter: dict | None, dest: Pa
         ev.append(f"Dialogue: 1,{_t(c['start'])},{_t(c['end'])},VO,,0,0,0,,{{\\pos(540,{y})}}{POP}{_markup(c['text'])}")
     for s in supers:
         y = int(s.get("y", 330))
-        ev.append(f"Dialogue: 0,{_t(s['start'])},{_t(s['end'])},Super,,0,0,0,,{{\\pos(540,{y})\\fad(150,150)}}{s['text']}")
+        txt = s["text"].replace("**", "").replace("\n", "\\N")  # highlight markup is VO-only
+        ev.append(f"Dialogue: 0,{_t(s['start'])},{_t(s['end'])},Super,,0,0,0,,{{\\pos(540,{y})\\fad(150,150)}}{txt}")
     if counter:
         a0, end = float(counter["start"]), float(counter["end"])
         amount = int(counter["amount"])
         prefix = counter.get("prefix", "NT$")
         y = int(counter.get("y", 1000))
+        size = int(counter.get("size", 210))
+        color = _COLORS.get(str(counter.get("color", "gold")).lower(), _COLORS["gold"])
         if counter.get("label"):
             ev.append(f"Dialogue: 1,{_t(a0 - 0.6)},{_t(end)},VO,,0,0,0,,{{\\pos(540,{y - 220})}}{POP}{_markup(counter['label'])}")
         steps = 30
@@ -69,7 +73,7 @@ def build_ass(vo: list[dict], supers: list[dict], counter: dict | None, dest: Pa
             a = a0 + i * dt
             b = a + dt if i < steps else end
             ev.append(f"Dialogue: 1,{_t(a)},{_t(b)},VO,,0,0,0,,{{\\pos(540,{y})}}{POP if i == 0 else ''}"
-                      f"{{\\fs210\\c&H3FD8FF&}}{prefix}{v:,}")
+                      f"{{\\fs{size}\\c&H{color}&}}{prefix}{v:,}")
     dest.write_text(HEAD + "\n".join(ev) + "\n")
     return dest
 

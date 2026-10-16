@@ -47,6 +47,8 @@ class TurnRunner:
         self.ctx = ToolContext(root=root, add_asset=self._add_asset_sync, record_usage=self._usage_sync)
         self._loop: asyncio.AbstractEventLoop | None = None  # set in run()
         self.cancelled = False
+        self._exports_at_start = 0
+        self._revision_noted = False
         self._state_as_system = True  # mid-conversation system messages; falls back if the model rejects them
 
     # Tools run in a worker thread; these bridge back to the async store.
@@ -64,7 +66,10 @@ class TurnRunner:
         messages = await self.store.load_messages(self.project_id)
         messages.append({"role": "user", "content": user_blocks})
         await self.store.save_message(self.project_id, "user", user_blocks)
-        await self.store.note_user_turn(self.project_id)
+        # A turn that starts after the first export is a revision turn, but it only counts (and the free
+        # allowance only shrinks) once it actually runs a chargeable tool.
+        self._exports_at_start = (await self.store.credit_state(self.project_id))["exports"]
+        self._revision_noted = False
         for _round in range(40):  # hard cap on tool rounds per turn
             if self.cancelled:
                 break
@@ -161,6 +166,9 @@ class TurnRunner:
             else:
                 if cost:
                     await self.emit({"type": "credits", "balance": bal, "charged": cost, "tool": tu.name})
+                    if self._exports_at_start and not self._revision_noted:
+                        await self.store.note_revision_turn(self.project_id)
+                        self._revision_noted = True
                 content = await asyncio.to_thread(dispatch, tu.name, inp, self.ctx)
                 ok = True
                 if tu.name == "export_video":
