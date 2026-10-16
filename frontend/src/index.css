@@ -978,3 +978,67 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .attach.mic { position: relative; } .attach.mic.busy { color: var(--brand); border-color: var(--brand-2); cursor: progress; }
 .mic-sec { position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 800; background: var(--text); color: #fff; padding: 0 5px; border-radius: 999px; line-height: 14px; }
 .mic-hint { color: var(--brand); font-weight: 700; }
+
+/* ---- 旅剪 logo in the app ---- */
+.brand { gap: 10px; justify-content: space-between; } .brand .brand-by { height: 18px; opacity: .85; }
+.top-miao { --mj: 26px; } .topbar .miao-word { font-size: 18px; }
+.dash-by { height: 18px !important; opacity: .8; margin-left: -4px; }
+.share-head .share-by { height: 18px; opacity: .85; }
+.auth-logo-m { display: none; } @media (max-width: 760px) { .auth-logo-m { display: block; margin-bottom: 4px; } }
+/* ---- posting ---- */
+.btn.fb { background: #1877F2; border-color: #1877F2; color: #fff; display: inline-flex; align-items: center; gap: 6px; } .btn.fb:hover { background: #166fe0; }
+.btn.line { background: #06C755; border-color: #06C755; color: #fff; display: inline-flex; align-items: center; gap: 6px; } .btn.line:hover { background: #05b54d; }
+.post-box { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: var(--panel2); } .post-h { display: flex; flex-direction: column; gap: 2px; } .post-box textarea { width: 100%; font-size: 13.5px; }
+.share-social { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; } .share-social .btn.small { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ---- landing phone screens: livelier, and the animations replay every time a screen comes on ---- */
+.ps:not(.on) .ps-uqrow, .ps:not(.on) .ps-pick span, .ps:not(.on) .ps-msg, .ps:not(.on) .ps-tools li, .ps:not(.on) .ps-say, .ps:not(.on) .ps-video,
+.ps:not(.on) .ps-cover, .ps:not(.on) .ps-actions, .ps:not(.on) .ps-dz, .ps:not(.on) .ps-uqhead, .ps:not(.on) .ps-vhead, .ps:not(.on) .ps-compose { animation: none !important; opacity: 0; }
+.ps-dz { animation: popin .5s cubic-bezier(.2,.9,.3,1.3) both; } .an-bounce { animation: bounce 1.6s ease-in-out .6s infinite; }
+@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.ps-uqhead { animation: fadeup .5s .2s both; }
+.ps-uqrow { animation: rowin .55s cubic-bezier(.2,.9,.3,1.15) both; transform-origin: left center; }
+@keyframes rowin { from { opacity: 0; transform: translateX(70px) scale(.92); } 60% { opacity: 1; } to { opacity: 1; transform: none; } }
+.ps.on .ps-uqbar i { transform-origin: left; animation: barfill 1.1s cubic-bezier(.2,.7,.2,1) both; animation-delay: inherit; }
+.ps-uqrow:nth-child(2) .ps-uqbar i { animation-delay: .55s; } .ps-uqrow:nth-child(3) .ps-uqbar i { animation-delay: .8s; } .ps-uqrow:nth-child(4) .ps-uqbar i { animation-delay: 1.05s; }
+.ps-uqrow:nth-child(5) .ps-uqbar i { animation: barfill 1.1s cubic-bezier(.2,.7,.2,1) 1.3s both, shimmer 1.4s linear 2.4s infinite; background-size: 200% 100%; background-image: linear-gradient(90deg, var(--brand), var(--brand-2), #ffd9c4, var(--brand)); }
+@keyframes barfill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.ps-uqrow em { animation: popin .4s cubic-bezier(.2,.9,.3,1.6) both; } .ps-uqrow:nth-child(2) em { animation-delay: 1.4s; } .ps-uqrow:nth-child(3) em { animation-delay: 1.65s; } .ps-uqrow:nth-child(4) em { animation-delay: 1.9s; }
+.ps.on .ps-ring circle + circle { animation: ring 1.8s cubic-bezier(.2,.7,.2,1) .3s both; } @keyframes ring { from { stroke-dashoffset: 94.25; } }
+.ps.on .ps-ring i { animation: popin .4s 1.6s both; }
+@keyframes popin { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+@keyframes fadeup { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+/* step 2: chips pop, bubbles slide, tool rows tick in, the editor "types" */
+.ps-pick span { animation: popin .4s cubic-bezier(.2,.9,.3,1.4) both; } .ps-pick span:nth-child(2) { animation-delay: .1s; } .ps-pick span:nth-child(3) { animation-delay: .2s; } .ps-pick span:nth-child(4) { animation-delay: .35s; }
+.ps-pick span.sel { animation: popin .4s cubic-bezier(.2,.9,.3,1.4) both, selglow 1.8s ease-in-out 1s infinite; } @keyframes selglow { 0%, 100% { box-shadow: 0 0 0 0 rgba(236,90,30,0); } 50% { box-shadow: 0 0 0 4px rgba(236,90,30,.18); } }
+.ps-msg.user { animation: slidel .5s cubic-bezier(.2,.9,.3,1.15) .5s both; } @keyframes slidel { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: none; } }
+.ps-msg.ai { animation: slider .5s cubic-bezier(.2,.9,.3,1.15) 1s both; } @keyframes slider { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: none; } }
+.ps-tools li { animation: fadeup .4s both; } .ps-tools li:nth-child(1) { animation-delay: 1.4s; } .ps-tools li:nth-child(2) { animation-delay: 1.8s; } .ps-tools li:nth-child(3) { animation-delay: 2.2s; } .ps-tools li:nth-child(4) { animation-delay: 2.6s; } .ps-tools li:nth-child(5) { animation-delay: 2.9s; }
+.ps-tools li.ok::before { animation: popin .35s cubic-bezier(.2,.9,.3,1.6) both; animation-delay: inherit; }
+.ps-say { animation: fadeup .4s 3.1s both; } .ps-say span { display: inline-block; overflow: hidden; white-space: nowrap; max-width: 100%; vertical-align: bottom; animation: typing 1.6s steps(26) 3.2s both; }
+@keyframes typing { from { max-width: 0; } to { max-width: 100%; } }
+.ps-compose { animation: fadeup .5s .8s both; }
+/* step 3: the result pops, covers flip in, the share button glows, a little confetti */
+.ps-vhead { animation: fadeup .4s both; }
+.ps-video { animation: zoomin .6s cubic-bezier(.2,.9,.3,1.2) .15s both; } @keyframes zoomin { from { opacity: 0; transform: scale(.82) translateY(16px); } to { opacity: 1; transform: none; } }
+.ps-done .ps-headline { animation: fadeup .5s .5s both; } .ps-done .ps-super { animation: slider .5s .35s both; } .ps-done .ps-sub, .ps-done .ps-narr { animation: fadeup .5s .8s both; }
+.ps-done .ps-play { animation: playpulse 1.6s ease-in-out 1s infinite; } @keyframes playpulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,.55); } 50% { box-shadow: 0 0 0 10px rgba(255,255,255,0); } }
+.ps-cover { animation: flipin .6s cubic-bezier(.2,.9,.3,1.1) both; transform-origin: left center; backface-visibility: hidden; } .ps-cover.a { animation-delay: .55s; } .ps-cover.b { animation-delay: .8s; }
+@keyframes flipin { from { opacity: 0; transform: perspective(500px) rotateY(-70deg); } to { opacity: 1; transform: none; } }
+.ps-actions { animation: fadeup .5s 1.1s both; } .ps-actions .pri.glow { animation: btnglow 1.6s ease-in-out 1.4s infinite; } @keyframes btnglow { 0%, 100% { box-shadow: 0 0 0 0 rgba(236,90,30,.45); } 50% { box-shadow: 0 0 0 6px rgba(236,90,30,0); } }
+.ps-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; } .ps-confetti i { position: absolute; top: -8px; width: 6px; height: 10px; border-radius: 2px; opacity: 0; }
+.ps.on .ps-confetti i { animation: confetti 1.9s ease-in .3s both; } @keyframes confetti { 0% { opacity: 0; transform: translateY(0) rotate(0); } 10% { opacity: 1; } 100% { opacity: 0; transform: translateY(560px) rotate(540deg); } }
+.ps-confetti i:nth-child(odd) { width: 5px; height: 5px; border-radius: 50%; } .ps-confetti i:nth-child(3n) { animation-duration: 2.3s; }
+@media (prefers-reduced-motion: reduce) { .ps *, .ps-confetti i { animation: none !important; opacity: 1 !important; } }
+
+/* gallery playback */
+.gal-thumb { display: block; cursor: pointer; }
+.gal-play { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255,255,255,.92); box-shadow: 0 6px 18px rgba(0,0,0,.25); transition: transform .15s; }
+.gal-play::after { content: ""; position: absolute; left: 18px; top: 13px; border-left: 16px solid var(--brand); border-top: 10px solid transparent; border-bottom: 10px solid transparent; }
+.gal-thumb:hover .gal-play { transform: scale(1.08); }
+.gal-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 2px; }
+.gal-bg { z-index: 50; } .gal-player { width: min(94vw, 420px); background: #000; border-radius: 18px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.45); display: flex; flex-direction: column; }
+.gal-player video { width: 100%; max-height: 78vh; aspect-ratio: 9 / 16; object-fit: contain; background: #000; display: block; }
+.gal-player-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; background: var(--panel); flex-wrap: wrap; } .gal-close { font-size: 18px; color: var(--muted); padding: 0 4px; }
+.brand .miao-logo { --mj: 28px; flex: none; } .brand .miao-word, .topbar .miao-word, .dash-top .miao-word, .share-head .miao-word { white-space: nowrap; }
+.brand { padding: 4px 4px 8px; } .brand .brand-by { height: 16px; }

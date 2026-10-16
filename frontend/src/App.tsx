@@ -9,6 +9,7 @@ import { SharePage } from './SharePage'
 import { Landing } from './Landing'
 import logo from './assets/logo.png'
 import { StorageMeter } from './Storage'
+import { MiaoLogo } from './Logo'
 
 const SHARE_TOKEN = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/)?.[1]
 // The CRM lives at /dashboard on the app host and is the whole site on dashboard.<app host>.
@@ -95,7 +96,7 @@ function Workspace() {
       {/* phone top bar: logo, balance, menu */}
       <div className="topbar">
         <button className="btn icon" aria-label="選單" onClick={() => setMenu(true)}>☰</button>
-        <img className="logo" src={logo} alt="Lakeze 人客多" />
+        <MiaoLogo size={26} className="top-miao" />
         <span className="spacer" />
         {(notes?.unread ?? 0) > 0 && <a className="fb-top" onClick={() => { const it = notes!.items[0]; if (it?.project_id) openProject(it.project_id) }}>💬 {notes!.unread}</a>}
         <a className="pts" onClick={() => showCredits()}>{me.balance} <small>點</small></a>
@@ -104,7 +105,7 @@ function Workspace() {
       {menu && <div className="scrim" onClick={() => setMenu(false)} />}
 
       <aside className={`sidebar ${menu ? 'open' : ''}`}>
-        <div className="brand"><img className="logo" src={logo} alt="Lakeze 人客多" /></div>
+        <div className="brand"><MiaoLogo size={34} /><img className="logo brand-by" src={logo} alt="人客多 Lakeze" title="人客多 Lakeze" /></div>
         <div className={`balance card ${view === 'credits' ? 'active' : ''}`} onClick={() => showCredits()}>
           <div className="muted small">點數餘額</div>
           <div className="big">{me.balance}</div>

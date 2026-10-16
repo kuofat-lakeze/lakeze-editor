@@ -118,6 +118,16 @@ async def lifespan(app: FastAPI):
         await asyncio.to_thread(ensure_fonts)
     except Exception as e:  # fonts can be fetched later; don't block startup
         log.warning("font download failed: %s", e)
+    try:   # accounts listed as admins get the flag even if they registered before being listed
+        async with Session() as s:
+            rows = (await s.execute(select(User).where(User.email.in_(list(config.ADMIN_EMAILS)), User.is_admin.is_(False)))).scalars().all()
+            for u in rows:
+                u.is_admin = True
+            if rows:
+                await s.commit()
+                log.info("promoted %d admin(s): %s", len(rows), ", ".join(u.email for u in rows))
+    except Exception:
+        log.exception("admin promotion failed")
     tasks = [asyncio.create_task(_storage_loop())]
     if config.RAW_RETENTION_DAYS > 0:
         tasks.append(asyncio.create_task(_cleanup_loop()))
@@ -1171,6 +1181,46 @@ async def _thread(project_id: str) -> dict:
 async def share_thread(token: str):
     _sh, p = await _share_by_token(token)
     return await _thread(p.id)
+
+
+PROMO_TITLE = "{name}｜用旅剪 15 分鐘剪好的短影音"
+PROMO_DESC = "旁白、配樂、字幕、封面全自動。你也想做一支？註冊送 {points} 點，第一支免費，不用綁卡。"
+
+
+def _esc(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+@app.get("/api/og/s/{token}")
+async def share_og(token: str):
+    """What Facebook / LINE / Threads crawlers see for a share link (nginx sends bot user agents here):
+    Open Graph tags with the cover and the promo copy, then a redirect for anyone else."""
+    from fastapi.responses import HTMLResponse
+    try:
+        sh, p = await _share_by_token(token)
+    except HTTPException:
+        return HTMLResponse("<!doctype html><title>連結無效</title><p>這個連結已失效。</p>", status_code=404)
+    async with Session() as s:
+        assets = (await s.execute(select(Asset).where(Asset.project_id == p.id).order_by(Asset.created_at))).scalars().all()
+    vers = _share_versions(sh, p, assets)
+    cover = next((c for v in vers for c in v["covers"][::-1]), None)
+    video = next((v["main"] for v in vers if v.get("main")), None)
+    url = f"{config.PUBLIC_URL}/s/{token}"
+    title = PROMO_TITLE.format(name=p.name)
+    desc = PROMO_DESC.format(points=pricing.SIGNUP_POINTS)
+    tags = [f'<meta property="og:title" content="{_esc(title)}">', f'<meta property="og:description" content="{_esc(desc)}">',
+            f'<meta property="og:url" content="{_esc(url)}">', '<meta property="og:type" content="video.other">',
+            '<meta property="og:site_name" content="旅剪 · 人客多 Lakeze">', '<meta property="og:locale" content="zh_TW">',
+            '<meta name="twitter:card" content="summary_large_image">', f'<meta name="description" content="{_esc(desc)}">']
+    if cover:
+        img = f"{config.PUBLIC_URL}{cover['url']}"   # already the public /api/s/<token>/file/<id> form
+        tags += [f'<meta property="og:image" content="{_esc(img)}">', '<meta property="og:image:width" content="1080">', '<meta property="og:image:height" content="1920">']
+    if video:
+        vid = f"{config.PUBLIC_URL}{video['url']}"
+        tags += [f'<meta property="og:video" content="{_esc(vid)}">', '<meta property="og:video:type" content="video/mp4">']
+    html = ("<!doctype html><html lang=\"zh-Hant\"><head><meta charset=\"utf-8\">" f"<title>{_esc(title)}</title>" + "".join(tags)
+            + f'<meta http-equiv="refresh" content="0;url={_esc(url)}"></head><body><a href="{_esc(url)}">{_esc(title)}</a></body></html>')
+    return HTMLResponse(html, headers={"Cache-Control": "public, max-age=300"})
 
 
 @app.get("/api/s/{token}/file/{asset_id}")

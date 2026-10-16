@@ -224,3 +224,23 @@ def test_voice_input_stt(client, monkeypatch, tmp_path: Path):
     assert c.post("/api/stt", files={"audio": ("v.webm", b"not audio at all", "audio/webm")}).status_code == 400
     monkeypatch.setattr(E, "transcribe", lambda path, language="zho": (_ for _ in ()).throw(RuntimeError("down")))
     assert c.post("/api/stt", files={"audio": ("v.webm", clip.read_bytes(), "audio/webm")}).status_code == 502
+
+
+def test_share_og_page_and_default_admins(client):
+    from app import config as C
+    assert {"kuofat@gmail.com", "lodestar0115@gmail.com"} <= C.ADMIN_EMAILS
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+
+    async def seed():
+        async with D.Session() as s:
+            p = (await s.execute(D.select(D.Project).where(D.Project.user_id == a.id))).scalar_one()
+            root = D.project_dir(p.id); f = root / "out" / "c.jpg"; f.write_bytes(b"x" * 10)
+            s.add(D.Asset(project_id=p.id, kind="image", name="封面 cover", rel_path=str(f.relative_to(root)), version=1, size_bytes=10, meta='{"cover": true}'))
+            s.add(D.Share(token="ogtok", project_id=p.id)); await s.commit()
+    asyncio.run(seed())
+    r = TestClient(M.app).get("/api/og/s/ogtok")
+    assert r.status_code == 200 and "text/html" in r.headers["content-type"]
+    assert 'og:title" content="A1｜用旅剪 15 分鐘剪好的短影音"' in r.text and "註冊送 110 點" in r.text
+    assert 'og:image" content="https://editor.lakeze.com/api/s/ogtok/file/' in r.text and 'refresh" content="0;url=https://editor.lakeze.com/s/ogtok"' in r.text
+    assert TestClient(M.app).get("/api/og/s/nope").status_code == 404

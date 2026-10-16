@@ -58,7 +58,7 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
 
       <main className="auth-panel">
         <form className="auth-card" onSubmit={go}>
-          <img className="logo auth-logo-m" src={logo} alt="Lakeze 人客多" />
+          <div className="auth-logo-m"><MiaoLogo size={34} /></div>
           <h2>{mode === 'login' ? '歡迎回來' : '建立帳號'}</h2>
           <p className="muted">{mode === 'login' ? '登入後繼續你的專案。' : refToken ? '朋友分享的影片就是這樣做出來的。註冊送 110 點，第一支免費。' : '註冊就送 110 點，第一支影片含封面與 2 輪修改。'}</p>
           {social && (

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api, type ShareView, type ThreadMsg } from './api'
 import logo from './assets/logo.png'
+import { MiaoLogo } from './Logo'
+import { FbIcon, LineIcon, promoText, shareToFacebook, shareToLine } from './share'
 
 export function SharePage({ token }: { token: string }) {
   const [data, setData] = useState<ShareView | null>(null)
@@ -37,8 +39,8 @@ export function SharePage({ token }: { token: string }) {
   return (
     <div className="share-page">
       <header className="share-head">
-        <img className="logo" src={logo} alt="Lakeze 人客多" />
-        <span className="share-tag">專業旅遊剪輯 AI</span>
+        <MiaoLogo size={26} />
+        <img className="logo share-by" src={logo} alt="人客多 Lakeze" />
         <span className="spacer" />
         <a className="btn small primary" href={data?.signup_url ?? '/signup'}>我也要試做</a>
       </header>
@@ -58,6 +60,12 @@ export function SharePage({ token }: { token: string }) {
                     {data.allow_download && <a className="btn primary block" href={`${v.main.url}?download=1`}>下載影片（1080p{v.main.meta?.size_mb ? `，${v.main.meta.size_mb} MB` : ''}）</a>}
                   </div>
                 )}
+                <div className="share-social">
+                  <span className="muted small">覺得不錯？分享給更多人</span>
+                  <button className="btn small fb" onClick={() => shareToFacebook(location.href, promoText(data.project_name, location.href, data.signup_points ?? 110))}><FbIcon /> Facebook</button>
+                  <button className="btn small line" onClick={() => shareToLine(promoText(data.project_name, location.href, data.signup_points ?? 110))}><LineIcon /> LINE</button>
+                  <button className="btn small" onClick={() => navigator.clipboard?.writeText(location.href)}>複製連結</button>
+                </div>
                 {v.covers.length > 0 && (
                   <div className="share-covers">
                     <div className="muted small">封面</div>

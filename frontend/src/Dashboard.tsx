@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, type AdminUser, type AdminUserDetail, type Dashboard, type DashRow, type Me, type Stage } from './api'
 import logo from './assets/logo.png'
+import { MiaoMark } from './Logo'
 
 /* 管理後台 / CRM. Served at /dashboard on the app host and as the whole page on dashboard.editor.lakeze.com. */
 
@@ -29,8 +30,9 @@ export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void })
   return (
     <div className="dash">
       <header className="dash-top">
-        <img className="logo" src={logo} alt="Lakeze" />
-        <span className="dash-title">管理後台 <small>CRM</small></span>
+        <MiaoMark size={26} radius={.26} />
+        <span className="dash-title">旅剪 管理後台 <small>CRM</small></span>
+        <img className="logo dash-by" src={logo} alt="Lakeze" />
         <nav className="dnav">
           <a className={tab === 'overview' ? 'on' : ''} onClick={() => setTab('overview')}>總覽</a>
           <a className={tab === 'users' ? 'on' : ''} onClick={() => setTab('users')}>用戶 {users.length ? <span className="cnt">{users.length}</span> : null}</a>

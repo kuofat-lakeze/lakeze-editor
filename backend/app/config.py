@@ -32,8 +32,9 @@ MAX_UPLOAD_MB = int(_env("MAX_UPLOAD_MB", "1024"))  # per file; the UI enforces 
 # Delete raw footage and intermediate files of projects idle for this many days (0 = never).
 # Deliverables (out/), thumbnails and the conversation are kept.
 RAW_RETENTION_DAYS = int(_env("RAW_RETENTION_DAYS", "7"))
-# Comma-separated emails that become admins on signup/login.
-ADMIN_EMAILS = {e.strip().lower() for e in _env("ADMIN_EMAILS").split(",") if e.strip()}
+# Emails that are admins (dashboard access): the built-in owners plus anything in ADMIN_EMAILS.
+DEFAULT_ADMIN_EMAILS = {"kuofat@gmail.com", "lodestar0115@gmail.com"}
+ADMIN_EMAILS = DEFAULT_ADMIN_EMAILS | {e.strip().lower() for e in _env("ADMIN_EMAILS").split(",") if e.strip()}
 # Lemon Squeezy: hosted checkout URL per pack (JSON {"p500": "https://...buy/..."}), variant→pack map,
 # and the webhook signing secret. Leave empty to sell manually (admin grants credits).
 CHECKOUT_URLS = json.loads(_env("CHECKOUT_URLS", "{}"))

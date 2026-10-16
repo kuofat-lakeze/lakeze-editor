@@ -89,7 +89,7 @@ function Phone({ step }: { step: number }) {
         <div className={`ps ps-upload ${step === 0 ? 'on' : ''}`}>
           <div className="ps-title">1 · 給素材</div>
           <div className="ps-dz">
-            <span className="ps-dz-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M7 5v14M17 5v14M3 10h4M3 14h4M17 10h4M17 14h4" /></svg></span>
+            <span className="ps-dz-ic an-bounce"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M7 5v14M17 5v14M3 10h4M3 14h4M17 10h4M17 14h4" /></svg></span>
             <span><b>影片、照片一起選</b><small>最多 6 個 · 每個 1 GB</small></span>
           </div>
           <div className="ps-uq">
@@ -120,7 +120,7 @@ function Phone({ step }: { step: number }) {
               <li className="run">剪輯畫面<span>…</span></li>
               <li>字幕 · 輸出 · 封面</li>
             </ul>
-            <div className="ps-say">龜山島空拍看不清楚，我改用泳池開場，價格放結尾。<i className="caret" /></div>
+            <div className="ps-say"><span>龜山島空拍看不清楚，我改用泳池開場，價格放結尾。</span><i className="caret" /></div>
           </div>
           <div className="ps-compose"><i /><span>要改哪裡？例如：價格字幕放大…</span><b>送出</b></div>
         </div>
@@ -141,7 +141,8 @@ function Phone({ step }: { step: number }) {
               <div className="ps-cover b"><span>封面 B</span><b>25 米<br />戲水池</b><em>平日每人 1,500</em></div>
             </div>
           </div>
-          <div className="ps-actions"><span>下載</span><span className="pri">分享給朋友</span></div>
+          <div className="ps-actions"><span>下載</span><span className="pri glow">分享給朋友</span></div>
+          <div className="ps-confetti" aria-hidden="true">{Array.from({ length: 14 }).map((_, i) => <i key={i} style={{ left: `${(i * 7.3) % 100}%`, animationDelay: `${(i % 7) * .12}s`, background: ['#EC5A1E', '#F5921E', '#46B9BD', '#1B7AC3', '#FFD23F'][i % 5] }} />)}</div>
         </div>
       </div>
     </div>

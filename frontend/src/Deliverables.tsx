@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type Asset, type DeliverablesData, type ShareLink, type StorageState } from './api'
 import { StorageMeter, fmtBytes } from './Storage'
+import { FbIcon, LineIcon, promoText, shareToFacebook, shareToLine } from './share'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 const sizeOf = (v: { videos: Asset[]; covers: Asset[] }) =>
@@ -113,15 +114,17 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
       )}
 
       {sharing !== null && (
-        <ShareDialog projectId={projectId} version={sharing === 'final' ? null : sharing} hasFinal={project.final_version != null}
+        <ShareDialog projectId={projectId} version={sharing === 'final' ? null : sharing} hasFinal={project.final_version != null} projectName={project.name}
           onClose={() => setSharing(null)} onCreated={() => { setSharing(null); load() }} />
       )}
     </div>
   )
 }
 
-function ShareDialog({ projectId, version, hasFinal, onClose, onCreated }:
-  { projectId: string; version: number | null; hasFinal: boolean; onClose: () => void; onCreated: () => void }) {
+function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, projectName }:
+  { projectId: string; version: number | null; hasFinal: boolean; onClose: () => void; onCreated: () => void; projectName: string }) {
+  const [promo, setPromo] = useState('')
+  const [copied, setCopied] = useState<'link' | 'promo' | null>(null)
   const [follow, setFollow] = useState(hasFinal && version === null)
   const [download, setDownload] = useState(true)
   const [days, setDays] = useState<string>('0')
@@ -130,10 +133,13 @@ function ShareDialog({ projectId, version, hasFinal, onClose, onCreated }:
   const [busy, setBusy] = useState(false)
   const create = async () => {
     setBusy(true)
-    try { setMade(await api.createShare(projectId, { version: follow ? null : version, allow_download: download, expires_days: Number(days) || null, note })) }
-    finally { setBusy(false) }
+    try {
+      const m = await api.createShare(projectId, { version: follow ? null : version, allow_download: download, expires_days: Number(days) || null, note })
+      setMade(m); setPromo(promoText(projectName, `${location.origin}${m.url}`))
+    } finally { setBusy(false) }
   }
   const url = made ? `${location.origin}${made.url}` : ''
+  const flash = (k: 'link' | 'promo') => { setCopied(k); setTimeout(() => setCopied(null), 1800) }
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal card share-dlg" onClick={e => e.stopPropagation()}>
@@ -156,10 +162,20 @@ function ShareDialog({ projectId, version, hasFinal, onClose, onCreated }:
             <div className="made">
               <div className="link-url big-url">{url}</div>
               <div className="row">
-                <button className="btn primary" onClick={() => navigator.clipboard?.writeText(url)}>複製連結</button>
+                <button className="btn primary" onClick={() => { navigator.clipboard?.writeText(url); flash('link') }}>{copied === 'link' ? '已複製' : '複製連結'}</button>
                 <a className="btn" href={made.url} target="_blank" rel="noreferrer">預覽</a>
-                {typeof navigator.share === 'function' && <button className="btn" onClick={() => navigator.share({ title: '影片成品', url })}>傳送…</button>}
+                {typeof navigator.share === 'function' && <button className="btn" onClick={() => navigator.share({ title: projectName, text: promo, url })}>傳送…</button>}
               </div>
+            </div>
+            <div className="post-box">
+              <div className="post-h"><b>發成貼文</b><span className="muted small">貼文會帶封面預覽，文案順便推廣旅剪和註冊優惠。可以改。</span></div>
+              <textarea rows={4} value={promo} onChange={e => setPromo(e.target.value)} />
+              <div className="row">
+                <button className="btn fb" onClick={() => { shareToFacebook(url, promo); flash('promo') }}><FbIcon /> 分享到 Facebook</button>
+                <button className="btn line" onClick={() => shareToLine(promo)}><LineIcon /> 分享到 LINE</button>
+                <button className="btn" onClick={() => { navigator.clipboard?.writeText(promo); flash('promo') }}>{copied === 'promo' ? '文案已複製' : '複製文案'}</button>
+              </div>
+              <div className="muted small">Facebook 不讓網站預填貼文內容，按下去會先把文案複製好，到 FB 視窗貼上即可。</div>
             </div>
             <button className="btn block" onClick={onCreated}>完成</button>
           </>
