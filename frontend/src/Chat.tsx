@@ -8,6 +8,7 @@ const emptyLive = (): Live => ({ text: '', thinking: '', tools: [] })
 type Up = { name: string; size: number; loaded: number; status: 'wait' | 'up' | 'ok' | 'err'; error?: string }
 const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent)
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
+const CRIOS = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent)  // third-party iOS browsers: file picker is flakier than Safari
 const fmtMB = (b: number) => `${(b / 2 ** 20).toFixed(b > 100 * 2 ** 20 ? 0 : 1)} MB`
 
 const TOOL_LABEL: Record<string, string> = {
@@ -26,6 +27,7 @@ export function Chat({ projectId, onUsage, onTopUp }: { projectId: string; onUsa
   const [needCredits, setNeedCredits] = useState<{ needed: number; balance: number } | null>(null)
   const [uploads, setUploads] = useState<Up[]>([])
   const [picking, setPicking] = useState(false)
+  const [pickFail, setPickFail] = useState(false)
   const uploading = uploads.some(u => u.status === 'wait' || u.status === 'up')
   const bottom = useRef<HTMLDivElement>(null)
   const liveAssets = useRef<Asset[]>([])
@@ -67,7 +69,7 @@ export function Chat({ projectId, onUsage, onTopUp }: { projectId: string; onUsa
   }
 
   const onFiles = async (files: FileList | null) => {
-    setPicking(false)
+    setPicking(false); setPickFail(false)
     const list = Array.from(files ?? [])
     api.clientLog('files_selected', { n: list.length, files: list.map(f => ({ name: f.name, size: f.size, type: f.type })) })
     if (!list.length) return
@@ -91,8 +93,13 @@ export function Chat({ projectId, onUsage, onTopUp }: { projectId: string; onUsa
     }
     if (ok) setText(t => t || `我上傳了 ${ok} 支素材，請先分析。`)
   }
-  const pick = () => { setPicking(true); api.clientLog('picker_open') }
-  useEffect(() => { if (!picking) return; const t = setTimeout(() => setPicking(false), 120000); return () => clearTimeout(t) }, [picking])
+  const pick = () => { setPicking(true); setPickFail(false); api.clientLog('picker_open') }
+  // iOS never tells the page that the picker was dismissed. If no change event arrives, show the workarounds.
+  useEffect(() => {
+    if (!picking) return
+    const t = setTimeout(() => { setPicking(false); setPickFail(true); api.clientLog('picker_no_file_60s') }, 60000)
+    return () => clearTimeout(t)
+  }, [picking])
 
   if (!proj) return <div className="center muted">載入中…</div>
   // Assets are produced by tools during an assistant turn: show each under the assistant
@@ -160,6 +167,21 @@ export function Chat({ projectId, onUsage, onTopUp }: { projectId: string; onUsa
             等待選取檔案…{IOS && '（iPhone 選大影片後會先壓縮處理，可能要等 1–2 分鐘才會開始上傳，請不要離開這個畫面）'}
           </div>
         )}
+        {pickFail && !uploads.length && (
+          <div className="card need">
+            <b>沒有收到檔案。</b>{IOS ? '這是 iPhone 把影片交給瀏覽器這一步失敗，不是上傳失敗。請依序試：' : '請再試一次，或改貼 Google Drive 連結。'}
+            {IOS && (
+              <ol className="small">
+                {CRIOS && <li>改用 <b>Safari</b> 開這個網址（Chrome / Firefox 在 iPhone 上選影片常常失敗）。</li>}
+                <li>一次只選一支影片。</li>
+                <li>先到「照片」App 把那支影片從頭播放一次（讓 iCloud 把原檔下載回手機），再回來選。</li>
+                <li>在「照片」App 分享 → 儲存到「檔案」，選檔時改選「瀏覽」從「檔案」App 選。</li>
+                <li>最穩：把影片丟到 Google Drive，貼資料夾連結給我。</li>
+              </ol>
+            )}
+            <a className="small" onClick={() => setPickFail(false)}>關閉</a>
+          </div>
+        )}
         {uploads.length > 0 && (
           <div className="card uploads">
             <div className="uploads-head">
@@ -189,8 +211,8 @@ export function Chat({ projectId, onUsage, onTopUp }: { projectId: string; onUsa
         <div ref={bottom} />
       </div>
       <footer>
-        <label className="btn icon" title="上傳影片" onClick={pick}>📎
-          <input type="file" multiple accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading}
+        <label className="btn icon" title="上傳影片">📎
+          <input type="file" multiple={!IOS} accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading} onClick={pick}
             onChange={e => { onFiles(e.target.files); e.target.value = '' }} /></label>
         <textarea value={text} onChange={e => setText(e.target.value)} rows={2}
           placeholder={uploading ? '上傳中，完成後再送出…' : '貼 Drive 連結＋賣點，或直接說要改什麼… (Enter 送出，Shift+Enter 換行)'}
