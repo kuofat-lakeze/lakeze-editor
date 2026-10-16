@@ -47,6 +47,12 @@ Railway 沒有 Claude 連接器，但它自己有 GitHub 整合：連上 repo �
 
 磁碟控制：`RAW_RETENTION_DAYS`（預設 7）天沒動的專案會自動刪掉原始素材與中間檔，只留成品、封面與對話；用量大時再把成品搬到 Storage Buckets。
 
+**全自動版**：有 Railway token 時，上面 1–4 步可以一行跑完（需要 `railway` CLI 與 `jq`）：
+```bash
+RAILWAY_TOKEN=... ANTHROPIC_API_KEY=... ELEVENLABS_API_KEY=... ADMIN_EMAILS=you@example.com ./deploy/railway_setup.sh
+```
+腳本會建專案、兩個 service（從 GitHub repo、各自的 Root Directory）、變數、`/data` 磁碟、公開網址並觸發部署，最後印出網址。
+
 ## 上線 B：自己的 Linux 主機 + 網域（成本固定、磁碟便宜）
 
 需求：Ubuntu 22.04+，2 vCPU / 4 GB RAM 以上，磁碟 ≥ 80 GB（素材一個專案 2–5 GB），開 80/443。網域的 A 記錄指到主機 IP。
