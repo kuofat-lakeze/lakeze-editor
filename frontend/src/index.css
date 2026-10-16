@@ -86,6 +86,7 @@ textarea { resize: none; flex: 1; min-height: 44px; max-height: 160px; }
 .ld-sub b { color: var(--text); font-weight: 700; background: linear-gradient(transparent 62%, var(--brand-soft) 62%); padding: 0 2px; }
 .landing .ld-cmp-label { font-weight: 800; letter-spacing: .02em; } .landing .ld-cmp-row span { font-weight: 500; color: var(--muted); }
 .landing .hiw-tag { font-weight: 600; letter-spacing: .02em; }
+.ld-short { display: none; } .hiw-pills, .hiw-hint { display: none; }
 .ld-nav { display: flex; align-items: center; gap: 10px; padding: 14px 24px; padding-top: calc(14px + env(safe-area-inset-top)); background: rgba(255,255,255,.85); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3; }
 .ld-nav .logo { height: 30px; width: auto; } .ld-nav .spacer { flex: 1; }
 .ld-hero { text-align: center; padding: 64px 20px 36px; max-width: 760px; margin: 0 auto; }
@@ -177,17 +178,29 @@ textarea { resize: none; flex: 1; min-height: 44px; max-height: 160px; }
   .ld-hero { padding: 36px 18px 24px; } .ld-hero .miao-logo { --mj: 64px !important; gap: 14px; } .ld-sub { font-size: 16px; }
   .hiw-grid { grid-template-columns: 1fr; gap: 0; }
   /* phone + caption stick together; the step list is only there to drive the scroll */
-  .hiw-sticky { position: sticky; top: 58px; z-index: 2; padding: 6px 0 10px; flex-direction: column; align-items: center; gap: 10px; background: linear-gradient(var(--bg) 88%, transparent); }
-  /* same 300×620 mockup as desktop, scaled down as a whole so every screen keeps its proportions */
-  .phone { transform: scale(.62); transform-origin: top center; margin-bottom: -236px; }
-  .phone[data-step="1"], .phone[data-step="2"] { transform: scale(.62); }
-  .hiw-caption { display: block; width: 100%; max-width: 420px; padding: 0 6px; text-align: center; animation: capin .45s cubic-bezier(.2,.7,.2,1); }
-  .hiw-cap-no { font-size: 12px; color: var(--brand); letter-spacing: .12em; display: inline-flex; align-items: center; gap: 8px; } .hiw-cap-no i { width: 26px; height: 3px; border-radius: 2px; background: var(--brand); }
-  .hiw-caption h3 { margin: 4px 0 6px; font-size: 22px; display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .hiw-caption p { margin: 0; color: var(--muted); font-size: 14.5px; line-height: 1.7; min-height: 4.9em; }
-  .hiw-caption .hiw-dots { display: flex; justify-content: center; gap: 6px; margin-top: 8px; } .hiw-dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); transition: width .3s, background .3s; } .hiw-dots i.on { width: 18px; background: var(--brand); }
-  @keyframes capin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-  .hiw-steps { padding: 0 0 20vh; gap: 0; } .hiw-step { visibility: hidden; height: 70vh; grid-template-columns: 44px 1fr; } .hiw-step h3 { font-size: 22px; }
+  .hiw-sticky { position: sticky; top: 58px; z-index: 2; padding: 10px 0 8px; flex-direction: column; align-items: center; gap: 6px; border-radius: 0 0 28px 28px; transition: background .6s; background: linear-gradient(#FFF3EB 88%, transparent); }
+  .hiw-sticky[data-step="1"] { background: linear-gradient(#E9F2FB 88%, transparent); } .hiw-sticky[data-step="2"] { background: linear-gradient(#E3F5F3 88%, transparent); }
+  /* big step pills: which step you are on, and that it moved */
+  .hiw-pills { display: flex; gap: 6px; justify-content: center; width: 100%; padding: 0 12px; }
+  .hiw-pills a { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 4px; border-radius: 999px; font-size: 13px; font-weight: 700; color: var(--muted); background: rgba(255,255,255,.7); border: 1px solid var(--line); transition: all .35s; max-width: 120px; }
+  .hiw-pills a i { width: 20px; height: 20px; border-radius: 50%; background: var(--panel2); font-style: normal; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+  .hiw-pills a.on { color: #fff; background: linear-gradient(135deg, var(--brand), var(--brand-2)); border-color: transparent; transform: scale(1.06); box-shadow: 0 6px 16px rgba(236,90,30,.3); } .hiw-pills a.on i { background: rgba(255,255,255,.25); color: #fff; }
+  .hiw-pills a.done { color: var(--text); } .hiw-pills a.done i { background: var(--teal); color: #fff; }
+  /* same 300×620 mockup as desktop, scaled down as a whole; it remounts per step and bumps in */
+  .phone { transform: scale(.6); transform-origin: top center; margin-bottom: -248px; animation: phonein .55s cubic-bezier(.2,.7,.2,1); }
+  .phone[data-step="1"], .phone[data-step="2"] { transform: scale(.6); }
+  @keyframes phonein { from { transform: scale(.54) translateY(18px); opacity: .3; } to { transform: scale(.6); opacity: 1; } }
+  .ps.on { animation: psin .6s cubic-bezier(.2,.7,.2,1) both; } @keyframes psin { from { opacity: 0; transform: translateX(90px); } to { opacity: 1; transform: none; } }
+  .hiw-caption { display: block; width: 100%; max-width: 420px; padding: 0 12px; text-align: center; animation: capin .45s cubic-bezier(.2,.7,.2,1); }
+  .hiw-caption h3 { margin: 0 0 4px; font-size: 22px; display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hiw-caption p { margin: 0; color: var(--text); font-size: 15px; line-height: 1.6; min-height: 1.6em; }
+  .hiw-hint { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--brand); display: inline-flex; align-items: center; gap: 4px; } .hiw-hint i { font-style: normal; display: inline-block; animation: nudge 1.1s ease-in-out infinite; }
+  .hiw-hint.done { color: #1F8A8E; } @keyframes nudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
+  @keyframes capin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .hiw-steps { padding: 0 0 10vh; gap: 0; } .hiw-step { visibility: hidden; height: 50vh; grid-template-columns: 44px 1fr; } .hiw-step h3 { font-size: 22px; }
+  .hiw-head { margin-bottom: 10px; } .hiw-head p { display: none; }
+  .ld-long { display: none; } .ld-short { display: inline; }
+  .ld-save-num { font-size: 28px; } .ld-cmp-head b { font-size: 18px; } .ld-foot-cta b { font-size: 20px; }
   .hiw-head h2 { font-size: 28px; }
   .ld-blob { filter: blur(40px); }
   .ld-cmp-grid, .ld-save { grid-template-columns: 1fr; }

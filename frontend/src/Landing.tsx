@@ -39,10 +39,13 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
         <div className="ld-blob a" aria-hidden="true" /><div className="ld-blob b" aria-hidden="true" />
         <div className="ld-kicker reveal in">{PRODUCT.brand}</div>
         <h1 className="reveal in d1"><MiaoLogo size={96} tagline /></h1>
-        <p className="ld-sub reveal in d2">丟影片或照片、說賣點，<b>15 分鐘</b>自動剪出有旁白口播、配樂、雙層字幕的旅遊短影音，<b>封面一起做好</b>。</p>
+        <p className="ld-sub reveal in d2">
+          <span className="ld-long">丟影片或照片、說賣點，<b>15 分鐘</b>自動剪出有旁白口播、配樂、雙層字幕的旅遊短影音，<b>封面一起做好</b>。</span>
+          <span className="ld-short">丟影片、說賣點，<b>15 分鐘</b>剪好旅遊短影音。<br />旁白、字幕、<b>封面一次做好</b>。</span>
+        </p>
         <div className="ld-cta reveal in d3">
           <a className="btn primary lg" onClick={onStart}>免費試做第一支</a>
-          <span className="muted small">註冊送 {SIGNUP_POINTS} 點，第一支影片含封面與 2 輪修改免費，所有功能都能用，不用綁卡。</span>
+          <span className="muted small"><span className="ld-long">註冊送 {SIGNUP_POINTS} 點，第一支影片含封面與 2 輪修改免費，所有功能都能用，不用綁卡。</span><span className="ld-short">註冊送 {SIGNUP_POINTS} 點，第一支免費，不用綁卡。</span></span>
         </div>
       </section>
 
@@ -68,9 +71,9 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
         </div>
         <div className="ld-save">
           <div className="reveal"><div className="ld-save-num">{timePct}%</div><div className="muted small">時間省下來：3 天變 15 分鐘，今天拍今天發</div></div>
-          <div className="reveal d1"><div className="ld-save-num">NT${saveLow.toLocaleString()}–{saveHigh.toLocaleString()}</div><div className="muted small">每支省下約 {savePct}% 的費用；包月 {SUB.name} 每支再降到 NT${SUB.perVideo}（每月 NT${SUB.twd.toLocaleString()}，{SUB.videos} 支）</div></div>
+          <div className="reveal d1"><div className="ld-save-num">NT${saveLow.toLocaleString()}–{saveHigh.toLocaleString()}</div><div className="muted small">每支省下約 {savePct}% 的費用<span className="ld-long">；包月 {SUB.name} 每支再降到 NT${SUB.perVideo}（每月 NT${SUB.twd.toLocaleString()}，{SUB.videos} 支）</span><span className="ld-short">，包月再省</span></div></div>
         </div>
-        <div className="muted small ld-note">單次購買以一支含封面與 2 輪修改 100 點計（1 點 = NT$7）；包月另含成品空間。業界行情為市場常見報價區間。</div>
+        <div className="muted small ld-note ld-long">單次購買以一支含封面與 2 輪修改 100 點計（1 點 = NT$7）；包月另含成品空間。業界行情為市場常見報價區間。</div>
       </section>
 
       <section className="ld-foot-cta reveal">

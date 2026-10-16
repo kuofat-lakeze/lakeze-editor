@@ -2,17 +2,29 @@ import { useEffect, useRef, useState } from 'react'
 import { MiaoMark } from './Logo'
 
 /* Scroll-driven "how it works": a sticky phone on one side, three steps on the other. As each step
-   scrolls into view it lights up and the phone screen switches to that moment of the product. On
-   phones the step copy moves under the sticky mockup as a caption (the list becomes invisible
-   scroll spacers), so nothing scrolls underneath the device. */
+   scrolls into view it lights up and the phone screen switches to that moment of the product.
+   On phones the step copy moves under the sticky mockup as a short caption (the list becomes
+   invisible scroll spacers). Every step change there is made obvious: the phone remounts with a
+   bump, the screen slides in, the background tint and the big step pills change, and a scroll hint
+   says there is more. */
 const STEPS = [
-  { k: 'upload', n: '01', t: '丟素材', d: '影片、照片混著給都行：手機相簿直接上傳，或貼 Google Drive 連結。每個檔案都看得到進度，大檔案也不怕斷線。', tag: '約 1 分鐘' },
-  { k: 'chat', n: '02', t: '選風格、說賣點', d: '挑一個風格和聲音，像傳訊息一樣把賣點講給剪輯師。他一步一步回報進度，你不用盯著。', tag: '約 2 分鐘' },
-  { k: 'done', n: '03', t: '收影片、封面', d: '15 分鐘後拿到有旁白口播、配樂、雙層字幕的直式影片，封面一起做好，全部歸檔在成品頁，一鍵給客戶看。', tag: '約 15 分鐘' },
+  { k: 'upload', n: '01', t: '丟素材', m: '相簿選影片、照片，自動上傳。', d: '影片、照片混著給都行：手機相簿直接上傳，或貼 Google Drive 連結。每個檔案都看得到進度，大檔案也不怕斷線。', tag: '約 1 分鐘' },
+  { k: 'chat', n: '02', t: '說賣點', m: '挑風格和聲音，賣點用說的就好。', d: '挑一個風格和聲音，像傳訊息一樣把賣點講給剪輯師。他一步一步回報進度，你不用盯著。', tag: '約 2 分鐘' },
+  { k: 'done', n: '03', t: '收影片', m: '15 分鐘：旁白、字幕、封面全都好。', d: '15 分鐘後拿到有旁白口播、配樂、雙層字幕的直式影片，封面一起做好，全部歸檔在成品頁，一鍵給客戶看。', tag: '約 15 分鐘' },
 ]
+
+function useIsMobile() {
+  const [m, setM] = useState(() => typeof matchMedia === 'function' && matchMedia('(max-width: 760px)').matches)
+  useEffect(() => {
+    const mq = matchMedia('(max-width: 760px)'); const f = () => setM(mq.matches)
+    mq.addEventListener('change', f); return () => mq.removeEventListener('change', f)
+  }, [])
+  return m
+}
 
 export function HowItWorks() {
   const [active, setActive] = useState(0)
+  const mobile = useIsMobile()
   const refs = useRef<(HTMLLIElement | null)[]>([])
   useEffect(() => {
     const io = new IntersectionObserver(es => {
@@ -22,6 +34,7 @@ export function HowItWorks() {
     return () => io.disconnect()
   }, [])
   const cur = STEPS[active]
+  const go = (i: number) => refs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   return (
     <section className="hiw" id="how">
       <div className="hiw-head reveal">
@@ -30,13 +43,15 @@ export function HowItWorks() {
         <p className="muted">不用學剪接軟體，像傳訊息給一位剪輯師一樣。</p>
       </div>
       <div className="hiw-grid">
-        <div className="hiw-sticky">
-          <Phone step={active} />
-          <div className="hiw-caption" key={active}>
-            <div className="hiw-cap-no">{cur.n}<i /></div>
+        <div className="hiw-sticky" data-step={active}>
+          <div className="hiw-pills" aria-hidden="true">
+            {STEPS.map((s, i) => <a key={s.k} className={active === i ? 'on' : active > i ? 'done' : ''} onClick={() => go(i)}><i>{active > i ? '✓' : i + 1}</i>{s.t}</a>)}
+          </div>
+          <Phone key={mobile ? active : 'phone'} step={active} />
+          <div className="hiw-caption" key={`c${active}`}>
             <h3>{cur.t}<span className="hiw-tag">{cur.tag}</span></h3>
-            <p>{cur.d}</p>
-            <div className="hiw-dots" aria-hidden="true">{STEPS.map((_, i) => <i key={i} className={active === i ? 'on' : ''} />)}</div>
+            <p>{mobile ? cur.m : cur.d}</p>
+            {active < 2 ? <div className="hiw-hint" onClick={() => go(active + 1)}>往下滑，看第 {active + 2} 步 <i>↓</i></div> : <div className="hiw-hint done">就這樣，影片好了 ✓</div>}
           </div>
         </div>
         <ol className="hiw-steps">
