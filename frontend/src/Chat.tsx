@@ -236,7 +236,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
         </div>
         <span className={`chip ${proj.credits.in_free ? '' : 'pay'}`} onClick={onCredits} role="button">
           {proj.credits.in_free
-            ? (proj.credits.free_revisions_left === null ? '免費：第一版 + 封面' : `免費修改剩 ${proj.credits.free_revisions_left} 輪`)
+            ? (proj.credits.free_revisions_left === null ? '免費專案：第一版 + 封面免費' : `免費專案：免費修改還剩 ${proj.credits.free_revisions_left} 輪`)
             : '照價目扣點'}
         </span>
         {running && <span className="working-chip"><span className="spinner" />工作中 {turnStart.current ? fmtDur(now - turnStart.current) : ''}</span>}

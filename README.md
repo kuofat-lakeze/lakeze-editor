@@ -41,7 +41,7 @@ Railway 沒有 Claude 連接器，但它自己有 GitHub 整合：連上 repo �
 3. 再 New → GitHub Repo 加第二個 service，改名 **`frontend`**：
    - Root Directory：`frontend`
    - Variables：`API_UPSTREAM=backend.railway.internal:8000`
-   - Settings → Networking → Generate Domain → 這就是網址；要綁自己的網域就在同一頁 Custom Domain 加 CNAME。
+   - Settings → Networking → Generate Domain → 這就是網址；要綁自己的網域就在同一頁 Custom Domain 加 CNAME（正式網址 `editor.lakeze.com` → CNAME 指到 Railway 給的 `*.up.railway.app` 主機名，DNS 先不要開 Cloudflare 代理，等憑證簽好再開）。
 4. 兩個 service 都 Deploy。打開網址 → 註冊（用 `ADMIN_EMAILS` 裡的 email）→ 側欄會有管理後台。
 5. 之後推 main 自動重新部署。成本看 Railway 的 Usage 頁；app 內的成本看管理後台。
 

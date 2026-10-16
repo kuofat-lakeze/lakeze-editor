@@ -10,4 +10,4 @@ ENV DATA_DIR=/data PYTHONUNBUFFERED=1 PORT=8000
 # No VOLUME instruction: Railway rejects it (mount a Railway Volume at /data instead; docker-compose declares its own).
 EXPOSE 8000
 # $PORT lets platforms like Railway pick the port.
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --timeout-keep-alive 75
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --timeout-keep-alive 75 --proxy-headers --forwarded-allow-ips="*"

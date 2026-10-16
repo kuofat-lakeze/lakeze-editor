@@ -69,7 +69,7 @@ export function Credits({ initialTab = 'overview', onClose }: { initialTab?: Cre
                 <div className="eyebrow">目前餘額</div>
                 <div className="hero-num">{sum.balance}<span className="unit">點</span></div>
                 <div className="hero-sub">
-                  {low ? '快用完了。' : ''}約可修改 <b>{revisionsLeft}</b> 輪，或做 <b>{videosLeft.toFixed(1)}</b> 支新影片
+                  {low ? '快用完了。' : ''}餘額約可付費修改 <b>{revisionsLeft}</b> 輪，或做 <b>{videosLeft.toFixed(1)}</b> 支新影片（每支約 NT${(FIRST_VIDEO_POINTS * p.point_twd).toLocaleString()}）
                 </div>
               </div>
               <div className="hero-side">
@@ -205,13 +205,22 @@ export function Credits({ initialTab = 'overview', onClose }: { initialTab?: Cre
 
         {tab === 'buy' && (
           <>
+            <section className="card price-guide">
+              <b>一支影片大約多少錢</b>
+              <div className="guide-grid">
+                <div><span className="muted small">第一版完整影片（含封面）</span><div className="num">NT${(FIRST_VIDEO_POINTS * p.point_twd).toLocaleString()}<span className="unit">≈ {FIRST_VIDEO_POINTS} 點</span></div></div>
+                <div><span className="muted small">修改一輪（重新混音、字幕、輸出）</span><div className="num">NT${(sum.revision_points * p.point_twd).toLocaleString()}<span className="unit">≈ {sum.revision_points} 點</span></div></div>
+                <div><span className="muted small">多做一張封面</span><div className="num">NT${(4 * p.point_twd).toLocaleString()}<span className="unit">4 點</span></div></div>
+              </div>
+              <div className="muted small">第一個專案的第一版、封面與 4 輪修改免費。實際點數依每個步驟計算，見下方價目。</div>
+            </section>
             <section className="packs-grid">
               {p.packs.map(k => (
                 <div key={k.id} className={`packc card ${k.id === best.id ? 'best' : ''}`}>
                   {k.id === best.id && <div className="ribbon">最划算</div>}
                   <div className="packc-pts">{k.points}<span className="unit">點</span></div>
                   <div className="packc-price">NT${k.twd.toLocaleString()}</div>
-                  <div className="muted small">每點 NT${(k.twd / k.points).toFixed(1)} · 約 {Math.floor(k.points / sum.revision_points)} 輪修改或 {(k.points / FIRST_VIDEO_POINTS).toFixed(1)} 支新影片</div>
+                  <div className="muted small">每點 NT${(k.twd / k.points).toFixed(1)} · 約可做 <b>{(k.points / FIRST_VIDEO_POINTS).toFixed(1)} 支</b>新影片（每支約 NT${Math.round(FIRST_VIDEO_POINTS * k.twd / k.points).toLocaleString()}），或 {Math.floor(k.points / sum.revision_points)} 輪修改</div>
                   {k.checkout_url
                     ? <button className="btn primary block" onClick={() => buy(k.id)}>購買</button>
                     : <button className="btn block" disabled>洽客服開通</button>}
