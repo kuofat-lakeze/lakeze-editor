@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { PayFlow } from './Pay'
 import { api, type CreditsSummary, type Ledger, type Me, type Pricing, type Subscription } from './api'
 import { StorageInline } from './Storage'
 
@@ -33,19 +34,9 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
     if (initialTab === 'storage' && p) setTimeout(() => document.getElementById('storage-sec')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
   }, [initialTab, p])
   const [toast, setToast] = useState('')
-  const buy = async (id: string) => {
-    try {
-      const r = await api.checkout(id)
-      if (r.test) {   // test account: credited on the spot, no payment page
-        setToast(r.subscription ? `測試帳號：已直接開通 ${r.subscription === 'sub15' ? '超級玩家' : '專業旅人'}，餘額 ${r.balance} 點` : `測試帳號：已直接入帳 ${r.granted} 點，餘額 ${r.balance} 點`)
-        reload(); onBought?.()
-        setTimeout(() => setToast(''), 6000)
-        return
-      }
-      if (r.url) window.open(r.url, '_blank')
-    } catch (e) { setToast((e as Error).message); setTimeout(() => setToast(''), 6000) }
-  }
-  const canBuy = (url: string | null | undefined) => !!url || !!me?.test_account
+  const [paying, setPaying] = useState<string | null>(null)
+  const buy = (id: string) => setPaying(id)
+  const canBuy = (_url?: string | null) => true   // the payment flow shows which methods are open
   const label = (tool: string) => sum?.tool_labels[tool] ?? tool
   const cat = (tool: string) => {
     const m: Record<string, string> = { probe_footage: 'cut', sample_frames: 'cut', build_cut: 'cut', list_drive_folder: 'cut', download_footage: 'cut',
@@ -87,6 +78,13 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   return (
     <div className="credits">
       {toast && <div className="buy-toast">{toast}</div>}
+      {paying && p && (() => {
+        const pk = p.packs.find(x => x.id === paying); const sb = p.subscriptions.find(x => x.id === paying)
+        const memberTwd = pk && me?.subscription ? pk.member_twd[me.subscription.id] : undefined
+        const item = pk ? { id: pk.id, kind: 'pack' as const, title: `${pk.points} 點`, sub: `約可剪 ${Math.max(0, Math.floor(pk.points / (p.first_video_points + 2 * p.revision_points)))} 支（含封面與 2 輪修改）`, points: pk.points, twd: memberTwd ?? pk.twd, listTwd: memberTwd ? pk.twd : undefined }
+          : sb ? { id: sb.id, kind: 'sub' as const, title: `${sb.label} · 月繳`, sub: `每月 ${sb.points} 點，約 ${sb.videos} 支 · ${sb.storage_gb} GB 空間`, points: sb.points, twd: sb.twd, listTwd: sb.payg_twd } : null
+        return item && <PayFlow item={item} onClose={() => { setPaying(null); reload(); onBought?.() }} onPaid={() => { setPaying(null); setToast(`完成！${item.title}已入帳`); setTimeout(() => setToast(''), 5000); reload(); onBought?.() }} />
+      })()}
       <header>
         <h2>點數與方案</h2>
         <div className="seg">

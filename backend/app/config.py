@@ -40,6 +40,9 @@ ADMIN_EMAILS = DEFAULT_ADMIN_EMAILS | {e.strip().lower() for e in _env("ADMIN_EM
 CHECKOUT_URLS = json.loads(_env("CHECKOUT_URLS", "{}"))
 LS_VARIANTS = json.loads(_env("LS_VARIANTS", "{}"))
 LS_WEBHOOK_SECRET = _env("LEMONSQUEEZY_WEBHOOK_SECRET")
+# Bank transfer details shown on the payment page (JSON {"bank": "...", "code": "812", "account": "...", "name": "..."}).
+# Empty = transfer not offered.
+BANK_TRANSFER = json.loads(_env("BANK_TRANSFER_JSON", "{}"))
 # Shown on the top-up page when no checkout URL is configured (bank transfer / LINE Pay instructions).
 TOPUP_NOTE = _env("TOPUP_NOTE", "儲值請聯絡客服，入帳後點數會自動出現在側欄。")
 # Public origin of the app, used to build OAuth redirect URIs (must match what is registered at Google / Meta).

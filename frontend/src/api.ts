@@ -22,6 +22,8 @@ export type CreditsSummary = {
 export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null; custom?: boolean }
 export type CreditState = { balance: number; free_project: boolean; in_free: boolean; free_revisions_left: number | null; exports: number }
 export type DriveCheck = { ok: boolean; provider: string; label: string; folder_zip?: boolean; files: number; media: number; videos: number; photos: number; names: string[]; other: number }
+export type Order = { id: string; item: string; kind: 'pack' | 'sub'; label: string; points: number; amount_twd: number; method: string; status: 'pending' | 'reported' | 'paid' | 'failed' | 'cancelled'; transfer_ref: string; created_at: string; paid_at: string | null; email?: string; user_id?: string }
+export type PayMethods = { card: boolean; transfer: boolean; test: boolean; note: string }
 export type Shot = { n: number; clip: number; t: number; dur: number; shot: string; role: 'hook' | 'feature' | 'price' | 'cta' }
 export type Estimate = { first_video_points: number; revision_points: number; two_revisions_points: number; balance: number; enough_first: boolean; enough_two: boolean; short_first: number; short_two: number }
 export type Analysis = {
@@ -128,6 +130,11 @@ export const api = {
   shareThread: (token: string) => fetch(`/api/s/${token}/comments`).then(j<Thread>),
   replyComment: (id: string, text: string) => post(`/api/projects/${id}/comments`, { text }).then(j<ClientComment>),
   gallery: () => fetch('/api/gallery').then(j<GalleryItem[]>),
+  payMethods: () => fetch('/api/pay/methods').then(j<PayMethods>),
+  createOrder: (item: string, method: string) => post('/api/orders', { item, method }).then(j<{ order: Order; redirect?: string; bank?: Record<string, string>; amount_twd?: number }>),
+  order: (id: string) => fetch(`/api/orders/${id}`).then(j<{ order: Order; balance: number; bank: Record<string, string> | null }>),
+  orders: () => fetch('/api/orders').then(j<Order[]>),
+  reportTransfer: (id: string, ref: string) => post(`/api/orders/${id}/transfer`, { ref }).then(j<{ order: Order }>),
   checkout: (pack: string) => fetch(`/api/checkout/${pack}`).then(j<CheckoutResult>),
   admin: {
     dashboard: (days = 30) => fetch(`/api/admin/dashboard?days=${days}`).then(j<Dashboard>),
@@ -137,6 +144,9 @@ export const api = {
     grant: (id: string, delta: number, reason: string, amount_twd: number) =>
       post(`/api/admin/users/${id}/credits`, { delta, reason, amount_twd }).then(j<{ balance: number }>),
     patch: (id: string, body: Record<string, unknown>) => post(`/api/admin/users/${id}`, body).then(j<{ ok: boolean }>),
+    orders: (status = '') => fetch(`/api/admin/orders?status=${status}`).then(j<Order[]>),
+    approveOrder: (id: string) => post(`/api/admin/orders/${id}/approve`, {}).then(j<{ order: Order }>),
+    rejectOrder: (id: string) => post(`/api/admin/orders/${id}/reject`, {}).then(j<{ order: Order }>),
     subscription: (id: string, plan: string, paid_twd = 0) => post(`/api/admin/users/${id}/subscription`, { plan, paid_twd }).then(j<{ expired: number; granted?: number }>),
     messages: (pid: string) => fetch(`/api/admin/projects/${pid}/messages`).then(j<{ role: string; text?: string; tool?: string; at: string }[]>),
   },

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, type AdminUser, type AdminUserDetail, type Dashboard, type DashRow, type Me, type Stage } from './api'
+import { api, type Order, type AdminUser, type AdminUserDetail, type Dashboard, type DashRow, type Me, type Stage } from './api'
 import logo from './assets/logo.png'
 import { MiaoMark } from './Logo'
 
@@ -18,7 +18,7 @@ const STAGE_CLS: Record<Stage, string> = { sub: 'sub', paid: 'paid', churn: 'chu
 const PROVIDER = { google: 'G', facebook: 'f', '': '@' } as Record<string, string>
 
 export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void }) {
-  const [tab, setTab] = useState<'overview' | 'users'>(location.pathname.endsWith('/users') ? 'users' : 'overview')
+  const [tab, setTab] = useState<'overview' | 'users' | 'orders'>(location.pathname.endsWith('/users') ? 'users' : 'overview')
   const [days, setDays] = useState(30)
   const [dash, setDash] = useState<Dashboard | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -36,6 +36,7 @@ export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void })
         <nav className="dnav">
           <a className={tab === 'overview' ? 'on' : ''} onClick={() => setTab('overview')}>總覽</a>
           <a className={tab === 'users' ? 'on' : ''} onClick={() => setTab('users')}>用戶 {users.length ? <span className="cnt">{users.length}</span> : null}</a>
+          <a className={tab === 'orders' ? 'on' : ''} onClick={() => setTab('orders')}>訂單</a>
         </nav>
         {tab === 'overview' && (
           <div className="dnav mini">{[7, 30, 90].map(d => <a key={d} className={days === d ? 'on' : ''} onClick={() => setDays(d)}>{d} 天</a>)}</div>
@@ -48,6 +49,7 @@ export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void })
       <main className="dash-main">
         {tab === 'overview' && (dash ? <Overview d={dash} onOpen={setOpenId} /> : <div className="center muted">載入中…</div>)}
         {tab === 'users' && <Users users={users} stages={dash?.stages} onOpen={setOpenId} />}
+        {tab === 'orders' && <Orders onOpen={setOpenId} onChanged={() => { reloadUsers(); api.admin.dashboard(days).then(setDash) }} />}
       </main>
       {openId && <UserDrawer id={openId} onClose={() => setOpenId(null)} onChanged={() => { reloadUsers(); api.admin.dashboard(days).then(setDash) }} />}
     </div>
@@ -357,6 +359,45 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
           </>
         )}
       </aside>
+    </>
+  )
+}
+
+/* ---------------- orders ---------------- */
+const ORDER_ST: Record<string, string> = { pending: '待付款', reported: '待確認轉帳', paid: '已付款', failed: '失敗／退回', cancelled: '已取消' }
+function Orders({ onOpen, onChanged }: { onOpen: (id: string) => void; onChanged: () => void }) {
+  const [rows, setRows] = useState<Order[] | null>(null)
+  const [st, setSt] = useState('reported')
+  const load = () => api.admin.orders(st).then(setRows)
+  useEffect(() => { setRows(null); load() }, [st]) // eslint-disable-line react-hooks/exhaustive-deps
+  const act = async (fn: () => Promise<unknown>) => { await fn(); load(); onChanged() }
+  return (
+    <>
+      <section className="crm-bar">
+        <div className="chips inline">{[['reported', '待確認轉帳'], ['pending', '待付款'], ['paid', '已付款'], ['', '全部']].map(([k, l]) => <a key={k} className={`chipbtn ${st === k ? 'on' : ''}`} onClick={() => setSt(k)}>{l}</a>)}</div>
+      </section>
+      <div className="card crm-table">
+        <table>
+          <thead><tr><th>時間</th><th>用戶</th><th>品項</th><th className="r">金額</th><th>方式</th><th>狀態</th><th>末五碼</th><th></th></tr></thead>
+          <tbody>
+            {rows === null && <tr><td colSpan={8} className="muted">載入中…</td></tr>}
+            {rows?.length === 0 && <tr><td colSpan={8} className="muted" style={{ textAlign: 'center', padding: 24 }}>沒有訂單</td></tr>}
+            {rows?.map(o => (
+              <tr key={o.id}>
+                <td className="muted small">{o.created_at.slice(0, 16).replace('T', ' ')}</td>
+                <td><a onClick={() => o.user_id && onOpen(o.user_id)}>{o.email}</a></td>
+                <td>{o.label}<span className="muted small"> · {o.points} 點</span></td>
+                <td className="r">{twd(o.amount_twd)}</td>
+                <td className="small">{({ card: '信用卡', transfer: '轉帳', test: '測試' } as Record<string, string>)[o.method] ?? o.method}</td>
+                <td><span className={`stage ${o.status === 'paid' ? 'paid' : o.status === 'reported' ? 'done' : o.status === 'pending' ? 'trial' : 'off'}`}>{ORDER_ST[o.status]}</span></td>
+                <td className="small">{o.transfer_ref || '—'}</td>
+                <td className="r">{(o.status === 'reported' || o.status === 'pending') && <span className="row" style={{ justifyContent: 'flex-end' }}>
+                  <button className="btn small primary" onClick={() => confirm(`確認已收到 ${twd(o.amount_twd)}，入帳 ${o.label}？`) && act(() => api.admin.approveOrder(o.id))}>確認入帳</button>
+                  <button className="btn small" onClick={() => confirm('退回這筆訂單？') && act(() => api.admin.rejectOrder(o.id))}>退回</button></span>}</td>
+              </tr>))}
+          </tbody>
+        </table>
+      </div>
     </>
   )
 }

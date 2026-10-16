@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 
 from . import pricing
 from .auth import current_user
-from .db import Asset, CreditTx, Message, Project, Session, Usage, User, add_credits, now, storage_quota_bytes
+from .db import Asset, CreditTx, Message, Order, Project, Session, Usage, User, add_credits, now, storage_quota_bytes
 
 router = APIRouter(prefix="/api/admin")
 TWD_PER_USD = pricing.TWD_PER_USD
@@ -387,3 +387,44 @@ async def project_messages(project_id: str, _: User = Admin):
                 elif b.get("type") == "tool_use":
                     out.append({"role": m.role, "tool": b["name"], "at": _iso(m.created_at)})
     return out
+
+
+# ---- orders ---------------------------------------------------------------------------------------
+@router.get("/orders")
+async def orders(status: str = "", _: User = Admin):
+    async with Session() as s:
+        q = select(Order, User.email).join(User, User.id == Order.user_id).order_by(Order.created_at.desc()).limit(300)
+        if status:
+            q = q.where(Order.status == status)
+        rows = (await s.execute(q)).all()
+    from .main import _order_dict
+    return [{**_order_dict(o), "email": email, "user_id": o.user_id} for o, email in rows]
+
+
+@router.post("/orders/{order_id}/approve")
+async def approve_order(order_id: str, admin: User = Admin):
+    from .main import _fulfil, _order_dict
+    async with Session() as s:
+        o = await s.get(Order, order_id)
+    if not o:
+        raise HTTPException(404)
+    if o.status == "paid":
+        return {"order": _order_dict(o), "already": True}
+    await _fulfil(o, {"approved_by": admin.email, "transfer_ref": o.transfer_ref})
+    async with Session() as s:
+        o = await s.get(Order, order_id)
+    return {"order": _order_dict(o)}
+
+
+@router.post("/orders/{order_id}/reject")
+async def reject_order(order_id: str, admin: User = Admin):
+    from .main import _order_dict
+    async with Session() as s:
+        o = await s.get(Order, order_id)
+        if not o:
+            raise HTTPException(404)
+        if o.status != "paid":
+            o.status = "failed"
+            o.note = f"rejected by {admin.email}"
+            await s.commit()
+        return {"order": _order_dict(o)}

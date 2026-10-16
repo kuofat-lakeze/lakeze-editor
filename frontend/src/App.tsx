@@ -10,6 +10,7 @@ import { Landing } from './Landing'
 import logo from './assets/logo.png'
 import { StorageMeter } from './Storage'
 import { MiaoLogo } from './Logo'
+import { PayResult } from './Pay'
 
 const SHARE_TOKEN = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/)?.[1]
 // The CRM lives at /dashboard on the app host and is the whole site on dashboard.<app host>.
@@ -71,6 +72,7 @@ function Workspace() {
   useEffect(() => { document.title = (notes?.unread ? `(${notes.unread}) ` : '') + '旅剪 · 人客多 Lakeze' }, [notes?.unread])
 
   const refreshMe = () => api.me().then(setMe)
+  const [payOrder, setPayOrder] = useState<string | null>(location.pathname === '/pay/result' ? new URLSearchParams(location.search).get('order') : null)
   useEffect(() => { refreshMe() }, [])
   useEffect(() => {
     if (!me) return
@@ -131,7 +133,8 @@ function Workspace() {
       </aside>
 
       <main className="main">
-        {view === 'gallery' ? <Gallery onOpen={openProject} />
+        {payOrder ? <PayResult orderId={payOrder} onDone={() => { setPayOrder(null); history.replaceState(null, '', '/'); refreshMe() }} />
+          : view === 'gallery' ? <Gallery onOpen={openProject} />
           : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} needPoints={needPoints} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} onBought={refreshMe} />
           : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits('buy', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
               onProjectsChanged={() => api.projects().then(setProjects)} feedbackUnread={notes?.by_project[current] ?? 0} onFeedbackRead={pollNotes} />

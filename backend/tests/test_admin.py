@@ -244,3 +244,52 @@ def test_share_og_page_and_default_admins(client):
     assert 'og:title" content="A1｜用旅剪 15 分鐘剪好的短影音"' in r.text and "註冊送 110 點" in r.text
     assert 'og:image" content="https://editor.lakeze.com/api/s/ogtok/file/' in r.text and 'refresh" content="0;url=https://editor.lakeze.com/s/ogtok"' in r.text
     assert TestClient(M.app).get("/api/og/s/nope").status_code == 404
+
+
+def test_order_flow(client, monkeypatch):
+    from app import config as C
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = b
+    bal0 = asyncio.run(D.balance(b.id))
+    monkeypatch.setattr(C, "CHECKOUT_URLS", {})
+    monkeypatch.setattr(C, "BANK_TRANSFER", {})
+    assert c.get("/api/pay/methods").json() == {"card": False, "transfer": False, "test": False, "note": C.TOPUP_NOTE}
+    assert c.post("/api/orders", json={"item": "p100", "method": "card"}).status_code == 400
+    # card: redirect carries our order id; the webhook fulfils exactly once
+    monkeypatch.setattr(C, "CHECKOUT_URLS", {"p100": "https://lakeze.lemonsqueezy.com/buy/abc"})
+    r = c.post("/api/orders", json={"item": "p100", "method": "card"}).json()
+    oid = r["order"]["id"]
+    assert r["order"]["status"] == "pending" and r["order"]["amount_twd"] == 700 and f"checkout[custom][order_id]={oid}" in r["redirect"]
+    assert "success_url" in r["redirect"]
+    import hashlib, hmac, json as J
+    monkeypatch.setattr(C, "LS_WEBHOOK_SECRET", "s3")
+    monkeypatch.setattr(C, "LS_VARIANTS", {"111": "p100"})
+    body = J.dumps({"meta": {"event_name": "order_created", "custom_data": {"user_id": b.id, "order_id": oid}},
+                    "data": {"id": 9, "attributes": {"first_order_item": {"variant_id": 111}, "total": 70000, "currency": "TWD"}}}).encode()
+    sig = hmac.new(b"s3", body, hashlib.sha256).hexdigest()
+    for _ in range(2):
+        assert c.post("/api/webhooks/lemonsqueezy", content=body, headers={"X-Signature": sig}).status_code == 200
+    g = c.get(f"/api/orders/{oid}").json()
+    assert g["order"]["status"] == "paid" and g["balance"] == bal0 + 100
+    # transfer: report last 5 → admin approves → credited
+    monkeypatch.setattr(C, "BANK_TRANSFER", {"bank": "國泰世華", "code": "013", "account": "123", "name": "人客多"})
+    r = c.post("/api/orders", json={"item": "sub5", "method": "transfer"}).json()
+    tid = r["order"]["id"]
+    assert r["bank"]["code"] == "013" and r["amount_twd"] == 3150 and r["order"]["kind"] == "sub"
+    assert c.post(f"/api/orders/{tid}/transfer", json={"ref": " "}).status_code == 400
+    assert c.post(f"/api/orders/{tid}/transfer", json={"ref": "12 345"}).json()["order"]["status"] == "reported"
+    holder["u"] = admin
+    pend = c.get("/api/admin/orders?status=reported").json()
+    assert [o["id"] for o in pend] == [tid] and pend[0]["transfer_ref"] == "12345"
+    assert c.post(f"/api/admin/orders/{tid}/approve").json()["order"]["status"] == "paid"
+    assert c.post(f"/api/admin/orders/{tid}/approve").json()["already"] is True
+    holder["u"] = b
+    me = c.get("/api/me").json()
+    assert me["balance"] == bal0 + 100 + 500
+    # cancel + another user's order
+    r = c.post("/api/orders", json={"item": "p50", "method": "transfer"}).json()
+    assert c.post(f"/api/orders/{r['order']['id']}/cancel").json()["order"]["status"] == "cancelled"
+    holder["u"] = a
+    assert c.get(f"/api/orders/{tid}").status_code == 404
+    assert c.post("/api/orders", json={"item": "nope"}).status_code == 404

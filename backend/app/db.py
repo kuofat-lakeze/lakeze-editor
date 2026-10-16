@@ -143,6 +143,25 @@ class ShareComment(Base):
     owner: Mapped[bool] = mapped_column(Boolean, default=False)   # a reply by the project owner, shown in the public thread
 
 
+class Order(Base):
+    """One purchase attempt: a points pack or a month of a subscription. Card payments are confirmed by
+    the provider's webhook; bank transfers are reported by the buyer and approved by an admin."""
+    __tablename__ = "orders"
+    id: Mapped[str] = mapped_column(String(12), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    item: Mapped[str] = mapped_column(String(20))            # p50 … p1000, sub5, sub15
+    kind: Mapped[str] = mapped_column(String(10))            # pack | sub
+    label: Mapped[str] = mapped_column(String(80), default="")
+    points: Mapped[int] = mapped_column(Integer, default=0)
+    amount_twd: Mapped[int] = mapped_column(Integer, default=0)
+    method: Mapped[str] = mapped_column(String(12), default="card")   # card | transfer | test
+    status: Mapped[str] = mapped_column(String(12), default="pending")  # pending | reported | paid | failed | cancelled
+    transfer_ref: Mapped[str] = mapped_column(String(40), default="")    # last 5 digits / note from the buyer
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Usage(Base):
     __tablename__ = "usage"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

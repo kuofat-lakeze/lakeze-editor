@@ -1104,3 +1104,27 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .so-row input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--brand); flex: none; } .so-row > span { display: flex; flex-direction: column; gap: 1px; flex: 1; } .so-row b { font-size: 14px; } .so-row small { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .so-seg { display: inline-flex; background: var(--panel2); border-radius: 999px; padding: 2px; flex: none; } .so-seg a { padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--muted); } .so-seg a.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .share-go { font-size: 16px; padding: 14px; }
+
+/* ---- 付款流程 ---- */
+.pay-bg { z-index: 60; } .pay { width: min(94vw, 440px); display: flex; flex-direction: column; gap: 12px; padding: 20px; }
+.pay-steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; } .pay-steps li { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--muted); padding-bottom: 8px; border-bottom: 3px solid var(--panel2); }
+.pay-steps li i { width: 20px; height: 20px; border-radius: 50%; background: var(--panel2); font-style: normal; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
+.pay-steps li.on { color: var(--text); border-color: var(--brand); } .pay-steps li.on i { background: var(--brand); color: #fff; } .pay-steps li.done { color: #1F8A8E; border-color: var(--teal); } .pay-steps li.done i { background: var(--teal); color: #fff; }
+.pay-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px; border-radius: 14px; background: var(--panel2); }
+.pay-item > div:first-child { display: flex; flex-direction: column; gap: 2px; } .pay-item b { font-size: 17px; }
+.pay-amt { display: flex; flex-direction: column; align-items: flex-end; } .pay-amt b { font-size: 22px; color: var(--brand); font-variant-numeric: tabular-nums; }
+.pay-get { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 0 4px; } .pay-get b { font-size: 16px; }
+.pay-lbl { margin-bottom: -4px; }
+.pay-methods { display: flex; flex-direction: column; gap: 8px; }
+.pay-methods a { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
+.pay-methods a small { color: var(--muted); font-size: 12px; } .pay-methods a.on { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 3px var(--brand-soft); }
+.pay-fine { text-align: center; margin-top: -4px; }
+.pay-bank { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 14px; background: var(--panel2); }
+.pb-row { display: flex; align-items: center; gap: 10px; } .pb-row span { width: 40px; color: var(--muted); font-size: 13px; } .pb-row b { flex: 1; font-size: 16px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.pay-later { text-align: center; color: var(--muted); }
+.pay-done { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 10px 4px 4px; } .pay-done > b { font-size: 18px; }
+.pd-ic { font-size: 42px; line-height: 1; } .pay-done.ok .pd-ic { animation: popin .5s cubic-bezier(.2,.9,.3,1.6) both; }
+.pd-sum { width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 12px 14px; border-radius: 12px; background: var(--panel2); margin: 4px 0; } .pd-sum .muted { flex-basis: 100%; text-align: left; }
+.spinner.big { width: 34px; height: 34px; border-width: 4px; }
+.pay-page { height: 100%; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; } .pay-page .pay { box-shadow: var(--shadow); }
+.pay-done.ok, .pay-done.ok .pd-sum span:first-child { color: var(--text); } .pay-done.ok .pd-sum b { color: var(--brand); }

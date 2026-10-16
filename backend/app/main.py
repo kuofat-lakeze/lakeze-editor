@@ -23,7 +23,7 @@ from .agent.runner import TurnRunner
 from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
 from .oauth import router as oauth_router
 from .pipeline import footage
-from .db import (GB, Asset, CreditTx, Message, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict,
+from .db import (GB, Asset, CreditTx, Message, Order, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict,
                  backfill_sizes, backfill_versions, balance, has_paid, init_db, storage_quota_bytes, storage_state, storage_used)
 from .pipeline import eleven, ff
 from .pipeline.fonts import ensure_fonts
@@ -540,6 +540,149 @@ async def credits_summary(user: User = CurrentUser):
     }
 
 
+# ---- 付款流程: order → pay (card / transfer) → result ---------------------------------------------------
+def _item(item: str, user: User) -> dict:
+    if item in pricing.PACKS:
+        pk = pricing.PACKS[item]
+        member = user.subscription if user.subscription in pk["member_twd"] else ""
+        return {"kind": "pack", "label": f"{pk['points']} 點", "points": pk["points"],
+                "amount_twd": pk["member_twd"][member] if member else pk["twd"], "list_twd": pk["twd"], "member": member}
+    if item in pricing.SUBSCRIPTIONS:
+        sb = pricing.SUBSCRIPTIONS[item]
+        return {"kind": "sub", "label": f"{sb['label']}（月繳）", "points": sb["points"], "amount_twd": sb["twd"], "list_twd": sb["payg_twd"], "member": ""}
+    raise HTTPException(404, "沒有這個方案")
+
+
+def _card_url(item: str, user: User, order_id: str) -> str | None:
+    key = item
+    if item in pricing.PACKS and user.subscription:
+        k2 = item + ("m2" if user.subscription == "sub15" else "m")
+        if config.CHECKOUT_URLS.get(k2):
+            key = k2
+    url = config.CHECKOUT_URLS.get(key)
+    if not url:
+        return None
+    sep = "&" if "?" in url else "?"
+    back = f"{config.PUBLIC_URL}/pay/result?order={order_id}"
+    from urllib.parse import quote
+    return (f"{url}{sep}checkout[custom][user_id]={user.id}&checkout[custom][order_id]={order_id}"
+            f"&checkout[email]={quote(user.email)}&checkout[success_url]={quote(back)}")
+
+
+def _order_dict(o: Order) -> dict:
+    return {"id": o.id, "item": o.item, "kind": o.kind, "label": o.label, "points": o.points, "amount_twd": o.amount_twd,
+            "method": o.method, "status": o.status, "transfer_ref": o.transfer_ref, "created_at": o.created_at.isoformat(),
+            "paid_at": o.paid_at.isoformat() if o.paid_at else None}
+
+
+@app.get("/api/pay/methods")
+async def pay_methods(user: User = CurrentUser):
+    """Which ways to pay are open right now (the confirm page only shows these)."""
+    return {"card": bool(config.CHECKOUT_URLS), "transfer": bool(config.BANK_TRANSFER), "test": _is_test(user),
+            "note": config.TOPUP_NOTE}
+
+
+class OrderBody(BaseModel):
+    item: str
+    method: str = "card"
+
+
+async def _fulfil(o: Order, meta: dict | None = None) -> None:
+    """Credit an order once (idempotent): points for a pack, a period for a subscription."""
+    async with Session() as s:
+        row = await s.get(Order, o.id)
+        if row.status == "paid":
+            return
+        row.status, row.paid_at = "paid", datetime.now(timezone.utc)
+        await s.commit()
+    m = {"order": o.id, "method": o.method, **(meta or {})}
+    if o.kind == "sub":
+        await activate_subscription(o.user_id, o.item, paid_twd=0 if o.method == "test" else o.amount_twd, meta=m)
+    else:
+        await add_credits(o.user_id, o.points, "purchase", f"{o.method} {o.item}", amount_twd=0 if o.method == "test" else o.amount_twd, meta=m)
+
+
+@app.post("/api/orders")
+async def create_order(body: OrderBody, user: User = CurrentUser):
+    it = _item(body.item, user)
+    method = "test" if _is_test(user) else body.method
+    if method == "card" and not config.CHECKOUT_URLS:
+        raise HTTPException(400, "信用卡付款尚未開通，請改用其他方式")
+    if method == "transfer" and not config.BANK_TRANSFER:
+        raise HTTPException(400, "銀行轉帳尚未開通")
+    if method not in ("card", "transfer", "test"):
+        raise HTTPException(400, "不支援的付款方式")
+    async with Session() as s:
+        o = Order(user_id=user.id, item=body.item, kind=it["kind"], label=it["label"], points=it["points"], amount_twd=it["amount_twd"], method=method)
+        s.add(o)
+        await s.commit()
+    nxt: dict = {}
+    if method == "test":
+        await _fulfil(o, {"test": True})
+        o.status = "paid"
+    elif method == "card":
+        url = _card_url(body.item, user, o.id)
+        if not url:
+            raise HTTPException(400, "這個方案還不能刷卡，請改用其他方式")
+        nxt = {"redirect": url}
+    else:
+        nxt = {"bank": config.BANK_TRANSFER, "amount_twd": o.amount_twd}
+    return {"order": _order_dict(o), **nxt}
+
+
+@app.get("/api/orders/{order_id}")
+async def get_order(order_id: str, user: User = CurrentUser):
+    async with Session() as s:
+        o = await s.get(Order, order_id)
+    if not o or o.user_id != user.id:
+        raise HTTPException(404, "找不到這筆訂單")
+    return {"order": _order_dict(o), "balance": await balance(user.id),
+            "bank": config.BANK_TRANSFER if o.method == "transfer" else None}
+
+
+@app.get("/api/orders")
+async def my_orders(user: User = CurrentUser):
+    async with Session() as s:
+        rows = (await s.execute(select(Order).where(Order.user_id == user.id).order_by(Order.created_at.desc()).limit(50))).scalars().all()
+    return [_order_dict(o) for o in rows]
+
+
+class TransferBody(BaseModel):
+    ref: str
+
+
+@app.post("/api/orders/{order_id}/transfer")
+async def report_transfer(order_id: str, body: TransferBody, user: User = CurrentUser):
+    """The buyer says 我已轉帳 with the last 5 digits; an admin confirms it in the dashboard."""
+    ref = re.sub(r"\s+", "", body.ref)[:20]
+    if not ref:
+        raise HTTPException(400, "請填帳號末五碼")
+    async with Session() as s:
+        o = await s.get(Order, order_id)
+        if not o or o.user_id != user.id or o.method != "transfer":
+            raise HTTPException(404, "找不到這筆訂單")
+        if o.status in ("paid", "cancelled"):
+            raise HTTPException(409, "這筆訂單已結束")
+        o.transfer_ref, o.status = ref, "reported"
+        await s.commit()
+        d = _order_dict(o)
+    log.info("transfer reported: %s order %s NT$%s ref %s", user.email, order_id, d["amount_twd"], ref)
+    return {"order": d}
+
+
+@app.post("/api/orders/{order_id}/cancel")
+async def cancel_order(order_id: str, user: User = CurrentUser):
+    async with Session() as s:
+        o = await s.get(Order, order_id)
+        if not o or o.user_id != user.id:
+            raise HTTPException(404, "找不到這筆訂單")
+        if o.status in ("pending", "reported", "failed"):
+            o.status = "cancelled"
+            await s.commit()
+        d = _order_dict(o)
+    return {"order": d}
+
+
 @app.get("/api/checkout/{pack_id}")
 async def checkout(pack_id: str, user: User = CurrentUser):
     """Hosted checkout link with the user id attached so the webhook can credit the right account.
@@ -598,6 +741,13 @@ async def lemonsqueezy_webhook(request: Request):
     if dup:
         return {"duplicate": True}
     meta = {"order_id": f"{event}:{order_id}", "total": attrs.get("total"), "currency": attrs.get("currency")}
+    our = (ev["meta"].get("custom_data") or {}).get("order_id")
+    if our:   # started from our payment page: fulfil that order (credits once, marks it paid)
+        async with Session() as s:
+            o = await s.get(Order, our)
+        if o and o.user_id == user_id:
+            await _fulfil(o, meta)
+            return {"ok": True, "order": our}
     if plan_id in pricing.SUBSCRIPTIONS:
         await activate_subscription(user_id, plan_id, paid_twd=pricing.SUBSCRIPTIONS[plan_id]["twd"], meta=meta)
         return {"ok": True, "subscription": plan_id}
