@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api, type Costs, type Order, type AdminUser, type AdminUserDetail, type Dashboard, type DashRow, type Me, type Stage } from './api'
 import logo from './assets/logo.png'
 import { MiaoMark } from './Logo'
+import { ask } from './Dialog'
 
 /* 管理後台 / CRM. Served at /dashboard on the app host and as the whole page on dashboard.editor.lakeze.com. */
 
@@ -74,7 +75,7 @@ function Overview({ d, onOpen, onCosts }: { d: Dashboard; onOpen: (id: string) =
         <Kpi label="訂閱中" v={t.subscribers} sub={`MRR ${twd(t.mrr_twd)}`} />
         <Kpi label={`${d.days} 天營收`} v={twd(p.revenue_twd)} sub={`累積 ${twd(t.revenue_twd)}`} delta={pct(p.revenue_twd, q.revenue_twd)} />
         <Kpi label={`${d.days} 天點數消耗`} v={`${p.points_used.toLocaleString()} 點`} sub={`免費額度 ${p.points_waived} 點 · 售出 ${p.points_sold} 送出 ${p.points_granted}`} delta={pct(p.points_used, q.points_used)} />
-        <Kpi label={`${d.days} 天 API 成本`} v={twd(p.cost_twd)} sub={p.margin_pct == null ? '尚無成本' : `毛利率（對成本）${p.margin_pct}%`} delta={pct(p.cost_twd, q.cost_twd)} bad onClick={onCosts} />
+        <Kpi label={`${d.days} 天成本（API＋主機）`} v={twd(p.cost_twd)} sub={p.margin_pct == null ? '尚無成本' : `毛利率（對成本）${p.margin_pct}%`} delta={pct(p.cost_twd, q.cost_twd)} bad onClick={onCosts} />
         <Kpi label={`${d.days} 天影片輸出`} v={p.exports} sub={`累積 ${t.exports} 支 · 未用點數 ${t.points_outstanding.toLocaleString()} 點`} delta={pct(p.exports, q.exports)} />
       </section>
       <section className="dash-row two">
@@ -302,7 +303,7 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
               <b>方案與空間</b>
               <div className="muted small">
                 {u.subscription ? `訂閱 ${u.subscription === 'sub15' ? '超級玩家' : '專業旅人'} · 本期 ${day(u.sub_period_start)} 起 · ${day(u.sub_renews_at)} 續約` : '沒有訂閱'} · 空間 {u.storage_plan}
-                {' '}已用 {(u.storage_bytes / 2 ** 30).toFixed(2)} / {Math.round(u.storage_quota_bytes / 2 ** 30)} GB
+                {' '}已用 {(u.storage_bytes / 2 ** 30).toFixed(2)} / {u.storage_quota_bytes < 2 ** 30 ? `${Math.round(u.storage_quota_bytes / 2 ** 20)} MB` : `${Math.round(u.storage_quota_bytes / 2 ** 30)} GB`}
                 {u.voice ? ` · 自己的聲音「${u.voice.name ?? ''}」${u.voice_trial_seconds ? `（試用已生成 ${u.voice_trial_seconds} 秒）` : ''}` : ''}
               </div>
               <form className="row" onSubmit={grant}>
@@ -313,7 +314,7 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
               </form>
               <form className="row" onSubmit={async e => {
                 e.preventDefault(); const f = new FormData(e.currentTarget); const plan = String(f.get('plan'))
-                if (!confirm(plan ? `開通／續約 ${plan}？會入帳該方案的點數並綁定空間。` : '結束訂閱？剩餘的訂閱點數會到期，空間降回免費。')) return
+                if (!await ask.confirm(plan ? `開通／續約 ${plan}？會入帳該方案的點數並綁定空間。` : '結束訂閱？剩餘的訂閱點數會到期，空間降回免費。')) return
                 await api.admin.subscription(id, plan, Number(f.get('subtwd') || 0)); load(); onChanged()
               }}>
                 <select name="plan" defaultValue={u.subscription || 'sub5'}>
@@ -327,7 +328,7 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
               <div className="row">
                 <button className="btn small" onClick={() => patch({ disabled: !u.disabled })}>{u.disabled ? '啟用帳號' : '停用帳號'}</button>
                 <button className="btn small" onClick={() => patch({ is_admin: !u.is_admin })}>{u.is_admin ? '取消管理員' : '設為管理員'}</button>
-                <button className="btn small" onClick={() => confirm('重設免費專案？下一個新專案會再次免費。') && patch({ reset_free_project: true })}>再送一次免費專案</button>
+                <button className="btn small" onClick={async () => { if (await ask.confirm('重設免費專案？下一個新專案會再次免費。')) patch({ reset_free_project: true }) }}>再送一次免費專案</button>
               </div>
               <textarea rows={2} placeholder="CRM 備註（來源、聯絡紀錄、需求…）" defaultValue={u.note} onBlur={e => e.target.value !== u.note && patch({ note: e.target.value })} />
             </div>
@@ -395,8 +396,8 @@ function Orders({ onOpen, onChanged }: { onOpen: (id: string) => void; onChanged
                 <td><span className={`stage ${o.status === 'paid' ? 'paid' : o.status === 'reported' ? 'done' : o.status === 'pending' ? 'trial' : 'off'}`}>{ORDER_ST[o.status]}</span></td>
                 <td className="small">{o.transfer_ref || '—'}</td>
                 <td className="r">{(o.status === 'reported' || o.status === 'pending') && <span className="row" style={{ justifyContent: 'flex-end' }}>
-                  <button className="btn small primary" onClick={() => confirm(`確認已收到 ${twd(o.amount_twd)}，入帳 ${o.label}？`) && act(() => api.admin.approveOrder(o.id))}>確認入帳</button>
-                  <button className="btn small" onClick={() => confirm('退回這筆訂單？') && act(() => api.admin.rejectOrder(o.id))}>退回</button></span>}</td>
+                  <button className="btn small primary" onClick={async () => { if (await ask.confirm(`確認已收到 ${twd(o.amount_twd)}，入帳 ${o.label}？`)) act(() => api.admin.approveOrder(o.id)) }}>確認入帳</button>
+                  <button className="btn small" onClick={async () => { if (await ask.confirm('退回這筆訂單？', { ok: '退回', danger: true })) act(() => api.admin.rejectOrder(o.id)) }}>退回</button></span>}</td>
               </tr>))}
           </tbody>
         </table>
@@ -419,7 +420,7 @@ function CostDrawer({ days: d0, onClose, onOpenUser }: { days: number; onClose: 
     <>
       <div className="scrim" onClick={onClose} />
       <aside className="drawer cost-drawer">
-        <div className="dr-head"><div><div className="dr-email">API 成本明細</div><div className="muted small">點大項看細項 · 1 美元以 NT${c?.twd_per_usd ?? 32} 計</div></div>
+        <div className="dr-head"><div><div className="dr-email">API 與主機成本明細</div><div className="muted small">點大項看細項 · 1 美元以 NT${c?.twd_per_usd ?? 32} 計</div></div>
           <div className="dnav mini">{[7, 30, 90].map(x => <a key={x} className={days === x ? 'on' : ''} onClick={() => setDays(x)}>{x} 天</a>)}</div><a className="dr-close" onClick={onClose}>✕</a></div>
         {!c ? <div className="center muted">載入中…</div> : (
           <>
@@ -445,8 +446,15 @@ function CostDrawer({ days: d0, onClose, onOpenUser }: { days: number; onClose: 
                           <div key={it.id} className="cg-item">
                             <div className="cgi-top"><span>{it.label}</span><b>{nt(it.twd)}</b></div>
                             <div className="cgi-bar"><i style={{ width: `${it.pct}%`, background: g.color }} /></div>
-                            <div className="muted small">{Math.round(it.units).toLocaleString()} {it.unit} · {it.calls} 次 · 占{g.label.replace(/（.*）/, '')} {it.pct}%{it.calls ? ` · 平均每次 ${nt(it.twd / it.calls)}` : ''}</div>
+                            <div className="muted small">{Math.round(it.units).toLocaleString()} {it.unit}{g.id !== 'railway' && <> · {it.calls} 次</>} · 占{g.label.replace(/（.*）/, '')} {it.pct}%{it.calls ? ` · 平均每次 ${nt(it.twd / it.calls)}` : ''}</div>
                           </div>))}
+                        {g.id === 'railway' && c.railway && (
+                          <div className="cg-rw">
+                            {c.railway.error && <div className="cg-rw-warn">{c.railway.error}</div>}
+                            <div className="cg-rw-row"><span>本月資源用量（預估到月底）</span><b>{c.railway.month_estimate_usd != null ? `US$${c.railway.month_estimate_usd.toFixed(2)}` : '—'}</b></div>
+                            <div className="cg-rw-row"><span>本月 Railway 帳單（預估）</span><b>US${c.railway.month_bill_usd.toFixed(2)}</b></div>
+                            <div className="muted small">Railway 計費方式：Pro 方案月費 US${c.railway.plan_fee_usd} 已內含等額用量；超過才另外收。用量依分鐘計：CPU US$20／vCPU／月、記憶體 US$10／GB／月、對外流量 US$0.05／GB、硬碟 US$0.15／GB／月，建置不收費。每日圖表為期間平均攤提。</div>
+                          </div>)}
                         {g.id === 'claude' && tk && (tk.in + tk.out) > 0 && (
                           <div className="cg-tokens">
                             <div className="muted small">token 組成</div>

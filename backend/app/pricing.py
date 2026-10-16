@@ -90,9 +90,10 @@ PACKS: dict[str, dict] = {
 # not counted and are cleaned up after RAW_RETENTION_DAYS. Stand-alone plans for pay-as-you-go users,
 # renewed every 30 days from points; priced against Railway Bucket cost (NT$0.48 / GB-month).
 STORAGE_GB_COST_TWD = 0.48
-FREE_STORAGE_GB = 2
+FREE_STORAGE_GB = 0.5          # 500 MB
+FREE_RETENTION_DAYS = 7        # free deliverables are removed after this; any paid storage keeps them
 STORAGE_PLANS: dict[str, dict] = {   # gb = total quota
-    "free": {"gb": 2, "points": 0, "label": "2 GB", "extra": 0},
+    "free": {"gb": 0.5, "points": 0, "label": "500 MB", "extra": 0},
     "s20": {"gb": 20, "points": 10, "label": "20 GB", "extra": 18},
     "s100": {"gb": 100, "points": 30, "label": "100 GB", "extra": 98},
 }
@@ -182,6 +183,6 @@ def public_pricing() -> dict:
         "first_video_twd": FIRST_VIDEO_POINTS * POINT_TWD, "revision_twd": REVISION_POINTS * POINT_TWD,
         "subscriptions": [{"id": k, **v} for k, v in SUBSCRIPTIONS.items()],
         "tiers": {"free": TIERS_FREE, "payg": TIERS_PAYG},
-        "free_storage_gb": FREE_STORAGE_GB, "free_revision_turns": FREE_REVISION_TURNS, "trial_voice_seconds": TRIAL_VOICE_SECONDS,
+        "free_storage_gb": FREE_STORAGE_GB, "free_retention_days": FREE_RETENTION_DAYS, "free_revision_turns": FREE_REVISION_TURNS, "trial_voice_seconds": TRIAL_VOICE_SECONDS,
         "storage_plans": [{"id": k, **v, "twd": v["points"] * POINT_TWD} for k, v in STORAGE_PLANS.items()],
     }

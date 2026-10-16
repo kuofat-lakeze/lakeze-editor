@@ -12,15 +12,17 @@ import { StorageMeter } from './Storage'
 import { MiaoLogo } from './Logo'
 import { PayResult } from './Pay'
 import { InAppGuide } from './InApp'
+import { ask, DialogHost } from './Dialog'
 
 const SHARE_TOKEN = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/)?.[1]
 // The CRM lives at /dashboard on the app host and is the whole site on dashboard.<app host>.
 const IS_DASH = location.hostname.startsWith('dashboard.') || /^\/dashboard(\/|$)/.test(location.pathname)
 
 export default function App() {
-  if (SHARE_TOKEN) return <SharePage token={SHARE_TOKEN} />
-  if (IS_DASH) return <DashboardGate />
-  return <Workspace />
+  return <>
+    {SHARE_TOKEN ? <SharePage token={SHARE_TOKEN} /> : IS_DASH ? <DashboardGate /> : <Workspace />}
+    <DialogHost />
+  </>
 }
 
 function DashboardGate() {
@@ -86,7 +88,7 @@ function Workspace() {
     : <Landing onStart={() => { setAuth('signup'); history.pushState(null, '', '/signup') }} onLogin={() => { setAuth('login'); history.pushState(null, '', '/login') }} />}</>
 
   const newProject = async () => {
-    const name = prompt('專案名稱（例如：雲岫海景渡假會館）')
+    const name = (await ask.prompt('幫這個新專案取個名字', { placeholder: '例如：雲岫海景渡假會館', ok: '建立專案' }))?.trim()
     if (!name) return
     const p = await api.createProject(name)
     setProjects([p, ...projects]); setCurrent(p.id); setView('chat'); setMenu(false)

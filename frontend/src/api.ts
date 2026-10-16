@@ -2,7 +2,7 @@ export type Asset = { id: string; kind: 'video' | 'audio' | 'image' | 'file'; na
 export type Part = { type: 'text'; text: string } | { type: 'tool'; name: string }
 export type Msg = { id: number | string; role: 'user' | 'assistant'; parts: Part[]; created_at: string; assets?: Asset[] }
 export type Project = { id: string; name: string; updated_at?: string; exports?: number; final_version?: number | null }
-export type DeliverableVersion = { version: number; created_at: string; videos: Asset[]; covers: Asset[]; main: Asset | null }
+export type DeliverableVersion = { version: number; created_at: string; videos: Asset[]; covers: Asset[]; main: Asset | null; expires_at?: string | null }
 export type ShareLink = { id: string; token: string; url: string; version: number | null; allow_download: boolean; note: string; expires_at: string | null; revoked: boolean; views: number; created_at: string }
 export type DeliverablesData = { project: { id: string; name: string; final_version: number | null; exports: number }; versions: DeliverableVersion[]; shares: ShareLink[] }
 export type ThreadMsg = { id: number; name: string; text: string; created_at: string; owner: boolean }
@@ -27,6 +27,7 @@ export type PayMethods = { card: boolean; transfer: boolean; test: boolean; note
 export type CostItem = { id: string; label: string; usd: number; twd: number; units: number; unit: string; calls: number; pct: number }
 export type CostGroup = { id: string; label: string; color: string; usd: number; twd: number; pct: number; items: CostItem[] }
 export type Costs = { days: number; usd: number; twd: number; twd_per_usd: number; exports: number; per_export_twd: number | null; revenue_twd: number; margin_pct: number | null
+  railway?: { ok: boolean; error?: string; usd: number; usage_usd: number; month_estimate_usd: number | null; month_bill_usd: number; plan_fee_usd: number }
   groups: CostGroup[]; claude_tokens: { in: number; out: number; cache_read: number; usd_in: number; usd_out: number; usd_cache_read: number; usd_cache_write: number }
   daily: ({ date: string } & Record<string, number | string>)[]; top_projects: { id: string; name: string; email: string; twd: number; by_group: Record<string, number> }[]; top_users: { id: string; email: string; twd: number }[] }
 export type Shot = { n: number; clip: number; t: number; dur: number; shot: string; role: 'hook' | 'feature' | 'price' | 'cta' }
@@ -37,7 +38,7 @@ export type Analysis = {
   estimate: Estimate; charged?: number
 }
 export type ProjectDetail = Project & { messages: Msg[]; assets: Asset[]; running: boolean; credits: CreditState; final_version?: number | null; exports?: number; client_comments?: ClientComment[]; analysis?: Analysis | null }
-export type StorageState = { used_bytes: number; quota_bytes: number; plan: string; renews_at: string | null; over: boolean }
+export type StorageState = { used_bytes: number; quota_bytes: number; plan: string; renews_at: string | null; over: boolean; retention_days?: number | null }
 export type StoragePlan = { id: string; gb: number; extra_gb: number; points: number; label: string; twd: number }
 export type StorageInfo = StorageState & {
   balance: number; period_days: number; raw_retention_days: number; override_gb: number | null; plans: StoragePlan[]
@@ -55,7 +56,7 @@ export type MySubscription = { id: string; label: string; points: number; videos
 export type Tier = { id: string; label: string; who: string; features?: string[]; voice_seconds?: number }
 export type Pricing = { point_twd: number; menu: { item: string; points: number }[]; free_revision_turns: number; packs: Pack[]; provider_configured: boolean; note: string
   first_video_points: number; revision_points: number; first_video_twd: number; revision_twd: number; subscriptions: Subscription[]; storage_plans: StoragePlan[]
-  tiers: { free: Tier; payg: Tier }; free_storage_gb: number; member_point_twd: number; member_discount_pct: number; trial_voice_seconds: number; signup_points: number }
+  tiers: { free: Tier; payg: Tier }; free_storage_gb: number; free_retention_days: number; member_point_twd: number; member_discount_pct: number; trial_voice_seconds: number; signup_points: number }
 export type MyVoice = { voice_id: string; name: string }
 export type Stage = 'disabled' | 'sub' | 'paid' | 'churn' | 'trial_done' | 'trial' | 'new'
 export type AdminUser = { id: string; email: string; name?: string | null; provider: string; created_at: string; is_admin: boolean; disabled: boolean; note: string; tags: string[]
@@ -185,9 +186,11 @@ export const api = {
         }
       }
     }
-    await post(`/api/projects/${id}/upload/${begin.upload_id}/complete`, {}).then(j<{ saved: unknown[] }>)
+    const done = await post(`/api/projects/${id}/upload/${begin.upload_id}/complete`, {}).then(j<{ saved: { name: string }[] }>)
     onProgress(file.size, file.size)
+    return done.saved[0]?.name ?? ''   // the name on the server (a suffix is added when the same name was picked twice)
   },
+  deleteUpload: (id: string, name: string) => fetch(`/api/projects/${id}/uploads/${encodeURIComponent(name)}`, { method: 'DELETE' }).then(j<{ ok: boolean; has_footage: boolean }>),
   // Fire-and-forget diagnostics from the browser (shows up in the backend log as "client ...").
   clientLog: (event: string, detail: Record<string, unknown> = {}) => {
     const body = JSON.stringify({ event, detail: { ...detail, ua: navigator.userAgent, url: location.pathname } })

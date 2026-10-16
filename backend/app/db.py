@@ -2,7 +2,7 @@
 import json
 import shutil
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func, select, text
@@ -43,6 +43,9 @@ class User(Base):
     storage_plan: Mapped[str] = mapped_column(String(20), default="free")
     storage_renews_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     storage_quota_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)  # admin override of the plan's quota
+    # When the account last dropped (back) to the free plan: free deliverables are removed
+    # FREE_RETENTION_DAYS after max(created, this), so a lapsed paid plan still gets the full grace.
+    storage_free_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Monthly subscription (pricing.SUBSCRIPTIONS): included points are granted per period and the
     # unused part expires when the next period starts; storage is bundled.
     subscription: Mapped[str] = mapped_column(String(20), default="")
@@ -187,6 +190,7 @@ _MIGRATIONS = [
     ("users", "provider", "VARCHAR(20) DEFAULT ''"), ("users", "provider_id", "VARCHAR(80)"), ("users", "display_name", "VARCHAR(120)"),
     ("users", "tags", "VARCHAR(200) DEFAULT ''"), ("users", "last_seen_at", "DATETIME"),
     ("share_comments", "read_at", "DATETIME"), ("users", "referrer_id", "VARCHAR(12)"), ("share_comments", "owner", "BOOLEAN DEFAULT 0"),
+    ("users", "storage_free_since", "DATETIME"),
 ]
 
 
@@ -271,7 +275,25 @@ def storage_quota_bytes(u: User) -> int:
     from .pricing import STORAGE_PLANS
     if u.storage_quota_gb:
         return u.storage_quota_gb * GB
-    return STORAGE_PLANS.get(u.storage_plan or "free", STORAGE_PLANS["free"])["gb"] * GB
+    gb = STORAGE_PLANS.get(u.storage_plan or "free", STORAGE_PLANS["free"])["gb"]
+    return int(gb * GB) if gb >= 1 else round(gb * 1000) * 2**20   # 0.5 → exactly "500 MB" on screen
+
+
+def free_retention(u: User | None) -> bool:
+    """Free storage is temporary: deliverables are removed after FREE_RETENTION_DAYS. Any paid storage
+    (bought, bundled with a subscription, or set by an admin) keeps them for as long as it lasts."""
+    return bool(u) and (u.storage_plan or "free") == "free" and not u.subscription and not u.storage_quota_gb
+
+
+def deliverable_expiry(u: User | None, created_at: datetime) -> datetime | None:
+    from .pricing import FREE_RETENTION_DAYS
+    if not free_retention(u) or FREE_RETENTION_DAYS <= 0:
+        return None
+    c = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
+    f = u.storage_free_since
+    if f is not None and f.tzinfo is None:
+        f = f.replace(tzinfo=timezone.utc)
+    return max(c, f or c) + timedelta(days=FREE_RETENTION_DAYS)
 
 
 async def storage_state(user_id: str) -> dict:
@@ -279,7 +301,9 @@ async def storage_state(user_id: str) -> dict:
         u = await s.get(User, user_id)
         used = await storage_used(user_id, s)
     quota = storage_quota_bytes(u) if u else 0
+    from .pricing import FREE_RETENTION_DAYS
     return {"used_bytes": used, "quota_bytes": quota, "plan": (u.storage_plan if u else "free") or "free",
+            "retention_days": FREE_RETENTION_DAYS if free_retention(u) else None,
             "renews_at": u.storage_renews_at.isoformat() if u and u.storage_renews_at else None, "over": used >= quota}
 
 

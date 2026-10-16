@@ -4,8 +4,9 @@ import DOMPurify from 'dompurify'
 import { api, type Analysis, type Asset, type DriveCheck, type Me, type Msg, type ProjectDetail, type Voice } from './api'
 import { Deliverables } from './Deliverables'
 import { VoiceCloneDialog } from './VoiceClone'
-import { DropZone, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
+import { CLOUD_SECS_PER_VIDEO, CloudDl, DropZone, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
 import { fmtBytes } from './Storage'
+import { ask } from './Dialog'
 import { SCRIPT_BLOCK, ScriptCard, Teleprompter, parseScript, type Line } from './Script'
 
 type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string; charged?: number; balance?: number; startedAt?: number }[] }
@@ -384,12 +385,12 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
     prog.current[up.id] = { t: Date.now(), l: 0, rate: 0 }
     const t0 = Date.now()
     try {
-      await api.uploadOne(projectId, up.file, loaded => {
+      const server = await api.uploadOne(projectId, up.file, loaded => {
         const pr = prog.current[up.id]; const now = Date.now(); const dt = (now - pr.t) / 1000
         if (dt >= 0.5) { const inst = (loaded - pr.l) / dt; pr.rate = pr.rate ? pr.rate * 0.7 + inst * 0.3 : inst; pr.t = now; pr.l = loaded }
         patchUp(up.id, { loaded, rate: pr.rate || undefined })
       })
-      patchUp(up.id, { status: 'ok', loaded: up.size })
+      patchUp(up.id, { status: 'ok', loaded: up.size, server })
       api.clientLog('upload_ok', { name: up.name, size: up.size, seconds: (Date.now() - t0) / 1000 })
       return true
     } catch (e) {
@@ -418,6 +419,21 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   }
   const retryUpload = (id: string) => setUploads(us => { const u = us.find(x => x.id === id); if (u) queueMicrotask(() => { runUpload(u) }); return us })
   const removeUpload = (id: string) => setUploads(us => us.filter(u => u.id !== id))
+  // A finished upload the user no longer wants: delete it on the server too. Clip numbers shift, so any
+  // 先解析 result is dropped and the next analysis / probe starts from the files that are left.
+  const deleteUpload = async (id: string) => {
+    const u = uploads.find(x => x.id === id); if (!u?.server) return
+    if (running) { setErr('剪輯師正在工作，等這一輪結束再刪素材。'); return }
+    const msg = `刪掉「${u.name}」？${analysis ? '\n刪掉後要重新解析一次素材（不用重新上傳其他的）。' : ''}`
+    if (!await ask.confirm(msg, { ok: '刪掉', danger: true })) return
+    patchUp(id, { status: 'del' })
+    try {
+      await api.deleteUpload(projectId, u.server)
+      setUploads(us => us.filter(x => x.id !== id))
+      if (analysis) { setProj(p => p && { ...p, analysis: null }); setPicked(null) }
+      api.clientLog('upload_deleted', { name: u.server })
+    } catch (e) { patchUp(id, { status: 'ok' }); setErr((e as Error).message) }
+  }
   const [pickAt, setPickAt] = useState(0)
   const [pickBack, setPickBack] = useState(false)   // the picker closed and the browser is still preparing the files
   const pick = () => { setPicking(true); setPickFail(false); setPickBack(false); setPickAt(Date.now()); api.clientLog('picker_open') }
@@ -433,7 +449,8 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   // iOS never tells the page that the picker was dismissed. If no change event arrives, show the workarounds.
   useEffect(() => {
     if (!picking) return
-    const t = setTimeout(() => { setPicking(false); setPickBack(false); setPickFail(true); api.clientLog('picker_no_file_180s') }, 180000)
+    // Cloud originals take ~15 s each, so 30 picked clips can legitimately need several minutes.
+    const t = setTimeout(() => { setPicking(false); setPickBack(false); setPickFail(true); api.clientLog('picker_no_file_480s') }, 480000)
     return () => clearTimeout(t)
   }, [picking])
 
@@ -518,7 +535,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                       <DropZone onFiles={onFiles} onPick={pick} disabled={uploading} count={okUploads} />
                     </div>
                     <div className="up-kinds" aria-hidden="true"><span>🎞 好幾段短片</span><span>🎬 一支長影片</span><span>🖼 照片也行</span></div>
-                    {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />}
+                    {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onDelete={deleteUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />}
                     <div className={`link-chat ${drive.state}`}>
                       <span className="lc-ic" aria-hidden="true">🔗</span>
                       <input placeholder="素材在雲端？直接貼分享連結（Google 雲端、Dropbox、iCloud、OneDrive）" value={link}
@@ -754,7 +771,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         )}
         {needStorage && (
           <div className="card need">
-            <div><b>成品空間已滿</b>：已用 {fmtBytes(needStorage.used_bytes)} / {Math.round(needStorage.quota_bytes / 2 ** 30)} GB，新的影片與封面先暫停輸出。
+            <div><b>成品空間已滿</b>：已用 {fmtBytes(needStorage.used_bytes)} / {fmtBytes(needStorage.quota_bytes)}，新的影片與封面先暫停輸出。
               <div className="muted small">刪掉不要的舊版本，或升級空間，再輸入「繼續」，剪輯師會接著輸出。已有的成品照常可看可下載。</div></div>
             <button className="btn primary small" onClick={onStorage}>升級空間</button>
             <button className="btn small" onClick={() => setTab('files')}>刪舊版本</button>
@@ -762,7 +779,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         )}
         {uploads.length > 0 && stage !== 'start' && (
           <div className="card uq-card">
-            <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />
+            <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onDelete={deleteUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />
           </div>
         )}
         {err && <div className="error">{err}</div>}
@@ -772,14 +789,24 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         onUploaded={(key, secs) => { setPrompter(null); submit(`我上傳了自己唸的旁白（key ${key}，${secs} 秒），請用它當旁白，不要再生成 AI 配音；從 0 秒開始放，字幕照我的聲音對齊，然後重新輸出。`) }} />}
       {picking && pickBack && (
         <div className="pick-wait" role="status">
-          <div className="pw-card">
-            <div className="pw-anim" aria-hidden="true"><i /><i /><i /></div>
-            <b>正在接收你選的影片…</b>
-            <span className="pw-time">{Math.max(0, Math.round((now - pickAt) / 1000))} 秒</span>
-            <p>{IOS ? 'iPhone 會先把影片整理好才交給我們，選越多、影片越長要等越久，最多可能 1～2 分鐘。這不是當機，請停在這個畫面。' : '正在讀取檔案，請稍候。'}</p>
-            <ol className="pw-steps"><li className="done">選好影片</li><li className="on">手機整理影片</li><li>開始上傳</li></ol>
-            <a className="small" onClick={() => { setPicking(false); setPickBack(false) }}>其實我沒有選，關閉</a>
-          </div>
+          {(() => {
+            const secs = Math.max(0, Math.round((now - pickAt) / 1000))
+            const nth = Math.floor(secs / CLOUD_SECS_PER_VIDEO) + 1          // the picker never says how many were chosen: count by the clock
+            const lap = ((secs % CLOUD_SECS_PER_VIDEO) / CLOUD_SECS_PER_VIDEO) * 100
+            return (
+              <div className="pw-card">
+                <CloudDl />
+                <b>手機正在從雲端下載影片…</b>
+                <span className="pw-time">已等 {secs} 秒</span>
+                <div className="pw-est">
+                  <div className="pw-est-row"><span>大約在處理第 <b>{nth}</b> 支</span><span className="muted">每支約 {CLOUD_SECS_PER_VIDEO} 秒</span></div>
+                  <div className="pw-est-bar"><i style={{ width: `${lap}%` }} /></div>
+                </div>
+                <p>影片如果存在 <b>iCloud</b> 或 <b>Google 相簿</b>，手機要先把原檔下載回來才能上傳。選 4 支大約 1 分鐘，選越多等越久。<b>這不是當機</b>，請停在這個畫面讓它跑完。</p>
+                <ol className="pw-steps"><li className="done">選好影片</li><li className="on">雲端下載到手機</li><li>開始上傳</li></ol>
+                <a className="small" onClick={() => { setPicking(false); setPickBack(false) }}>其實我沒有選，關閉</a>
+              </div>)
+          })()}
         </div>
       )}
       {cloning && <VoiceCloneDialog current={voices.find(v => v.custom)} onClose={() => setCloning(false)} onDone={onCloned} />}

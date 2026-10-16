@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from . import pricing
+from . import pricing, railway_cost
 from .auth import current_user
 from .db import Asset, CreditTx, Message, Order, Project, Session, Usage, User, add_credits, now, storage_quota_bytes
 
@@ -104,6 +104,13 @@ async def dashboard(days: int = 30, _: User = Admin):
                 "points_granted": int(granted), "exports": exports, "cost_usd": round(cost, 2), "cost_twd": round(cost * TWD_PER_USD),
                 "signups": signups, "buyers": buyers}
     cur, prev = agg(since, ref + timedelta(seconds=1)), agg(prev_since, since)
+    # Railway hosting is part of the cost: real usage for this window; the previous window is assumed
+    # to have run at the same daily rate (the hosting bill barely moves from month to month).
+    rw_usd = (await railway_cost.cost(days))["usd"]
+    for a in (cur, prev):
+        a["railway_usd"] = round(rw_usd, 2)
+        a["cost_usd"] = round(a["cost_usd"] + rw_usd, 2)
+        a["cost_twd"] = round(a["cost_usd"] * TWD_PER_USD)
     cur["active_users"] = len(active_users)
     cur["margin_pct"] = round((cur["revenue_twd"] - cur["cost_twd"]) / cur["cost_twd"] * 100) if cur["cost_twd"] else None
     # daily series
@@ -125,6 +132,8 @@ async def dashboard(days: int = 30, _: User = Admin):
             daily[k]["active"].add(t.user_id)
             if t.reason == "export_video":
                 daily[k]["exports"] += 1
+    for v in daily.values():
+        v["cost_twd"] += rw_usd / days * TWD_PER_USD
     for uid, kind, c, d in usage:
         k = _day(d)
         if k in daily:
@@ -436,6 +445,7 @@ COST_GROUPS = [
     ("voice", "ElevenLabs 旁白", "#1B7AC3"),
     ("music", "ElevenLabs 配樂與音效", "#46B9BD"),
     ("stt", "語音辨識", "#7B3FE4"),
+    ("railway", "Railway 主機", "#853BCE"),
 ]
 
 
@@ -499,6 +509,14 @@ async def costs(days: int = 30, _: User = Admin):
             p["usd"] += usd; p["by_group"][g] = p["by_group"].get(g, 0.0) + usd
         us = by_user.setdefault(u.user_id, {"id": u.user_id, "email": email, "usd": 0.0})
         us["usd"] += usd
+    # Railway hosting: real per-minute usage from Railway's API (+ the unused part of the plan's included
+    # amount), spread evenly over the days for the chart since the API gives one number per window.
+    rw = await railway_cost.cost(days)
+    groups["railway"]["usd"] = rw["usd"]
+    for it in rw["items"]:
+        groups["railway"]["items"][it["id"]] = dict(it)
+    for d in daily.values():
+        d["railway"] += rw["usd"] / days
     total = sum(g["usd"] for g in groups.values())
     T = TWD_PER_USD
 
@@ -514,6 +532,7 @@ async def costs(days: int = 30, _: User = Admin):
             "exports": exports, "per_export_twd": round(total * T / exports) if exports else None,
             "revenue_twd": int(revenue), "margin_pct": round((revenue - total * T) / (total * T) * 100) if total else None,
             "groups": out_groups,
+            "railway": {k: v for k, v in rw.items() if k != "items"},
             "claude_tokens": {**{k: v for k, v in tokens.items() if not k.startswith("usd")},
                               **{k: round(v * T, 1) for k, v in tokens.items() if k.startswith("usd")}},
             "daily": [{"date": d["date"], **{g: round(d[g] * T, 1) for g in groups}} for d in daily.values()],

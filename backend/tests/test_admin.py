@@ -314,8 +314,13 @@ def test_owner_narration_upload(client, monkeypatch, tmp_path: Path):
     assert c.post(f"/api/projects/{p}/narration", files={"audio": ("n.webm", b"", "audio/webm")}).status_code == 400
 
 
-def test_cost_breakdown(client):
+def test_cost_breakdown(client, monkeypatch):
     c, holder = client
+    from app import railway_cost
+    async def fake_rw(days):   # Railway's API is not reachable from tests
+        return {"ok": True, "usd": 0.5, "usage_usd": 0.5, "month_estimate_usd": 0.6, "month_bill_usd": 20.0, "plan_fee_usd": 20.0,
+                "items": [{"id": "backend:CPU_USAGE", "label": "後端 · CPU", "usd": 0.5, "units": 1000.0, "unit": "vCPU·分", "calls": 0}]}
+    monkeypatch.setattr(railway_cost, "cost", fake_rw)
     admin, a, b, idle = asyncio.run(_seed())   # seeds one claude_tokens row of $3
     async def more():
         async with D.Session() as s:
@@ -329,7 +334,8 @@ def test_cost_breakdown(client):
     holder["u"] = admin
     d = c.get("/api/admin/costs?days=30").json()
     g = {x["id"]: x for x in d["groups"]}
-    assert d["usd"] == round(3 + 1 + 0.11 + 0.4 + 0.001, 2) and g["claude"]["usd"] == 4.0 and d["groups"][0]["id"] == "claude"
+    assert d["usd"] == round(3 + 1 + 0.11 + 0.4 + 0.001 + 0.5, 2) and g["claude"]["usd"] == 4.0
+    assert g["railway"]["usd"] == 0.5 and g["railway"]["items"][0]["unit"] == "vCPU·分" and d["railway"]["month_bill_usd"] == 20.0 and d["groups"][0]["id"] == "claude"
     assert {i["id"] for i in g["claude"]["items"]} == {"chat", "analyze"} and g["voice"]["items"][0]["units"] == 500
     assert g["stt"]["items"][0]["id"] == "voice_input" and g["music"]["items"][0]["unit"] == "秒"
     assert d["claude_tokens"]["in"] == 1000 and d["top_projects"][0]["name"] == "A1" and len(d["daily"]) == 30

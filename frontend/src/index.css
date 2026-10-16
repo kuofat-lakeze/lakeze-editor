@@ -1253,4 +1253,57 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 @keyframes pwHop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-10px); } }
 .pw-steps { list-style: none; margin: 6px 0; padding: 0; display: flex; gap: 6px; font-size: 12px; } .pw-steps li { padding: 4px 10px; border-radius: 999px; background: var(--panel2); color: var(--muted); font-weight: 700; }
 .pw-steps li.done { background: var(--teal-soft); color: #1F8A8E; } .pw-steps li.on { background: var(--brand-soft); color: var(--brand); animation: pulse 1.2s infinite; }
-.dz-ios { display: block; margin-top: 4px; font-size: 11.5px; color: var(--brand); font-weight: 600; }
+.dz-ios { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 7px 10px; border-radius: 10px; background: rgba(255,255,255,.75); font-size: 12px; line-height: 1.45; color: #4a3b2e; font-weight: 500; }
+.dz-ios b { color: var(--brand); font-weight: 800; }
+
+/* ---- 自家對話框（取代瀏覽器的 prompt / confirm，標題顯示品牌而不是網址） ---- */
+.dlg-scrim { position: fixed; inset: 0; z-index: 120; background: rgba(30,25,20,.38); display: flex; align-items: center; justify-content: center; padding: 16px; animation: dlgFade .15s ease-out; }
+.dlg { width: min(100%, 400px); background: var(--panel); border-radius: 18px; padding: 18px 18px 14px; box-shadow: 0 18px 48px rgba(0,0,0,.22); display: flex; flex-direction: column; gap: 12px; animation: dlgPop .18s cubic-bezier(.2,.9,.3,1.2); }
+.dlg-brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 15px; color: var(--brand); }
+.dlg-msg { font-size: 15px; line-height: 1.6; white-space: pre-line; }
+.dlg-in { width: 100%; font-size: 16px; padding: 11px 12px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--panel2); }
+.dlg-in:focus { outline: none; border-color: var(--brand); background: var(--panel); }
+.dlg-act { display: flex; justify-content: flex-end; gap: 8px; }
+.dlg-act .btn { min-width: 84px; justify-content: center; }
+.dlg-act .btn.danger { background: var(--err); color: #fff; border-color: transparent; }
+@keyframes dlgFade { from { opacity: 0 } }
+@keyframes dlgPop { from { opacity: 0; transform: translateY(8px) scale(.97) } }
+
+/* ---- 雲端 → 手機 下載動畫（iCloud／Google 相簿原檔要先下載） ---- */
+.cdl { position: relative; display: inline-block; width: 76px; height: 76px; flex: none; }
+.cdl.sm { width: 34px; height: 34px; }
+.cdl svg { width: 100%; height: 100%; overflow: visible; }
+.cdl-cloud { fill: #EAF4FB; stroke: #4fa3b8; stroke-width: 2.4; animation: cdlFloat 2.4s ease-in-out infinite; }
+.cdl-arrow { stroke: #4fa3b8; stroke-width: 2.6; animation: cdlArrow 1.2s ease-in-out infinite; }
+.cdl-phone { fill: #fff; stroke: #22262E; stroke-width: 2.4; }
+.cdl-notch { stroke: #22262E; stroke-width: 2; }
+.cdl-fill { fill: var(--brand); opacity: .9; transform-box: fill-box; transform-origin: bottom; animation: cdlFill 3s linear infinite; }
+.cdl i { position: absolute; left: 50%; top: 42%; width: 6%; height: 6%; min-width: 3px; min-height: 3px; margin-left: -3%; border-radius: 50%; background: #4fa3b8; animation: cdlDrop 1.2s ease-in infinite; opacity: 0; }
+.cdl i:nth-of-type(2) { animation-delay: .4s; } .cdl i:nth-of-type(3) { animation-delay: .8s; }
+.cdl.sm i { display: none; }
+@keyframes cdlFloat { 50% { transform: translateY(-2px); } }
+@keyframes cdlArrow { 0%,100% { transform: translateY(-1px); opacity: .6; } 50% { transform: translateY(3px); opacity: 1; } }
+@keyframes cdlDrop { 0% { opacity: 0; transform: translateY(0); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(14px); } }
+@keyframes cdlFill { 0% { transform: scaleY(.05); } 90%,100% { transform: scaleY(1); } }
+.pw-est { width: 100%; background: var(--panel2); border-radius: 12px; padding: 9px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.pw-est-row { display: flex; justify-content: space-between; gap: 8px; } .pw-est-row b { color: var(--brand); font-size: 15px; }
+.pw-est-bar { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.pw-est-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #4fa3b8, var(--brand)); transition: width 1s linear; }
+.pw-card p b { color: var(--text); }
+.uq-del { border: 0; background: transparent; color: var(--muted); width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; margin-left: 2px; }
+.uq-del:hover, .uq-del:active { background: #FDE8E8; color: var(--err); }
+.uq-row.del { opacity: .5; }
+.cg-rw { border-top: 1px dashed var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.cg-rw .muted.small { line-height: 1.6; margin-top: 2px; }
+.cg-rw-warn { background: #FFF4E5; color: #8A5300; border-radius: 8px; padding: 6px 9px; font-size: 12.5px; }
+/* ---- 免費方案：目前方案卡片、成品保留期限 ---- */
+.free-now { border: 2px solid var(--brand); background: linear-gradient(160deg, #FFF8F3, var(--panel) 60%); display: flex; flex-direction: column; gap: 10px; }
+.fn-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .fn-head b { font-size: 18px; }
+.fn-badge { background: var(--brand); color: #fff; font-size: 11.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; }
+.fn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.fn-list li { display: flex; gap: 8px; align-items: flex-start; line-height: 1.5; } .fn-list i { font-style: normal; width: 20px; flex: none; }
+.fn-cta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.smeter-ret { margin-top: 6px; font-size: 12px; color: #8A5300; background: #FFF4E5; border-radius: 8px; padding: 5px 9px; }
+.pill.exp { border: 0; cursor: pointer; background: #FFF4E5; color: #8A5300; font-weight: 700; }
+.pill.exp.soon { background: #FDE8E8; color: var(--err); }
+.cg-rw-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }

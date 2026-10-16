@@ -4,10 +4,27 @@ import { useEffect, useMemo, useState, type DragEvent } from 'react'
    per-file progress, overall ring + ETA, retry/remove. State lives in Chat (it owns the network). */
 export type Up = {
   id: string; file: File; name: string; size: number; loaded: number
-  status: 'wait' | 'up' | 'ok' | 'err'; error?: string; rate?: number   // rate: bytes/s (smoothed)
+  status: 'wait' | 'up' | 'ok' | 'err' | 'del'; error?: string; rate?: number   // rate: bytes/s (smoothed); del = being deleted
+  server?: string   // file name on the server once uploaded
 }
 export const MAX_FILES = 30
-const IOS_DZ = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent)
+const MOBILE_DZ = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/.test(navigator.userAgent)
+/** Videos kept in iCloud / Google Photos are downloaded to the phone before the browser gets them: ~15 s each. */
+export const CLOUD_SECS_PER_VIDEO = 15
+
+/* A cloud dropping a stream of dots into a phone: "your phone is fetching the originals from the cloud". */
+export const CloudDl = ({ small = false }: { small?: boolean }) => (
+  <span className={`cdl ${small ? 'sm' : ''}`} aria-hidden="true">
+    <svg viewBox="0 0 64 64" fill="none" strokeLinecap="round" strokeLinejoin="round">
+      <path className="cdl-cloud" d="M19 27a10 10 0 0 1 1.2-19.9A13 13 0 0 1 45 9.5 9 9 0 0 1 46 27z" />
+      <path className="cdl-arrow" d="M32 14v9m-4-4 4 4 4-4" />
+      <rect className="cdl-phone" x="21" y="36" width="22" height="26" rx="4" />
+      <path className="cdl-notch" d="M29 39h6" />
+      <rect className="cdl-fill" x="24" y="43" width="16" height="15" rx="1.5" />
+    </svg>
+    <i /><i /><i />
+  </span>
+)
 export const SUGGESTED_FILES = 6
 export const MAX_FILE_BYTES = 1024 * 2 ** 20  // 1 GB per file (backend MAX_UPLOAD_MB defaults to the same)
 export const fmtMB = (b: number) => b >= 2 ** 30 ? `${(b / 2 ** 30).toFixed(2)} GB` : `${(b / 2 ** 20).toFixed(b > 100 * 2 ** 20 ? 0 : 1)} MB`
@@ -36,7 +53,7 @@ export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false
       <span className="dz-text">
         <b>{disabled ? '上傳中…' : count ? `再加素材（已 ${count} 個）` : drag ? '放開就開始上傳' : '從手機選影片或照片'}</b>
         <span className="muted small">影片、照片都可以 · 可以多選，也可以只給一支長影片 · 每個 1 GB 內、最多 {MAX_FILES} 個</span>
-        {IOS_DZ && !disabled && !count && <span className="dz-ios">選完按「加入」後，iPhone 要先整理影片，畫面會停一下，這是正常的</span>}
+        {MOBILE_DZ && !disabled && !count && <span className="dz-ios"><CloudDl small /><span>影片存在 <b>iCloud</b> 或 <b>Google 相簿</b>？選完後手機會先從雲端下載回來，<b>每支約 {CLOUD_SECS_PER_VIDEO} 秒</b>，請等它跑完</span></span>}
       </span>
       <span className="dz-cta">選擇</span>
       <input type="file" multiple accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp,.heic" hidden disabled={disabled} onClick={onPick}
@@ -44,6 +61,12 @@ export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false
     </label>
   )
 }
+
+const TrashIcon = () => (
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+  </svg>
+)
 
 const isImage = (f: File) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)
 const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -82,8 +105,8 @@ function Thumb({ file }: { file: File }) {
   )
 }
 
-export function UploadQueue({ ups, onRetry, onRemove, onClose, hint }:
-  { ups: Up[]; onRetry: (id: string) => void; onRemove: (id: string) => void; onClose: () => void; hint?: string }) {
+export function UploadQueue({ ups, onRetry, onRemove, onDelete, onClose, hint }:
+  { ups: Up[]; onRetry: (id: string) => void; onRemove: (id: string) => void; onDelete?: (id: string) => void; onClose: () => void; hint?: string }) {
   const total = ups.reduce((a, u) => a + u.size, 0)
   const loaded = ups.reduce((a, u) => a + (u.status === 'ok' ? u.size : u.loaded), 0)
   const active = ups.filter(u => u.status === 'up' || u.status === 'wait')
@@ -102,7 +125,7 @@ export function UploadQueue({ ups, onRetry, onRemove, onClose, hint }:
           {busy ? <i>{Math.round(pct)}</i> : failed ? <i className="x">!</i> : <i className="ok">✓</i>}
         </span>
         <span className="uq-title">
-          <b>{busy ? `上傳中 ${ok}/${ups.length}` : failed ? `${ok} 個完成，${failed} 個失敗` : `${ok} 個素材上傳完成`}</b>
+          <b>{!busy && !ups.length ? '素材都刪掉了' : busy ? `上傳中 ${ok}/${ups.length}` : failed ? `${ok} 個完成，${failed} 個失敗` : `${ok} 個素材上傳完成`}</b>
           <span className="muted small">
             {busy ? <>{fmtMB(loaded)} / {fmtMB(total)}{rate > 0 && <> · {fmtMB(rate)}/s</>}{eta !== null && <> · 約剩 {fmtEta(eta)}</>}</> : <>共 {fmtMB(total)}</>}
             {busy && hint ? ` · ${hint}` : ''}
@@ -122,12 +145,15 @@ export function UploadQueue({ ups, onRetry, onRemove, onClose, hint }:
                   {u.status === 'wait' && <>排隊中 · {fmtMB(u.size)}</>}
                   {u.status === 'up' && <>{fmtMB(u.loaded)} / {fmtMB(u.size)} · {Math.round(p)}%</>}
                   {u.status === 'ok' && <>完成 · {fmtMB(u.size)}</>}
+                  {u.status === 'del' && <>刪除中…</>}
                   {u.status === 'err' && <span className="uq-err">{u.error || '失敗'}</span>}
                 </div>
                 <div className="uq-bar"><div style={{ width: `${u.status === 'ok' ? 100 : p}%` }} /></div>
               </div>
               <div className="uq-act">
                 {u.status === 'ok' && <span className="uq-check" aria-label="完成">✓</span>}
+                {u.status === 'ok' && onDelete && !busy && <button type="button" className="uq-del" title="刪掉這個素材" aria-label={`刪掉 ${u.name}`} onClick={() => onDelete(u.id)}><TrashIcon /></button>}
+                {u.status === 'del' && <span className="spinner" />}
                 {u.status === 'err' && <><a className="small" onClick={() => onRetry(u.id)}>重試</a><a className="small muted" onClick={() => onRemove(u.id)}>移除</a></>}
                 {u.status === 'wait' && <a className="small muted" onClick={() => onRemove(u.id)}>移除</a>}
               </div>

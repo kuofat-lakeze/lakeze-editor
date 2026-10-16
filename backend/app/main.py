@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import re
+import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
 from .oauth import router as oauth_router
 from .pipeline import footage
 from .db import (GB, Asset, CreditTx, Message, Order, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict,
-                 backfill_sizes, backfill_versions, balance, has_paid, init_db, storage_quota_bytes, storage_state, storage_used)
+                 backfill_sizes, backfill_versions, balance, deliverable_expiry, has_paid, init_db, storage_quota_bytes, storage_state, storage_used)
 from .pipeline import eleven, ff
 from .pipeline.fonts import ensure_fonts
 from .storage import project_dir, safe_join
@@ -83,14 +84,50 @@ async def renew_storage_plans(now: datetime | None = None) -> dict:
             uu = await s.get(User, u.id)
             uu.storage_renews_at = nxt
             if nxt is None:
-                uu.storage_plan = "free"
+                uu.storage_plan = "free"; uu.storage_free_since = now
             await s.commit()
     return {"renewed": renewed, "lapsed": lapsed}
+
+
+async def purge_free_deliverables(now: datetime | None = None) -> dict:
+    """Free plan: deliverables live FREE_RETENTION_DAYS. Remove the expired ones (files + rows),
+    revoke share links to the versions that are gone, and unset a final version that disappeared."""
+    now = now or datetime.now(timezone.utc)
+    removed, freed = 0, 0
+    async with Session() as s:
+        rows = (await s.execute(select(Asset, Project, User).join(Project, Project.id == Asset.project_id)
+                                .join(User, User.id == Project.user_id).where(Asset.version.is_not(None)))).all()
+        gone: dict[str, set[int]] = {}
+        for a, p, u in rows:
+            exp = deliverable_expiry(u, a.created_at)
+            if exp is None or exp > now:
+                continue
+            f = project_dir(p.id) / a.rel_path
+            if f.exists():
+                freed += f.stat().st_size
+                f.unlink()
+            await s.delete(a)
+            removed += 1
+            gone.setdefault(p.id, set()).add(a.version)
+        left = {(pid, v) for a, p, u in rows if (pid := p.id) in gone and (v := a.version) in gone[pid]
+                and (exp := deliverable_expiry(u, a.created_at)) is not None and exp > now}
+        for pid, vs in gone.items():
+            vs = {v for v in vs if (pid, v) not in left}   # a version is gone only when none of its files are left
+            for sh in (await s.execute(select(Share).where(Share.project_id == pid, Share.version.in_(vs)))).scalars().all():
+                sh.revoked = True
+            p = await s.get(Project, pid)
+            if p.final_version in vs:
+                p.final_version = None
+        await s.commit()
+    return {"removed": removed, "freed_bytes": freed}
 
 
 async def _storage_loop():
     while True:
         try:
+            r = await purge_free_deliverables()
+            if r["removed"]:
+                log.info("free retention: removed %d deliverables (%d MB)", r["removed"], r["freed_bytes"] >> 20)
             r = await renew_storage_plans()
             if r["renewed"] or r["lapsed"]:
                 log.info("storage renewals: %s", r)
@@ -370,6 +407,7 @@ async def cancel_subscription(user_id: str) -> dict:
         u.subscription = ""; u.sub_period_start = None; u.sub_renews_at = None
         if u.storage_renews_at is None:   # storage came with the subscription
             u.storage_plan = "free"
+        u.storage_free_since = datetime.now(timezone.utc)   # free retention starts counting now, not from creation
         await s.commit()
     return {"expired": expired}
 
@@ -435,6 +473,8 @@ async def set_storage_plan(body: PlanBody, user: User = CurrentUser):
         u = await s.get(User, user.id)
         u.storage_plan = body.plan
         u.storage_renews_at = (now + timedelta(days=pricing.STORAGE_PERIOD_DAYS)) if plan["points"] else None
+        if not plan["points"]:
+            u.storage_free_since = now
         await s.commit()
     return {"ok": True, "storage": await storage_state(user.id), "balance": await balance(user.id)}
 
@@ -1177,6 +1217,33 @@ async def upload_complete(project_id: str, upload_id: str, user: User = CurrentU
     return {"saved": [{"name": dest.name, "mb": round(st["size"] / 2**20, 1)}]}
 
 
+def _forget_footage_index(root: Path) -> None:
+    """Clip numbers come from the sorted file list, so removing a file renumbers everything after it:
+    drop the index, thumbnails, contact sheets and the 先解析 result; the next probe rebuilds them."""
+    sheets = root / "sheets"
+    for f in [sheets / "index.tsv", sheets / "analysis.json", *sheets.glob("sheet*.jpg")]:
+        f.unlink(missing_ok=True)
+    shutil.rmtree(sheets / "thumbs", ignore_errors=True)
+
+
+@app.delete("/api/projects/{project_id}/uploads/{name}")
+async def delete_upload(project_id: str, name: str, user: User = CurrentUser):
+    """Remove one uploaded clip or photo (the user changed their mind after it finished uploading)."""
+    await _own(project_id, user)
+    if project_id in _turns and not _turns[project_id]["task"].done():
+        raise HTTPException(409, "剪輯師正在工作，等這一輪結束再刪素材")
+    root = project_dir(project_id)
+    if name != _SAFE.sub("_", Path(name).name) or name.startswith("."):
+        raise HTTPException(400, "bad name")
+    f = safe_join(root, f"raw/uploads/{name}")
+    if not f.is_file():
+        raise HTTPException(404, "找不到這個素材，可能已經刪掉了")
+    f.unlink()
+    (root / "raw" / ".stills" / f"{f.stem}.mp4").unlink(missing_ok=True)   # a photo's rendered clip
+    _forget_footage_index(root)
+    return {"ok": True, "has_footage": _has_footage(root)}
+
+
 # ---- chat ----------------------------------------------------------------------------
 class Turn(BaseModel):
     text: str
@@ -1265,13 +1332,17 @@ def _sse(ev: dict) -> str:
 
 
 # ---- deliverables & client share links ------------------------------------------------------
-def _versions(assets: list[Asset]) -> list[dict]:
-    """Group deliverable assets (exports + covers) by version, newest first."""
+def _versions(assets: list[Asset], owner: User | None = None) -> list[dict]:
+    """Group deliverable assets (exports + covers) by version, newest first. On the free plan each
+    version carries `expires_at`: when its first file is removed by the free retention."""
     by: dict[int, dict] = {}
     for a in assets:
         if a.version is None:
             continue
-        v = by.setdefault(a.version, {"version": a.version, "created_at": a.created_at.isoformat(), "videos": [], "covers": []})
+        v = by.setdefault(a.version, {"version": a.version, "created_at": a.created_at.isoformat(), "videos": [], "covers": [], "expires_at": None})
+        exp = deliverable_expiry(owner, a.created_at)
+        if exp is not None and (v["expires_at"] is None or exp.isoformat() < v["expires_at"]):
+            v["expires_at"] = exp.isoformat()
         d = asset_dict(a)
         (v["covers"] if a.kind == "image" else v["videos"]).append(d)
         v["created_at"] = max(v["created_at"], a.created_at.isoformat())
@@ -1295,7 +1366,7 @@ async def deliverables(project_id: str, user: User = CurrentUser):
         assets = (await s.execute(select(Asset).where(Asset.project_id == p.id).order_by(Asset.created_at))).scalars().all()
         shares = (await s.execute(select(Share).where(Share.project_id == p.id).order_by(Share.created_at.desc()))).scalars().all()
     return {"project": {"id": p.id, "name": p.name, "final_version": p.final_version, "exports": p.exports},
-            "versions": _versions(assets), "shares": [_share_dict(x) for x in shares]}
+            "versions": _versions(assets, user), "shares": [_share_dict(x) for x in shares]}
 
 
 class FinalBody(BaseModel):

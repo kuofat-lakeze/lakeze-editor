@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api, type StorageInfo, type StorageState } from './api'
+import { ask } from './Dialog'
 
 export const fmtBytes = (b: number) => {
   if (b >= 2 ** 30) return `${(b / 2 ** 30).toFixed(b >= 10 * 2 ** 30 ? 0 : 1)} GB`
   if (b >= 2 ** 20) return `${Math.round(b / 2 ** 20)} MB`
   return `${Math.max(0, Math.round(b / 1024))} KB`
 }
-const gb = (b: number) => Math.round(b / 2 ** 30)
+const gb = (b: number) => b < 2 ** 30 ? `${Math.round(b / 2 ** 20)} MB` : `${Math.round(b / 2 ** 30)} GB`
 const PER_VIDEO = 110 * 2 ** 20   // a 60 s 1080p vertical export with its master and preview ≈ 110 MB
 
 /* Thin usage bar: used in the 成品 tab header, the sidebar and the plans page. */
@@ -17,10 +18,11 @@ export function StorageMeter({ s, onManage, compact = false }: { s: StorageState
     <div className={`smeter ${tone} ${compact ? 'compact' : ''}`}>
       <div className="smeter-row">
         <span className="smeter-label">成品空間</span>
-        <span className="smeter-num"><b>{fmtBytes(s.used_bytes)}</b> / {gb(s.quota_bytes)} GB</span>
+        <span className="smeter-num"><b>{fmtBytes(s.used_bytes)}</b> / {gb(s.quota_bytes)}</span>
         {onManage && <a className="small" onClick={onManage}>{s.over ? '空間已滿，管理' : '管理'}</a>}
       </div>
       <div className="smeter-bar"><div style={{ width: `${pct}%` }} /></div>
+      {s.retention_days ? <div className="smeter-ret">⏳ 免費空間的成品保留 {s.retention_days} 天後自動移除，加購空間就一直保存</div> : null}
       {!compact && s.over && <div className="smeter-note">已滿：新的影片與封面輸出會先暫停。刪掉舊版本或升級方案就能繼續，已有的成品照常可看可下載。</div>}
     </div>
   )
@@ -39,8 +41,8 @@ export function StorageInline({ subscribed, onChanged, onOpenProject }: { subscr
     const p = s.plans.find(x => x.id === id)!
     const msg = p.points
       ? `成品空間改成 ${p.label}：現在扣 ${p.points} 點，之後每 ${s.period_days} 天自動續扣 ${p.points} 點（NT$${p.twd}）。確定？`
-      : `降回免費 2 GB？這個月已付的不退，檔案都會留著；若用量超過 2 GB，新的輸出會暫停直到清出空間。`
-    if (!confirm(msg)) return
+      : `降回免費 500 MB？這個月已付的不退。降回後成品只保留 7 天（從今天算起），之後自動移除，請先下載要留的；若用量超過 500 MB，新的輸出會暫停直到清出空間。`
+    if (!await ask.confirm(msg)) return
     setBusy(id); setErr('')
     try { await api.setStoragePlan(id); await load(); onChanged?.() } catch (e) { setErr((e as Error).message) } finally { setBusy(null) }
   }
@@ -57,9 +59,9 @@ export function StorageInline({ subscribed, onChanged, onOpenProject }: { subscr
           const bundled = subscribed && cur && !s.renews_at
           return (
             <div key={p.id} className={`splan ${cur ? 'cur' : ''}`}>
-              <div className="splan-gb">{p.gb}<small>GB</small></div>
+              <div className="splan-gb">{p.gb < 1 ? Math.round(p.gb * 1000) : p.gb}<small>{p.gb < 1 ? 'MB' : 'GB'}</small></div>
               <div className="splan-price">{p.points ? <>{p.points} 點<span className="muted small"> / {s.period_days} 天</span></> : '免費'}</div>
-              <div className="muted small">約 {Math.floor(p.gb * 2 ** 30 / PER_VIDEO)} 支影片</div>
+              <div className="muted small">約 {Math.floor(p.gb * 2 ** 30 / PER_VIDEO)} 支影片{p.points ? ' · 一直保存' : ' · 保留 7 天'}</div>
               {cur ? <span className="pill">{bundled ? '訂閱內含' : '目前'}</span>
                 : <button className="btn small" disabled={busy !== null} onClick={() => choose(p.id)}>{busy === p.id ? '處理中…' : p.points > (s.plans.find(x => x.id === s.plan)?.points ?? 0) ? '升級' : '改用'}</button>}
             </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type Asset, type DeliverablesData, type ShareLink, type StorageState } from './api'
 import { StorageMeter, fmtBytes } from './Storage'
+import { ask } from './Dialog'
 import { FbIcon, LineIcon, promoText, shareToFacebook, shareToLine } from './share'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
@@ -15,6 +16,14 @@ const NOTE_PRESETS = [
 ]
 const sizeOf = (v: { videos: Asset[]; covers: Asset[] }) =>
   [...v.videos, ...v.covers].reduce((a, x) => a + ((x.meta?.size_mb as number | undefined) ?? 0) * 2 ** 20, 0)
+
+/* Free plan: each version shows how long it has left before the 7-day retention removes it. */
+function ExpiryPill({ at, onKeep }: { at: string; onKeep?: () => void }) {
+  const ms = Date.parse(at) - Date.now()
+  const days = Math.ceil(ms / 86400000)
+  const txt = ms <= 0 ? '即將移除' : days <= 1 ? `${Math.max(1, Math.ceil(ms / 3600000))} 小時後移除` : `${days} 天後移除`
+  return <button type="button" className={`pill exp ${days <= 2 ? 'soon' : ''}`} onClick={onKeep} title="免費空間的成品保留 7 天；加購空間就一直保存">⏳ {txt}</button>
+}
 
 export function Deliverables({ projectId, onChanged, onStorage }: { projectId: string; onChanged?: () => void; onStorage?: () => void }) {
   const [data, setData] = useState<DeliverablesData | null>(null)
@@ -32,9 +41,9 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
   const setFinal = async (v: number | null) => { await api.setFinal(projectId, v); await load(); onChanged?.() }
   const del = async (v: number) => {
     const mb = sizeOf(versions.find(x => x.version === v)!)
-    if (!confirm(`刪除 v${v}（影片與封面，約 ${fmtBytes(mb)}）？刪了就拿不回來，指向這一版的朋友連結也會失效。`)) return
+    if (!await ask.confirm(`刪除 v${v}（影片與封面，約 ${fmtBytes(mb)}）？刪了就拿不回來，指向這一版的朋友連結也會失效。`, { ok: '刪除', danger: true })) return
     setBusy(v)
-    try { await api.deleteVersion(projectId, v); await load(); onChanged?.() } catch (e) { alert((e as Error).message) } finally { setBusy(null) }
+    try { await api.deleteVersion(projectId, v); await load(); onChanged?.() } catch (e) { ask.alert((e as Error).message) } finally { setBusy(null) }
   }
   const copy = async (s: ShareLink) => {
     const url = `${location.origin}${s.url}`
@@ -63,6 +72,7 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
                 {isFinal && <span className="pill final">最終版</span>}
                 {!isFinal && project.final_version == null && v === versions[0] && <span className="pill">最新</span>}
                 <span className="muted small">{fmtDate(v.created_at)}{sizeOf(v) > 0 && ` · ${fmtBytes(sizeOf(v))}`}</span>
+                {v.expires_at && <ExpiryPill at={v.expires_at} onKeep={onStorage} />}
               </div>
               <div className="ver-actions">
                 {isFinal
@@ -116,7 +126,7 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
               </div>
               <button className="btn small" onClick={() => copy(s)}>{copied === s.id ? '已複製' : '複製'}</button>
               <a className="btn small" href={s.url} target="_blank" rel="noreferrer">開啟</a>
-              <button className="btn small ghost" onClick={async () => { if (confirm('停用這條連結？朋友將無法再打開。')) { await api.revokeShare(projectId, s.id); load() } }}>停用</button>
+              <button className="btn small ghost" onClick={async () => { if (await ask.confirm('停用這條連結？朋友將無法再打開。', { ok: '停用', danger: true })) { await api.revokeShare(projectId, s.id); load() } }}>停用</button>
             </div>
           ))}
         </section>

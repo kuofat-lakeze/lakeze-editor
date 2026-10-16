@@ -9,6 +9,7 @@ export type CreditsTab = 'overview' | 'projects' | 'ledger' | 'plans' | 'buy' | 
 const TABS: { id: CreditsTab; label: string }[] = [
   { id: 'plans', label: '方案' }, { id: 'buy', label: '儲值' }, { id: 'overview', label: '總覽' }, { id: 'projects', label: '依專案' }, { id: 'ledger', label: '明細' }]
 const twd = (n: number) => `NT$${n.toLocaleString()}`
+export const fmtGB = (gb: number) => gb < 1 ? `${Math.round(gb * 1000)} MB` : `${gb} GB`
 
 const dayLabel = (iso: string) => {
   const d = new Date(iso); const t = new Date(); const y = new Date(); y.setDate(t.getDate() - 1)
@@ -249,11 +250,25 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
 
         {tab === 'plans' && (
           <>
-            <div className="free-line">
-              <span className="free-dot">免費</span>
-              <span><b>註冊就送 {p.signup_points} 點</b>：約一支影片含封面與 2 輪修改（平均 2 輪就定稿）。全部功能都能用，連自己的聲音都能試 {p.trial_voice_seconds} 秒。不用綁卡。</span>
-              {me?.tier === 'free' && <span className="pill">已入帳</span>}
-            </div>
+            {me?.tier === 'free' ? (
+              <section className="card free-now">
+                <div className="fn-head"><span className="fn-badge">目前方案</span><b>你現在是免費方案</b><span className="muted small">{p.tiers.free.label}</span></div>
+                <ul className="fn-list">
+                  <li><i>🎁</i><span>註冊送的 <b>{p.signup_points} 點</b>已入帳，夠做一支影片含封面與 2 輪修改</span></li>
+                  <li><i>📦</i><span>成品空間 <b>{fmtGB(p.free_storage_gb)}</b></span></li>
+                  <li><i>⏳</i><span>成品保留 <b>{p.free_retention_days} 天</b>，之後自動移除，記得先下載</span></li>
+                </ul>
+                <div className="fn-cta">
+                  <button className="btn primary" onClick={() => document.getElementById('storage-sec')?.scrollIntoView({ behavior: 'smooth' })}>加購空間，成品一直保存</button>
+                  <span className="muted small">不用訂閱，單純用點數買空間就行</span>
+                </div>
+              </section>
+            ) : (
+              <div className="free-line">
+                <span className="free-dot">免費</span>
+                <span><b>註冊就送 {p.signup_points} 點</b>，成品空間 {fmtGB(p.free_storage_gb)}、保留 {p.free_retention_days} 天。</span>
+              </div>
+            )}
 
             <section className="plans-head">
               <b>單次購買</b>
@@ -268,7 +283,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                 <div className="plan-sub">約 {twd(single)} 一支<span className="muted"> · 第一版 {FIRST} 點，修改一輪 {REV} 點</span></div>
                 <ul className="plan-list">
                   <li>免費版的全部功能，自己的聲音不限秒數</li>
-                  <li>成品空間 {p.free_storage_gb} GB，可加購</li>
+                  <li>成品空間 {fmtGB(p.free_storage_gb)}（保留 {p.free_retention_days} 天），加購空間就一直保存</li>
                 </ul>
                 <button className="btn block" onClick={() => setTab('buy')}>儲值點數</button>
               </div>
@@ -302,7 +317,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
               <StorageInline subscribed={!!sub} onChanged={reload} onOpenProject={onOpenProject} />
             </section>
             <section className="howto muted small">
-              訂閱立即生效，每 30 天續約；訂閱附的點數當期有效，不夠再儲值（儲值點數不過期）。空間加購從點數扣，每 30 天續扣；點數不夠時降回 2 GB，檔案保留、可看可下載，只是暫停新的輸出。
+              訂閱立即生效，每 30 天續約；訂閱附的點數當期有效，不夠再儲值（儲值點數不過期）。免費空間 {fmtGB(p.free_storage_gb)}，成品保留 {p.free_retention_days} 天後自動移除；加購空間（從點數扣，每 30 天續扣）就一直保存。點數不夠續扣時降回免費空間，從那天起再保留 {p.free_retention_days} 天。
             </section>
           </>
         )}

@@ -51,7 +51,7 @@ def test_quota_and_state():
         u = await _mk_user()
         await _mk_deliverable(u.id, 1000)
         st = await D.storage_state(u.id)
-        assert st["used_bytes"] == 1000 and st["quota_bytes"] == 2 * D.GB and not st["over"]
+        assert st["used_bytes"] == 1000 and st["quota_bytes"] == 500 * 2**20 and st["retention_days"] == 7 and not st["over"]
         async with D.Session() as s:
             uu = await s.get(D.User, u.id); uu.storage_quota_gb = 0; uu.storage_plan = "s20"; await s.commit()
         assert (await D.storage_state(u.id))["quota_bytes"] == 20 * D.GB
@@ -97,7 +97,7 @@ def test_plan_switch_and_delete_version(client):
     pid = asyncio.run(_mk_deliverable(u.id, 5000))
     s = c.get("/api/storage").json()
     assert s["used_bytes"] == 5000 and s["projects"][0]["id"] == pid and [p["id"] for p in s["plans"]] == ["free", "s20", "s100"]
-    assert [p["gb"] for p in s["plans"]] == [2, 20, 100]
+    assert [p["gb"] for p in s["plans"]] == [0.5, 20, 100]
     # final version is protected
     asyncio.run(_set_final(pid, 1))
     assert c.delete(f"/api/projects/{pid}/versions/1").status_code == 409
@@ -250,3 +250,35 @@ def test_export_blocked_when_over_quota(monkeypatch):
     res = asyncio.run(tr._run_tool(NS(name="export_video", input={}, id="t1")))
     assert res["is_error"] and "成品空間已滿" in res["content"][0]["text"]
     assert events[1]["type"] == "need_storage" and events[1]["over"]
+
+
+def test_free_plan_removes_deliverables_after_7_days():
+    async def go():
+        free = await _mk_user("free@x.y")
+        paid = await _mk_user("paid@x.y", plan="s20")
+        old = datetime.now(timezone.utc) - timedelta(days=8)
+        pf = await _mk_deliverable(free.id, 100)
+        pp = await _mk_deliverable(paid.id, 100)
+        pn = await _mk_deliverable(free.id, 100, version=2)   # recent: stays
+        async with D.Session() as s:
+            for a in (await s.execute(D.select(D.Asset).where(D.Asset.project_id.in_([pf, pp])))).scalars():
+                a.created_at = old
+            p = await s.get(D.Project, pf); p.final_version = 1
+            s.add(D.Share(token="tok1", project_id=pf, version=1))
+            await s.commit()
+        r = await M.purge_free_deliverables()
+        assert r == {"removed": 1, "freed_bytes": 100}
+        async with D.Session() as s:
+            left = {a.project_id for a in (await s.execute(D.select(D.Asset))).scalars()}
+            assert left == {pp, pn}                       # paid storage keeps old files; recent free files stay
+            assert (await s.get(D.Project, pf)).final_version is None
+            assert (await s.execute(D.select(D.Share).where(D.Share.token == "tok1"))).scalar_one().revoked
+        # dropping from paid to free starts the 7 days from that moment, not from when the file was made
+        async with D.Session() as s:
+            u = await s.get(D.User, paid.id); u.storage_plan = "free"; u.storage_free_since = datetime.now(timezone.utc); await s.commit()
+        assert (await M.purge_free_deliverables())["removed"] == 0
+        async with D.Session() as s:
+            u = await s.get(D.User, paid.id); a = (await s.execute(D.select(D.Asset).where(D.Asset.project_id == pp))).scalar_one()
+            exp = D.deliverable_expiry(u, a.created_at)
+            assert timedelta(days=6) < exp - datetime.now(timezone.utc) <= timedelta(days=7)
+    asyncio.run(go())
