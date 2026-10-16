@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { api, type Asset, type Msg, type ProjectDetail, type Voice } from './api'
+import { api, type Asset, type Me, type Msg, type ProjectDetail, type Voice } from './api'
 import { Deliverables } from './Deliverables'
+import { VoiceCloneDialog } from './VoiceClone'
 import { DropZone, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
 import { fmtBytes } from './Storage'
 
@@ -71,8 +72,8 @@ const TOOL_LABEL: Record<string, string> = {
   render_captions: '燒字幕', export_video: '輸出成品', make_cover: '做封面', revision_turn: '修改回合',
 }
 
-export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, onProjectsChanged }:
-  { projectId: string; name?: string; onUsage: () => void; onTopUp: () => void; onCredits?: () => void; onStorage?: () => void; onProjectsChanged?: () => void }) {
+export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, onPlans, onProjectsChanged }:
+  { projectId: string; name?: string; onUsage: () => void; onTopUp: () => void; onCredits?: () => void; onStorage?: () => void; onPlans?: () => void; onProjectsChanged?: () => void }) {
   const [tab, setTab] = useState<'chat' | 'files'>('chat')
   const [proj, setProj] = useState<ProjectDetail | null>(null)
   const [live, setLive] = useState<Live>(emptyLive())
@@ -89,6 +90,8 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [link, setLink] = useState('')
   const [voices, setVoices] = useState<Voice[]>([])
   const [voice, setVoice] = useState<string | null>(null)   // voice_id, NO_VOICE, or null = not loaded yet
+  const [me, setMe] = useState<Me | null>(null)
+  const [cloning, setCloning] = useState(false)
   const [playing, setPlaying] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const uploading = uploads.some(u => u.status === 'wait' || u.status === 'up')
@@ -128,7 +131,13 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   useEffect(() => {
     if (!proj || proj.messages.length) return
     api.voices().then(vs => { setVoices(vs); setVoice(v => v ?? vs[0]?.voice_id ?? NO_VOICE) }).catch(() => setVoice(NO_VOICE))
+    api.me().then(setMe).catch(() => {})
   }, [proj?.id, proj?.messages.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  const onCloned = (v: Voice) => {
+    setCloning(false)
+    setVoices(vs => [v, ...vs.filter(x => !x.custom)]); setVoice(v.voice_id)
+    api.me().then(setMe).catch(() => {})
+  }
   const preview = (v: Voice) => {
     if (!v.preview_url) return
     if (playing === v.voice_id) { audioRef.current?.pause(); setPlaying(null); return }
@@ -333,12 +342,22 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                 <div className="muted small" style={{ marginTop: 12 }}>旁白聲音</div>
                 <div className="voice-row">
                   {voices.map(v => (
-                    <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''}`} onClick={() => setVoice(v.voice_id)}>
-                      <div className="voice-name">{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
+                    <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''} ${v.custom ? 'mine' : ''}`} onClick={() => setVoice(v.voice_id)}>
+                      <div className="voice-name">{v.custom && <span className="mine-tag">我的聲音</span>}{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
                       {v.description && <div className="muted small">{v.description}</div>}
                       {v.preview_url && <a className="small" onClick={e => { e.stopPropagation(); preview(v) }}>{playing === v.voice_id ? '■ 停止' : '▶ 試聽'}</a>}
+                      {v.custom && <a className="small" onClick={e => { e.stopPropagation(); setCloning(true) }}>重新錄</a>}
                     </div>
                   ))}
+                  {me && !voices.some(v => v.custom) && (me.can_clone_voice
+                    ? <div className="voice add" onClick={() => setCloning(true)}>
+                        <div className="voice-name">＋ 用自己的聲音</div>
+                        <div className="muted small">錄 30 秒，旁白就是你的聲音</div>
+                      </div>
+                    : <div className="voice locked" onClick={onPlans}>
+                        <div className="voice-name">用自己的聲音<span className="lock-tag">漫遊起</span></div>
+                        <div className="muted small">訂閱後錄 30 秒就能用 · 看方案</div>
+                      </div>)}
                   <div className={`voice ${voice === NO_VOICE ? 'sel' : ''}`} onClick={() => setVoice(NO_VOICE)}>
                     <div className="voice-name">不要配音</div>
                     <div className="muted small">只要配樂＋字幕</div>
@@ -379,14 +398,14 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
             {live.tools.length > 0 && (
               <ol className="steps">
                 {live.tools.map((t, i) => (
-                  <li key={i} className={`step ${t.status}`}>
+                  <li key={i} className={`sx ${t.status}`}>
                     <ToolIcon name={t.name} />
-                    <span className="step-label">{TOOL_LABEL[t.name] ?? t.name}</span>
-                    <span className="step-meta">
+                    <span className="sx-label">{TOOL_LABEL[t.name] ?? t.name}</span>
+                    <span className="sx-meta">
                       {t.charged ? <span className="charge">−{t.charged} 點</span> : null}
                       {t.status === 'run' ? (t.startedAt ? fmtDur(now - t.startedAt) : '') : t.status === 'err' ? '失敗' : t.seconds !== undefined ? `${t.seconds}s` : ''}
                     </span>
-                    {t.status === 'ok' && shortSummary(t.summary) && <span className="step-sum">{shortSummary(t.summary)}</span>}
+                    {t.status === 'ok' && shortSummary(t.summary) && <span className="sx-sum">{shortSummary(t.summary)}</span>}
                   </li>
                 ))}
               </ol>
@@ -451,6 +470,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         {err && <div className="error">{err}</div>}
         <div ref={bottom} />
       </div>
+      {cloning && <VoiceCloneDialog current={voices.find(v => v.custom)} onClose={() => setCloning(false)} onDone={onCloned} />}
       {unseen && <a className="jump" onClick={jump}>↓ 有新內容</a>}
       {stage !== 'start' && CHIPS[stage].length > 0 && !uploading && (
         <div className="chips">
@@ -488,7 +508,7 @@ function Bubble({ m, assets, onOpenFiles }: { m: Msg; assets: Asset[]; onOpenFil
         : (
           <details key={i} className="steps-done">
             <summary><span className="chev" />做了 {g.names.length} 步<span className="muted">· {[...new Set(g.names.map(n => TOOL_LABEL[n] ?? n))].slice(0, 4).join(' → ')}{g.names.length > 4 ? ' …' : ''}</span></summary>
-            <ol className="steps">{g.names.map((n, k) => <li key={k} className="step ok"><ToolIcon name={n} /><span className="step-label">{TOOL_LABEL[n] ?? n}</span><span className="step-meta">完成</span></li>)}</ol>
+            <ol className="steps">{g.names.map((n, k) => <li key={k} className="sx ok"><ToolIcon name={n} /><span className="sx-label">{TOOL_LABEL[n] ?? n}</span><span className="sx-meta">完成</span></li>)}</ol>
           </details>
         ))}
       {assets.map(a => <AssetCard key={a.id} a={a} onOpenFiles={onOpenFiles} />)}

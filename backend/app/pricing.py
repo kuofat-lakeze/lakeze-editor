@@ -78,11 +78,10 @@ PACKS: dict[str, dict] = {
 # renewed every 30 days from points; priced against Railway Bucket cost (NT$0.48 / GB-month).
 STORAGE_GB_COST_TWD = 0.48
 FREE_STORAGE_GB = 2
-STORAGE_PLANS: dict[str, dict] = {
-    "free": {"gb": 2, "points": 0, "label": "免費", "extra": 0},
-    "s20": {"gb": 22, "points": 10, "label": "加購 20 GB", "extra": 20},
-    "s100": {"gb": 102, "points": 30, "label": "加購 100 GB", "extra": 100},
-    "s500": {"gb": 502, "points": 100, "label": "加購 500 GB", "extra": 500},
+STORAGE_PLANS: dict[str, dict] = {   # gb = total quota
+    "free": {"gb": 2, "points": 0, "label": "2 GB", "extra": 0},
+    "s20": {"gb": 20, "points": 10, "label": "20 GB", "extra": 18},
+    "s100": {"gb": 100, "points": 30, "label": "100 GB", "extra": 98},
 }
 STORAGE_PERIOD_DAYS = 30
 
@@ -94,7 +93,7 @@ def _sub(videos: int, revisions_per_video: int, storage_gb: int) -> dict:
     points = videos * FIRST_VIDEO_POINTS + revisions * REVISION_POINTS
     cost = videos * FIRST_VIDEO_COST + revisions * REVISION_COST + storage_gb * STORAGE_GB_COST_TWD
     twd = int(round(cost * (1 + MARGIN_SUB) / 50.0) * 50)
-    storage_plan = next((k for k, v in STORAGE_PLANS.items() if v["gb"] >= storage_gb), "s500")
+    storage_plan = next((k for k, v in STORAGE_PLANS.items() if v["gb"] >= storage_gb), "s100")
     payg_twd = points * POINT_TWD + STORAGE_PLANS[storage_plan]["points"] * POINT_TWD
     return {"videos": videos, "revisions": revisions, "points": points, "storage_gb": STORAGE_PLANS[storage_plan]["gb"],
             "storage_plan": storage_plan, "twd": twd, "payg_twd": payg_twd, "save_twd": payg_twd - twd,
@@ -104,10 +103,20 @@ def _sub(videos: int, revisions_per_video: int, storage_gb: int) -> dict:
 
 SUBSCRIPTION_PERIOD_DAYS = 30
 SUBSCRIPTION_GRACE_DAYS = 3   # a renewal payment may land a little late before the plan lapses
+OWN_VOICE = "own_voice"       # feature flag: narrate with a clone of the customer's own voice
 SUBSCRIPTIONS: dict[str, dict] = {
-    "sub5": {"label": "旅剪 5", "desc": "每月 5 支影片，每支含 2 輪修改", **_sub(5, 2, 22)},
-    "sub15": {"label": "旅剪 15", "desc": "每月 15 支影片，每支含 2 輪修改，給多間或代操", **_sub(15, 2, 102)},
+    "sub5": {"label": "漫遊", "who": "一間民宿、每週固定發片的你", "desc": "每月 5 支影片，每支含 2 輪修改",
+             "features": [OWN_VOICE], **_sub(5, 2, 20)},
+    "sub15": {"label": "環島", "who": "多間店、代操團隊，大量出片", "desc": "每月 15 支影片，每支含 2 輪修改",
+              "features": [OWN_VOICE], **_sub(15, 2, 100)},
 }
+# The two non-subscription tiers shown beside them on the plans page.
+TIERS_FREE = {"id": "free", "label": "首航", "who": "第一次用，先免費做一支看看"}
+TIERS_PAYG = {"id": "payg", "label": "背包客", "who": "偶爾剪一支，用多少付多少"}
+
+
+def has_feature(subscription: str, feature: str) -> bool:
+    return feature in SUBSCRIPTIONS.get(subscription or "", {}).get("features", [])
 
 # What the user sees on the pricing page (bundles of the tool prices above).
 MENU = [
@@ -146,5 +155,7 @@ def public_pricing() -> dict:
         "first_video_points": FIRST_VIDEO_POINTS, "revision_points": REVISION_POINTS,
         "first_video_twd": FIRST_VIDEO_POINTS * POINT_TWD, "revision_twd": REVISION_POINTS * POINT_TWD,
         "subscriptions": [{"id": k, **v} for k, v in SUBSCRIPTIONS.items()],
+        "tiers": {"free": TIERS_FREE, "payg": TIERS_PAYG},
+        "free_storage_gb": FREE_STORAGE_GB, "free_revision_turns": FREE_REVISION_TURNS,
         "storage_plans": [{"id": k, **v, "twd": v["points"] * POINT_TWD} for k, v in STORAGE_PLANS.items()],
     }

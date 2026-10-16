@@ -48,6 +48,9 @@ class User(Base):
     subscription: Mapped[str] = mapped_column(String(20), default="")
     sub_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sub_renews_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A clone of the customer's own voice (ElevenLabs voice id), available on subscriptions with the own_voice feature.
+    voice_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    voice_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
 
 class Project(Base):
@@ -148,6 +151,7 @@ _MIGRATIONS = [
     ("users", "storage_plan", "VARCHAR(20) DEFAULT 'free'"), ("users", "storage_renews_at", "DATETIME"),
     ("users", "storage_quota_gb", "INTEGER"), ("assets", "size_bytes", "INTEGER DEFAULT 0"),
     ("users", "subscription", "VARCHAR(20) DEFAULT ''"), ("users", "sub_period_start", "DATETIME"), ("users", "sub_renews_at", "DATETIME"),
+    ("users", "voice_id", "VARCHAR(64)"), ("users", "voice_name", "VARCHAR(80)"),
 ]
 
 

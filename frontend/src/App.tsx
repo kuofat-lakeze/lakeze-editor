@@ -64,8 +64,8 @@ function Workspace() {
         <div className={`balance card ${view === 'credits' ? 'active' : ''}`} onClick={() => showCredits()}>
           <div className="muted small">點數餘額</div>
           <div className="big">{me.balance}</div>
-          <button className="btn primary small" onClick={e => { e.stopPropagation(); showCredits('buy') }}>{me.subscription ? '儲值' : '方案'}</button>
-          {me.subscription && <div className="side-sub muted small">訂閱 {me.subscription.label}</div>}
+          <button className="btn primary small" onClick={e => { e.stopPropagation(); showCredits('buy') }}>儲值</button>
+          <div className="side-sub small"><a onClick={e => { e.stopPropagation(); showCredits('plans') }}>{me.subscription ? `訂閱中 · ${me.subscription.label}` : '看方案'}</a></div>
         </div>
         {me.storage && <div className="side-storage" onClick={() => showCredits('storage')}><StorageMeter s={me.storage} compact /></div>}
         <button className="btn block" onClick={newProject}>＋ 新專案</button>
@@ -88,7 +88,7 @@ function Workspace() {
         {view === 'admin' && me.is_admin ? <Admin />
           : view === 'gallery' ? <Gallery onOpen={openProject} />
           : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} />
-          : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={() => showCredits('buy')} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
+          : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={() => showCredits('buy')} onCredits={() => showCredits()} onStorage={() => showCredits('storage')} onPlans={() => showCredits('plans')}
               onProjectsChanged={() => api.projects().then(setProjects)} />
             : <div className="center muted">建立一個專案開始剪片。第一個專案免費。</div>}
       </main>

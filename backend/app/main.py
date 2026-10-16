@@ -6,7 +6,7 @@ import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
@@ -22,7 +22,7 @@ from .agent.runner import TurnRunner
 from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
 from .db import (GB, Asset, CreditTx, Message, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict,
                  backfill_sizes, backfill_versions, balance, init_db, storage_quota_bytes, storage_state, storage_used)
-from .pipeline import eleven
+from .pipeline import eleven, ff
 from .pipeline.fonts import ensure_fonts
 from .storage import project_dir, safe_join
 
@@ -193,7 +193,72 @@ async def me(user: User = CurrentUser):
         raise HTTPException(403, "帳號已停用")
     return {"id": user.id, "email": user.email, "is_admin": user.is_admin, "balance": await balance(user.id),
             "free_project_id": user.free_project_id, "storage": await storage_state(user.id),
-            "subscription": _sub_dict(user)}
+            "subscription": _sub_dict(user), "can_clone_voice": pricing.has_feature(user.subscription, pricing.OWN_VOICE),
+            "voice": {"voice_id": user.voice_id, "name": user.voice_name or "我的聲音"} if user.voice_id else None}
+
+
+# ---- own voice (instant clone) -------------------------------------------------------------------
+def _custom_voice(u: User) -> dict | None:
+    if not u.voice_id:
+        return None
+    return {"voice_id": u.voice_id, "name": u.voice_name or "我的聲音", "gender": None, "description": "你自己的聲音", "preview_url": None, "custom": True}
+
+
+@app.post("/api/voice/clone")
+async def clone_voice(file: UploadFile, name: str = Form("我的聲音"), user: User = CurrentUser):
+    """Make (or replace) the user's own narration voice from one recording. Subscription feature."""
+    if not pricing.has_feature(user.subscription, pricing.OWN_VOICE):
+        raise HTTPException(403, "「漫遊」以上的方案才能用自己的聲音配音")
+    d = config.DATA_DIR / "voices" / user.id
+    d.mkdir(parents=True, exist_ok=True)
+    suffix = Path(file.filename or "sample.webm").suffix.lower() or ".webm"
+    raw = d / f"sample_raw{suffix}"
+    size = 0
+    with open(raw, "wb") as w:
+        while chunk := await file.read(1 << 20):
+            size += len(chunk)
+            if size > 60 << 20:
+                raise HTTPException(413, "錄音檔超過 60 MB")
+            w.write(chunk)
+    mp3 = d / "sample.mp3"
+    try:
+        await asyncio.to_thread(ff.ffmpeg, "-y", "-i", str(raw), "-vn", "-ac", "1", "-ar", "44100", "-b:a", "128k", str(mp3))
+        dur = await asyncio.to_thread(ff.duration, mp3)
+    except Exception as e:
+        raise HTTPException(400, f"讀不懂這個聲音檔：{str(e)[:200]}")
+    if dur < 20:
+        raise HTTPException(400, f"錄音只有 {dur:.0f} 秒，請至少錄 30 秒（越長越像）")
+    if dur > 600:
+        raise HTTPException(400, "錄音請在 10 分鐘內")
+    label = (name or "我的聲音").strip()[:40] or "我的聲音"
+    if user.voice_id:
+        try:
+            await asyncio.to_thread(eleven.delete_voice, user.voice_id)
+        except Exception:
+            pass
+    try:
+        vid = await asyncio.to_thread(eleven.add_voice, f"{label} · {user.email}", mp3, "旅剪 用戶自訂聲音")
+    except Exception as e:
+        raise HTTPException(502, f"聲音建立失敗：{str(e)[:200]}")
+    async with Session() as s:
+        u = await s.get(User, user.id)
+        u.voice_id, u.voice_name = vid, label
+        await s.commit()
+    return {"ok": True, "voice": _custom_voice(u), "seconds": round(dur)}
+
+
+@app.delete("/api/voice/clone")
+async def delete_clone(user: User = CurrentUser):
+    if user.voice_id:
+        try:
+            await asyncio.to_thread(eleven.delete_voice, user.voice_id)
+        except Exception:
+            pass
+    async with Session() as s:
+        u = await s.get(User, user.id)
+        u.voice_id, u.voice_name = None, None
+        await s.commit()
+    return {"ok": True}
 
 
 # ---- subscriptions ------------------------------------------------------------------------------
@@ -202,6 +267,7 @@ def _sub_dict(u: User) -> dict | None:
         return None
     s = pricing.SUBSCRIPTIONS[u.subscription]
     return {"id": u.subscription, "label": s["label"], "points": s["points"], "videos": s["videos"], "storage_gb": s["storage_gb"],
+            "features": s.get("features", []),
             "period_start": u.sub_period_start.isoformat() if u.sub_period_start else None,
             "renews_at": u.sub_renews_at.isoformat() if u.sub_renews_at else None}
 
@@ -931,8 +997,9 @@ async def voices(user: User = CurrentUser):
     """Voices the UI offers up front: configured presets first, then Taiwanese-accent voices from the
     Voice Library, each with a preview clip. Cached for an hour."""
     import time
+    mine = [_custom_voice(user)] if user.voice_id else []
     if time.time() - _voices_cache["at"] < 3600 and _voices_cache["data"]:
-        return _voices_cache["data"]
+        return mine + _voices_cache["data"]
     out = [dict(v) for v in config.VOICE_PRESETS]
     try:
         found = await asyncio.to_thread(eleven.search_voices, "", "zh", "taiwanese", 12)
@@ -957,7 +1024,7 @@ async def voices(user: User = CurrentUser):
                         "description": (tail or v.get("description") or "")[:40], "preview_url": v.get("preview_url")})
             seen.add(v["voice_id"])
     _voices_cache.update(at=time.time(), data=out)
-    return out
+    return mine + out
 
 
 class ClientLog(BaseModel):

@@ -74,6 +74,18 @@ def voice_info(voice_id: str) -> dict:
             "preview_url": v.get("preview_url"), "description": (v.get("description") or "")[:120]}
 
 
+def add_voice(name: str, sample: Path, description: str = "") -> str:
+    """Instant Voice Clone from one sample file (≥ 30 s of clean speech works well). Returns the voice_id."""
+    with open(sample, "rb") as f:
+        r = _post("/voices/add", timeout=180, data={"name": name[:100], "description": description[:500], "remove_background_noise": "true"},
+                  files={"files": (sample.name, f, "audio/mpeg")})
+    return r.json()["voice_id"]
+
+
+def delete_voice(voice_id: str) -> None:
+    requests.delete(f"{BASE}/voices/{voice_id}", headers=_headers(), timeout=30)
+
+
 def transcribe(path: Path, language: str = "zho") -> dict:
     """Scribe STT → {text, words:[{text,start,end}]}"""
     with open(path, "rb") as f:

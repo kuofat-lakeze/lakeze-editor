@@ -16,7 +16,7 @@ export type CreditsSummary = {
     used: number; waived: number; by_category: Record<string, number>; by_tool: Record<string, number> }[]
   daily: { date: string; used: number; waived: number }[]
 }
-export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null }
+export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null; custom?: boolean }
 export type CreditState = { balance: number; free_project: boolean; in_free: boolean; free_revisions_left: number | null; exports: number }
 export type ProjectDetail = Project & { messages: Msg[]; assets: Asset[]; running: boolean; credits: CreditState; final_version?: number | null; exports?: number; client_comments?: ClientComment[] }
 export type StorageState = { used_bytes: number; quota_bytes: number; plan: string; renews_at: string | null; over: boolean }
@@ -25,13 +25,17 @@ export type StorageInfo = StorageState & {
   balance: number; period_days: number; raw_retention_days: number; override_gb: number | null; plans: StoragePlan[]
   projects: { id: string; name: string; final_version: number | null; bytes: number; versions: number }[]
 }
-export type Me = { id: string; email: string; is_admin: boolean; balance: number; free_project_id: string | null; storage?: StorageState; subscription?: MySubscription | null }
+export type Me = { id: string; email: string; is_admin: boolean; balance: number; free_project_id: string | null; storage?: StorageState; subscription?: MySubscription | null
+  can_clone_voice?: boolean; voice?: MyVoice | null }
 export type Pack = { id: string; twd: number; points: number; label: string; checkout_url: string | null }
-export type Subscription = { id: string; label: string; desc: string; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
+export type Subscription = { id: string; label: string; who: string; desc: string; features: string[]; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
   twd: number; payg_twd: number; save_twd: number; save_pct: number; per_video_twd: number; checkout_url?: string | null }
-export type MySubscription = { id: string; label: string; points: number; videos: number; storage_gb: number; period_start: string | null; renews_at: string | null }
+export type MySubscription = { id: string; label: string; points: number; videos: number; storage_gb: number; features: string[]; period_start: string | null; renews_at: string | null }
+export type Tier = { id: string; label: string; who: string }
 export type Pricing = { point_twd: number; menu: { item: string; points: number }[]; free_revision_turns: number; packs: Pack[]; provider_configured: boolean; note: string
-  first_video_points: number; revision_points: number; first_video_twd: number; revision_twd: number; subscriptions: Subscription[]; storage_plans: StoragePlan[] }
+  first_video_points: number; revision_points: number; first_video_twd: number; revision_twd: number; subscriptions: Subscription[]; storage_plans: StoragePlan[]
+  tiers: { free: Tier; payg: Tier }; free_storage_gb: number }
+export type MyVoice = { voice_id: string; name: string }
 export type AdminUser = { id: string; email: string; created_at: string; is_admin: boolean; disabled: boolean; note: string; balance: number; waived: number; paid_twd: number; cost_usd: number; projects: number; exports: number; last_active?: string | null; storage_plan?: string; storage_bytes?: number; storage_quota_bytes?: number; subscription?: string }
 export type AdminStats = { users: number; new_users_7d: number; projects: number; exports: number; revenue_twd: number; points_sold: number; points_used: number; points_waived: number; cost_usd: number; claude_cost_usd: number; eleven_cost_usd: number }
 export type Ledger = { id?: number; delta: number; waived: number; kind: string; reason: string; amount_twd?: number; project_id: string | null; created_at: string }
@@ -69,6 +73,8 @@ export const api = {
   revokeShare: (id: string, shareId: string) => post(`/api/projects/${id}/share/${shareId}/revoke`, {}).then(j<{ ok: boolean }>),
   deleteVersion: (id: string, version: number) => fetch(`/api/projects/${id}/versions/${version}`, { method: 'DELETE' }).then(j<{ ok: boolean; freed_bytes: number; storage: StorageState }>),
   storage: () => fetch('/api/storage').then(j<StorageInfo>),
+  cloneVoice: (fd: FormData) => fetch('/api/voice/clone', { method: 'POST', body: fd }).then(j<{ ok: boolean; voice: Voice; seconds: number }>),
+  deleteVoice: () => fetch('/api/voice/clone', { method: 'DELETE' }).then(j<{ ok: boolean }>),
   setStoragePlan: (plan: string) => post('/api/storage/plan', { plan }).then(j<{ ok: boolean; storage: StorageState; balance?: number }>),
   share: (token: string) => fetch(`/api/s/${token}`).then(j<ShareView>),
   shareComment: (token: string, name: string, text: string) => post(`/api/s/${token}/comment`, { name, text }).then(j<{ ok: boolean }>),

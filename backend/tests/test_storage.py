@@ -54,7 +54,7 @@ def test_quota_and_state():
         assert st["used_bytes"] == 1000 and st["quota_bytes"] == 2 * D.GB and not st["over"]
         async with D.Session() as s:
             uu = await s.get(D.User, u.id); uu.storage_quota_gb = 0; uu.storage_plan = "s20"; await s.commit()
-        assert (await D.storage_state(u.id))["quota_bytes"] == 22 * D.GB
+        assert (await D.storage_state(u.id))["quota_bytes"] == 20 * D.GB
     asyncio.run(go())
 
 
@@ -96,7 +96,8 @@ def test_plan_switch_and_delete_version(client):
     assert r.json()["balance"] == 2 and r.json()["storage"]["plan"] == "s20"
     pid = asyncio.run(_mk_deliverable(u.id, 5000))
     s = c.get("/api/storage").json()
-    assert s["used_bytes"] == 5000 and s["projects"][0]["id"] == pid and [p["id"] for p in s["plans"]] == ["free", "s20", "s100", "s500"]
+    assert s["used_bytes"] == 5000 and s["projects"][0]["id"] == pid and [p["id"] for p in s["plans"]] == ["free", "s20", "s100"]
+    assert [p["gb"] for p in s["plans"]] == [2, 20, 100]
     # final version is protected
     asyncio.run(_set_final(pid, 1))
     assert c.delete(f"/api/projects/{pid}/versions/1").status_code == 409
@@ -143,6 +144,40 @@ def test_subscription_lifecycle():
             assert uu.subscription == "" and uu.storage_plan == "free"
         assert await D.balance(u.id) == 20
     asyncio.run(go())
+
+
+def test_own_voice_is_a_subscription_feature(client, monkeypatch, tmp_path: Path):
+    """Cloning is refused on the free/payg tiers, works on a subscription, and the voice shows up first in /api/voices."""
+    from app import pricing as P
+    from app.pipeline import eleven, ff
+    c, holder = client
+    u = asyncio.run(_mk_user())
+    holder["u"] = u
+    assert P.has_feature("sub5", P.OWN_VOICE) and P.has_feature("sub15", P.OWN_VOICE) and not P.has_feature("", P.OWN_VOICE)
+    r = c.post("/api/voice/clone", files={"file": ("s.webm", b"xx", "audio/webm")}, data={"name": "老闆"})
+    assert r.status_code == 403
+    asyncio.run(M.activate_subscription(u.id, "sub5"))
+    async def fresh():
+        async with D.Session() as s:
+            return await s.get(D.User, u.id)
+    holder["u"] = asyncio.run(fresh())
+    monkeypatch.setattr(ff, "ffmpeg", lambda *a, **k: Path(a[-1]).write_bytes(b"mp3"))
+    monkeypatch.setattr(ff, "duration", lambda p: 45.0)
+    calls = []
+    monkeypatch.setattr(eleven, "add_voice", lambda name, sample, description="": (calls.append(name), "v_clone")[1])
+    monkeypatch.setattr(eleven, "delete_voice", lambda vid: calls.append(("del", vid)))
+    monkeypatch.setattr(M, "_voices_cache", {"at": 1e12, "data": [{"voice_id": "preset", "name": "Vivian"}]})
+    r = c.post("/api/voice/clone", files={"file": ("s.webm", b"xx", "audio/webm")}, data={"name": "老闆"})
+    assert r.status_code == 200, r.text
+    assert r.json()["voice"]["voice_id"] == "v_clone" and calls and "老闆" in calls[0]
+    holder["u"] = asyncio.run(fresh())
+    vs = c.get("/api/voices").json()
+    assert vs[0]["voice_id"] == "v_clone" and vs[0]["custom"] and vs[1]["voice_id"] == "preset"
+    assert c.get("/api/me").json()["voice"]["name"] == "老闆"
+    # too short a recording is refused before anything is sent
+    monkeypatch.setattr(ff, "duration", lambda p: 8.0)
+    assert c.post("/api/voice/clone", files={"file": ("s.webm", b"xx", "audio/webm")}).status_code == 400
+    assert c.delete("/api/voice/clone").status_code == 200 and ("del", "v_clone") in calls
 
 
 def test_export_blocked_when_over_quota(monkeypatch):
