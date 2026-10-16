@@ -6,6 +6,7 @@ import { Credits, type CreditsTab } from './Credits'
 import { Admin } from './Admin'
 import { Gallery } from './Gallery'
 import { SharePage } from './SharePage'
+import { Landing } from './Landing'
 import logo from './assets/logo.png'
 
 const SHARE_TOKEN = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/)?.[1]
@@ -23,6 +24,7 @@ function Workspace() {
   const [creditsTab, setCreditsTab] = useState<CreditsTab>('overview')
   const showCredits = (t: CreditsTab = 'overview') => { setCreditsTab(t); setView('credits'); setMenu(false) }
   const [menu, setMenu] = useState(false)
+  const [auth, setAuth] = useState<'login' | 'signup' | null>(location.pathname === '/login' ? 'login' : location.pathname === '/signup' ? 'signup' : null)
 
   const refreshMe = () => api.me().then(setMe)
   useEffect(() => { refreshMe() }, [])
@@ -32,7 +34,9 @@ function Workspace() {
   }, [me?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (me === undefined) return <div className="center muted">載入中…</div>
-  if (!me) return <Login onDone={setMe} />
+  if (!me) return auth
+    ? <Login initialMode={auth} onDone={m => { setMe(m); history.replaceState(null, '', '/') }} onBack={() => { setAuth(null); history.replaceState(null, '', '/') }} />
+    : <Landing onStart={() => { setAuth('signup'); history.pushState(null, '', '/signup') }} onLogin={() => { setAuth('login'); history.pushState(null, '', '/login') }} />
 
   const newProject = async () => {
     const name = prompt('專案名稱（例如：雲岫海景渡假會館）')

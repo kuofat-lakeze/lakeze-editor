@@ -200,8 +200,15 @@ async def credits_summary(user: User = CurrentUser):
             dd["used"] += pts_used; dd["waived"] += pts_waived
     days = [(since + timedelta(days=i + 1)).date().isoformat() for i in range(30)]
     balance_now = await balance(user.id)
+    free_info = None
+    if user.free_project_id:
+        fp = next((p for p in projects if p.id == user.free_project_id), None)
+        if fp:
+            st = await Store(user.id).credit_state(fp.id)
+            free_info = {"id": fp.id, "name": fp.name, "exports": fp.exports, "in_free": st["in_free"],
+                         "free_revisions_left": st["free_revisions_left"]}
     return {
-        "balance": balance_now, "purchased": purchased, "refunded": refunded, "used": used, "waived": waived,
+        "balance": balance_now, "purchased": purchased, "refunded": refunded, "used": used, "waived": waived, "free_project": free_info,
         "revision_points": 8,  # typical revision round (mix + captions + export), for the "about N more revisions" hint
         "categories": [{"id": c, "label": l} for c, l in pricing.CATEGORIES],
         "tool_labels": pricing.TOOL_LABELS,
@@ -336,6 +343,11 @@ async def upload(project_id: str, files: list[UploadFile], user: User = CurrentU
         name = _SAFE.sub("_", Path(f.filename or "clip.mp4").name)
         dest = safe_join(root, f"raw/uploads/{name}")
         dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():  # same file name picked twice (phones do this): keep both, suffix the new one
+            stem, suffix, k = dest.stem, dest.suffix, 2
+            while dest.exists():
+                dest = dest.with_name(f"{stem}_{k}{suffix}"); k += 1
+            name = dest.name
         size = 0
         with open(dest, "wb") as w:
             while chunk := await f.read(1 << 20):

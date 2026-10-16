@@ -8,8 +8,8 @@ const STEPS = [
   { n: '3', t: '收影片與封面', d: '剪輯師一路做到輸出，再分享給客戶' },
 ]
 
-export function Login({ onDone }: { onDone: (m: Me) => void }) {
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
+export function Login({ onDone, initialMode = 'login', onBack }: { onDone: (m: Me) => void; initialMode?: 'login' | 'signup'; onBack?: () => void }) {
+  const [mode, setMode] = useState<'login' | 'signup'>(initialMode)
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
@@ -24,15 +24,15 @@ export function Login({ onDone }: { onDone: (m: Me) => void }) {
   return (
     <div className="auth">
       <aside className="auth-visual">
-        <img className="logo" src={logo} alt="Lakeze 人客多" />
+        <img className="logo" src={logo} alt="Lakeze 人客多" onClick={onBack} style={{ cursor: onBack ? 'pointer' : undefined }} />
         <div className="auth-copy">
-          <h1>民宿的短影音，<br />交給 AI 剪輯師。</h1>
+          <h1>秒剪<span className="auth-tag">旅遊短影音自動剪片軟體</span></h1>
           <p>給素材和賣點，就能收到有旁白、配樂、雙層字幕的直式影片與封面。第一支免費。</p>
           <ol className="auth-steps">
             {STEPS.map(s => <li key={s.n}><span className="n">{s.n}</span><div><b>{s.t}</b><div className="muted small">{s.d}</div></div></li>)}
           </ol>
         </div>
-        <div className="auth-foot muted small">人客多 · 專業旅遊剪輯 AI</div>
+        <div className="auth-foot muted small">人客多 Lakeze · 旅遊短影音自動剪片軟體</div>
       </aside>
 
       <main className="auth-panel">
@@ -56,6 +56,7 @@ export function Login({ onDone }: { onDone: (m: Me) => void }) {
             <a onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setErr('') }}>{mode === 'login' ? '免費註冊' : '登入'}</a>
           </div>
           <div className="auth-legal muted small">繼續即表示你同意我們的服務條款與隱私權政策。</div>
+          {onBack && <a className="small auth-back" onClick={onBack}>← 回首頁</a>}
         </form>
       </main>
     </div>

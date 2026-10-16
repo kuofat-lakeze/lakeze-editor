@@ -10,6 +10,7 @@ export type GalleryItem = { project_id: string; name: string; version: number; f
 export type ClientComment = { id: number; name: string; text: string; created_at: string }
 export type CreditsSummary = {
   balance: number; purchased: number; refunded: number; used: number; waived: number; revision_points: number
+  free_project?: { id: string; name: string; exports: number; in_free: boolean; free_revisions_left: number | null } | null
   categories: { id: string; label: string }[]; tool_labels: Record<string, string>
   projects: { id: string; name: string; exports: number; revision_turns: number; free: boolean; updated_at: string
     used: number; waived: number; by_category: Record<string, number>; by_tool: Record<string, number> }[]

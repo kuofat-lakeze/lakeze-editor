@@ -76,6 +76,11 @@ export function Credits({ initialTab = 'overview', onClose }: { initialTab?: Cre
                 <button className="btn primary" onClick={() => setTab('buy')}>儲值</button>
                 <a className="small" onClick={() => setTab('ledger')}>看明細</a>
               </div>
+              {sum.free_project && sum.free_project.in_free && (
+                <div className="hero-free">
+                  免費專案「{sum.free_project.name}」：{sum.free_project.free_revisions_left === null ? '第一版與封面免費' : `還有 ${sum.free_project.free_revisions_left} 輪免費修改`}，不會動到上面的餘額。
+                </div>
+              )}
               <div className="hero-foot">
                 <span>最近 30 天用了 <b>{month}</b> 點</span>
                 <span className="dot-sep" />
