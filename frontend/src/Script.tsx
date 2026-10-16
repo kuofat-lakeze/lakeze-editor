@@ -1,5 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
-import { api } from './api'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { api, type Voice } from './api'
+
+/* The other way to voice a script: pick another AI voice (or the user's cloned one). Chat provides the
+   voice list and what to do with a choice; script cards in assistant messages show the picker. */
+export type VoiceSwap = {
+  voices: Voice[]; current?: string | null; playing?: string | null
+  onPreview: (v: Voice) => void; onPick: (v: Voice) => void; onMore: () => void; disabled?: boolean
+}
+export const VoiceSwapCtx = createContext<VoiceSwap | null>(null)
 
 /* 旁白稿: the editor writes narration as a ```旁白 block, one "start-end text" line each. In the
    thread it becomes a card with timecodes and a 「用自己的聲音唸」 button that opens a teleprompter:
@@ -45,6 +53,50 @@ export function ScriptCard({ lines, onRecord }: { lines: Line[]; onRecord?: () =
           <i aria-hidden="true">→</i>
         </button>
       )}
+      {onRecord && <VoicePicker />}
+    </div>
+  )
+}
+
+/* 「或換一個聲音」: choose, then confirm, so a stray tap doesn't re-voice the video. */
+function VoicePicker() {
+  const ctx = useContext(VoiceSwapCtx)
+  const [open, setOpen] = useState(false)
+  const [sel, setSel] = useState<string | null>(null)
+  if (!ctx || !ctx.voices.length) return null
+  const chosen = ctx.voices.find(v => v.voice_id === sel)
+  return (
+    <div className={`vs ${open ? 'open' : ''}`}>
+      <button type="button" className="vs-toggle" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <span className="vs-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 10v4M7 7v10M11 4v16M15 8v8M19 11v2" /></svg></span>
+        <span><b>或換一個聲音配這份稿</b><small>試聽後選一個，剪輯師用新聲音重新配音、重新輸出</small></span>
+        <i aria-hidden="true">{open ? '▴' : '▾'}</i>
+      </button>
+      {open && (
+        <div className="vs-body">
+          <div className="vs-list">
+            {ctx.voices.map(v => {
+              const isCur = v.voice_id === ctx.current
+              return (
+                <div key={v.voice_id} role="button" tabIndex={0} className={`vs-item ${sel === v.voice_id ? 'sel' : ''} ${v.custom ? 'mine' : ''}`}
+                  onClick={() => setSel(v.voice_id)} onKeyDown={e => { if (e.key === 'Enter') setSel(v.voice_id) }}>
+                  <span className="vs-radio" aria-hidden="true" />
+                  <span className="vs-main">
+                    <b>{v.custom && <em>我的聲音</em>}{v.name}<span className="muted small">{v.gender === 'female' ? ' · 女' : v.gender === 'male' ? ' · 男' : ''}{isCur ? ' · 目前' : ''}</span></b>
+                    {v.description && <small>{v.description}</small>}
+                  </span>
+                  {v.preview_url && <a className="vs-play" onClick={e => { e.stopPropagation(); ctx.onPreview(v) }}>{ctx.playing === v.voice_id ? '■' : '▶'}</a>}
+                </div>)
+            })}
+          </div>
+          <div className="vs-foot">
+            <a className="small" onClick={() => { ctx.onMore(); setOpen(false) }}>都不喜歡？請剪輯師再找幾個台灣腔聲音</a>
+            <button className="btn primary small" disabled={!chosen || ctx.disabled || chosen.voice_id === ctx.current}
+              onClick={() => { if (chosen) { ctx.onPick(chosen); setOpen(false); setSel(null) } }}>
+              {chosen ? (chosen.voice_id === ctx.current ? '這就是目前的聲音' : `用「${chosen.name}」重新配音`) : '先選一個聲音'}
+            </button>
+          </div>
+        </div>)}
     </div>
   )
 }

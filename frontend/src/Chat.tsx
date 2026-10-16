@@ -7,7 +7,7 @@ import { VoiceCloneDialog } from './VoiceClone'
 import { CLOUD_SECS_PER_VIDEO, CloudDl, DropZone, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
 import { fmtBytes } from './Storage'
 import { ask } from './Dialog'
-import { SCRIPT_BLOCK, ScriptCard, Teleprompter, parseScript, type Line } from './Script'
+import { SCRIPT_BLOCK, ScriptCard, Teleprompter, VoiceSwapCtx, parseScript, type Line, type VoiceSwap } from './Script'
 
 type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string; charged?: number; balance?: number; startedAt?: number }[] }
 const fmtDur = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${String(s % 60).padStart(2, '0')} 秒` }
@@ -254,10 +254,12 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
     if (atBottom.current) bottom.current?.scrollIntoView({ behavior: 'smooth' }); else setUnseen(true)
   }, [proj, live])
   useEffect(() => {
-    if (!proj || proj.messages.length) return
-    api.voices().then(vs => { setVoices(vs); setVoice(v => v ?? vs[0]?.voice_id ?? NO_VOICE) }).catch(() => setVoice(NO_VOICE))
-    api.me().then(setMe).catch(() => {})
-  }, [proj?.id, proj?.messages.length]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!proj) return
+    // The wizard picks a default voice; in a running project the list feeds 旁白稿 → 換一個聲音.
+    const fresh = proj.messages.length === 0
+    api.voices().then(vs => { setVoices(vs); if (fresh) setVoice(v => v ?? vs[0]?.voice_id ?? NO_VOICE) }).catch(() => { if (fresh) setVoice(NO_VOICE) })
+    if (fresh) api.me().then(setMe).catch(() => {})
+  }, [proj?.id, proj?.messages.length === 0]) // eslint-disable-line react-hooks/exhaustive-deps
   const onCloned = (v: Voice) => {
     setCloning(false)
     setVoices(vs => [v, ...vs.filter(x => !x.custom)]); setVoice(v.voice_id)
@@ -459,6 +461,12 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   }, [picking])
 
   if (!proj) return <div className="center muted">載入中…</div>
+  // 旁白稿 → 換一個聲音: the same voice list as the wizard; a pick becomes a plain instruction to the editor.
+  const voiceSwap: VoiceSwap = {
+    voices, current: voice && voice !== NO_VOICE ? voice : null, playing, onPreview: preview, disabled: running,
+    onPick: v => { setVoice(v.voice_id); submit(`旁白改用「${v.name}」的聲音（voice_id ${v.voice_id}）重新生成，稿子、秒數和其他都不變，配好後重新輸出影片。`) },
+    onMore: () => submit('這份旁白稿想換個聲音：請再找 3 個台灣腔的聲音，各用稿子第一句做試聽給我選，先不要重新輸出。'),
+  }
   const stage: Stage = running ? 'working' : proj.messages.length === 0 ? 'start' : proj.credits.exports > 0 ? 'revise' : 'progress'
   const anPhase = analyzing ? Math.min(AN_PHASES.length - 1, Math.floor((now - anStart) / 9000)) : 0
   // Assets are produced by tools during an assistant turn: show each under the assistant
@@ -516,6 +524,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
       )}
       {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} />}
       {tab === 'chat' && <>
+      <VoiceSwapCtx.Provider value={voiceSwap}>
       <div className="thread" ref={threadRef} onScroll={onScroll}>
         {stage === 'start' && (
           <div className="ob-wiz">
@@ -789,6 +798,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         {err && <div className="error">{err}</div>}
         <div ref={bottom} />
       </div>
+      </VoiceSwapCtx.Provider>
       {prompter && <Teleprompter lines={prompter} projectId={projectId} onClose={() => setPrompter(null)}
         onUploaded={(key, secs) => { setPrompter(null); submit(`我上傳了自己唸的旁白（key ${key}，${secs} 秒），請用它當旁白，不要再生成 AI 配音；從 0 秒開始放，字幕照我的聲音對齊，然後重新輸出。`) }} />}
       {picking && pickBack && (

@@ -1352,3 +1352,21 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .pp-pack { display: inline-flex; gap: 6px; align-items: baseline; background: var(--panel2); border-radius: 10px; padding: 5px 10px; font-size: 13px; }
 .pp-note { margin-top: 10px; line-height: 1.7; }
 .pp-actions { display: flex; justify-content: flex-end; align-items: center; gap: 14px; }
+
+/* ---- 旁白稿：換一個聲音 ---- */
+.vs { margin-top: 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.vs-toggle { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: none; border: 0; font: inherit; text-align: left; cursor: pointer; color: var(--text); }
+.vs-toggle > span:nth-child(2) { display: flex; flex-direction: column; gap: 2px; flex: 1; } .vs-toggle b { font-size: 14px; } .vs-toggle small { color: var(--muted); font-size: 12px; }
+.vs-toggle i { font-style: normal; color: var(--muted); }
+.vs-ic { width: 32px; height: 32px; border-radius: 10px; background: var(--blue-soft); color: var(--blue); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.vs-body { border-top: 1px solid var(--line); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.vs-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
+.vs-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 11px; border: 1px solid var(--line); cursor: pointer; transition: border-color .15s, background .15s; }
+.vs-item:hover { border-color: #D9D2C7; }
+.vs-item.sel { border-color: var(--blue); background: var(--blue-soft); }
+.vs-radio { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #C9C3B8; flex: none; position: relative; }
+.vs-item.sel .vs-radio { border-color: var(--blue); } .vs-item.sel .vs-radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--blue); }
+.vs-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; } .vs-main b { font-size: 14px; font-weight: 600; } .vs-main small { color: var(--muted); font-size: 12px; }
+.vs-main em { font-style: normal; font-size: 11px; font-weight: 800; color: var(--brand); background: var(--brand-soft); padding: 1px 6px; border-radius: 6px; margin-right: 6px; }
+.vs-play { width: 30px; height: 30px; border-radius: 50%; background: var(--panel2); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text); flex: none; }
+.vs-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
