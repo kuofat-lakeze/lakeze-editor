@@ -1,20 +1,38 @@
 import { useEffect, useState } from 'react'
-import { api, type ShareView } from './api'
+import { api, type ShareView, type ThreadMsg } from './api'
 import logo from './assets/logo.png'
 
 export function SharePage({ token }: { token: string }) {
   const [data, setData] = useState<ShareView | null>(null)
   const [err, setErr] = useState('')
-  const [name, setName] = useState('')
+  const [name, setName] = useState(() => { try { return localStorage.getItem('lk_guest_name') ?? '' } catch { return '' } })
   const [text, setText] = useState('')
-  const [sent, setSent] = useState(false)
-  useEffect(() => { api.share(token).then(setData).catch(e => setErr((e as Error).message || '連結無效')) }, [token])
+  const [thread, setThread] = useState<ThreadMsg[]>([])
+  const [full, setFull] = useState(false)
+  const [limit, setLimit] = useState(100)
+  const [sendErr, setSendErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    api.share(token).then(d => { setData(d); setThread(d.comments ?? []); setFull(!!d.comments_full); setLimit(d.comments_limit ?? 100) }).catch(e => setErr((e as Error).message || '連結無效'))
+  }, [token])
+  // Friends talk to each other here: refresh the thread every 20 s while the tab is visible.
+  useEffect(() => {
+    if (!data) return
+    const tick = () => { if (document.visibilityState === 'visible') api.shareThread(token).then(t => { setThread(t.comments); setFull(t.comments_full) }).catch(() => {}) }
+    const id = setInterval(tick, 20000); document.addEventListener('visibilitychange', tick)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick) }
+  }, [data, token])
 
   const send = async () => {
-    if (!text.trim()) return
-    await api.shareComment(token, name, text)
-    setSent(true); setText('')
+    if (!text.trim() || busy) return
+    setBusy(true); setSendErr('')
+    try {
+      const r = await api.shareComment(token, name, text)
+      setThread(t => [...t, r.comment]); setText('')
+      try { localStorage.setItem('lk_guest_name', name) } catch { /* ignore */ }
+    } catch (e) { setSendErr((e as Error).message) } finally { setBusy(false) }
   }
+  const when = (iso: string) => new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z').toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 
   return (
     <div className="share-page">
@@ -60,15 +78,25 @@ export function SharePage({ token }: { token: string }) {
                 )}
               </section>
             ))}
-            <section className="card share-comment">
-              <b>看完有想法？留話給他</b>
-              <span className="muted small">你的留言會直接送到影片主人的「朋友的反饋」。</span>
-              {sent ? <div className="ok">已送出，謝謝！對方會收到通知。</div> : (
-                <>
-                  <input placeholder="你的名字（選填）" value={name} onChange={e => setName(e.target.value)} />
-                  <textarea rows={3} placeholder="例如：價格字幕再大一點、第二段換成泳池畫面…" value={text} onChange={e => setText(e.target.value)} />
-                  <button className="btn primary" disabled={!text.trim()} onClick={send}>送出</button>
-                </>
+            <section className="card share-comment" id="thread">
+              <div className="st-head"><b>大家的留言</b><span className="muted small">{thread.length} / {limit}{thread.length ? '' : ' · 還沒有人留言，當第一個'}</span></div>
+              {thread.length > 0 && (
+                <div className="st-list">
+                  {thread.map(m => (
+                    <div key={m.id} className={`st-msg ${m.owner ? 'owner' : ''}`}>
+                      <div className="st-meta"><b>{m.owner ? `${m.name || '影片主人'}` : (m.name || '朋友')}</b>{m.owner && <em>影片主人</em>}<span className="muted small">{when(m.created_at)}</span></div>
+                      <div className="st-text">{m.text}</div>
+                    </div>))}
+                </div>
+              )}
+              {full ? <div className="muted small">留言已達 {limit} 則上限。</div> : (
+                <div className="st-form">
+                  <input placeholder="你的名字（選填）" value={name} maxLength={40} onChange={e => setName(e.target.value)} />
+                  <textarea rows={2} placeholder="看完有什麼想法？例如：封面 B 比較好看、價格字幕再大一點…" value={text} onChange={e => setText(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send() }} />
+                  {sendErr && <div className="error">{sendErr}</div>}
+                  <div className="st-actions"><span className="muted small">留言大家都看得到，影片主人會收到通知。</span><button className="btn primary" disabled={!text.trim() || busy} onClick={send}>{busy ? '送出中…' : '送出'}</button></div>
+                </div>
               )}
             </section>
             <section className="share-cta">

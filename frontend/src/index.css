@@ -961,3 +961,20 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 @media (max-width: 760px) { .fb-drawer { width: 100vw; } .fb-bell span { display: none; } .fb-bell { padding: 6px 9px; } }
 .share-head .btn { white-space: nowrap; }
 @media (max-width: 760px) { .share-head { padding: 12px 14px; } .share-head .share-tag { display: none; } }
+
+/* public thread on the share page + owner replies in the drawer */
+.st-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.st-list { display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow: auto; padding-right: 2px; }
+.st-msg { background: var(--panel2); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; max-width: 92%; align-self: flex-start; }
+.st-msg.owner { background: var(--brand-soft); align-self: flex-end; border: 1px solid #F6C9B4; }
+.st-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; } .st-meta em { font-style: normal; font-size: 10px; font-weight: 800; background: var(--brand); color: #fff; padding: 1px 6px; border-radius: 999px; }
+.st-text { font-size: 15px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.st-form { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; } .st-form input, .st-form textarea { width: 100%; }
+.st-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.share-comment .btn { align-self: auto; }
+.fb-list { display: flex; flex-direction: column; gap: 8px; } .fb-item.mine { background: var(--brand-soft); border-color: #F6C9B4; margin-left: 32px; }
+.fb-reply { display: flex; gap: 8px; align-items: flex-end; position: sticky; bottom: 0; background: var(--bg); padding-top: 8px; } .fb-reply textarea { flex: 1; }
+
+.attach.mic { position: relative; } .attach.mic.busy { color: var(--brand); border-color: var(--brand-2); cursor: progress; }
+.mic-sec { position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 800; background: var(--text); color: #fff; padding: 0 5px; border-radius: 999px; line-height: 14px; }
+.mic-hint { color: var(--brand); font-weight: 700; }

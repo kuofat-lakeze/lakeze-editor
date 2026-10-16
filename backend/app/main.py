@@ -713,10 +713,58 @@ async def frame(project_id: str, n: int, t: float = 0.0, user: User = CurrentUse
 
 def _comment_dict(c: ShareComment, sh: Share | None = None, project_name: str | None = None) -> dict:
     d = {"id": c.id, "project_id": c.project_id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat(),
-         "read": c.read_at is not None, "version": sh.version if sh else None, "share_note": sh.note if sh else ""}
+         "read": c.read_at is not None, "owner": bool(c.owner), "version": sh.version if sh else None, "share_note": sh.note if sh else ""}
     if project_name is not None:
         d["project_name"] = project_name
     return d
+
+
+# ---- 語音輸入 (server-side speech-to-text) -----------------------------------------------------------
+STT_MAX_BYTES = 8 * 2**20
+STT_MAX_SECONDS = 90
+
+
+def _to_traditional(text: str) -> str:
+    try:
+        from opencc import OpenCC
+        return OpenCC("s2twp").convert(text)
+    except Exception:
+        return text
+
+
+@app.post("/api/stt")
+async def speech_to_text(audio: UploadFile, project_id: str = Form(""), user: User = CurrentUser):
+    """The browser records a short clip (MediaRecorder works everywhere, unlike the Web Speech API);
+    we transcode it and transcribe with ElevenLabs Scribe. Free for the user; cost is logged."""
+    import tempfile
+    data = await audio.read()
+    if not data:
+        raise HTTPException(400, "沒有收到錄音")
+    if len(data) > STT_MAX_BYTES:
+        raise HTTPException(413, "錄音太長，請分段說")
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / ("in" + (Path(audio.filename or "a.webm").suffix or ".webm"))
+        src.write_bytes(data)
+        wav = Path(td) / "a.wav"
+        try:
+            await asyncio.to_thread(ff.ffmpeg, "-i", str(src), "-t", str(STT_MAX_SECONDS), "-ac", "1", "-ar", "16000", str(wav))
+            seconds = await asyncio.to_thread(ff.duration, wav)
+        except Exception as e:
+            raise HTTPException(400, f"錄音檔讀不了：{str(e)[:120]}")
+        if seconds < 0.4:
+            return {"text": "", "seconds": round(seconds, 1)}
+        try:
+            tr = await asyncio.to_thread(eleven.transcribe, wav, "zho")
+        except Exception as e:
+            log.warning("stt failed: %s", e)
+            raise HTTPException(502, "語音辨識暫時失敗，請再說一次")
+    text_ = _to_traditional((tr.get("text") or "").strip())
+    if project_id:
+        try:
+            await Store(user.id).record_usage(project_id, "elevenlabs_stt_sec", round(seconds), 0.0, {"stt": "voice_input"})
+        except Exception:
+            pass
+    return {"text": text_, "seconds": round(seconds, 1)}
 
 
 # ---- 朋友的反饋 (feedback inbox) ---------------------------------------------------------------------
@@ -735,6 +783,31 @@ async def notifications(user: User = CurrentUser):
     for it in items:
         by_project[it["project_id"]] = by_project.get(it["project_id"], 0) + 1
     return {"unread": len(items), "items": items, "by_project": by_project, "total": int(total or 0)}
+
+
+THREAD_LIMIT = 100   # messages per project in the public thread (friends + owner replies)
+
+
+class ReplyBody(BaseModel):
+    text: str
+
+
+@app.post("/api/projects/{project_id}/comments")
+async def owner_reply(project_id: str, body: ReplyBody, user: User = CurrentUser):
+    """The owner answers in the thread; friends see it on the share page."""
+    await _own(project_id, user)
+    text_ = body.text.strip()
+    if not text_:
+        raise HTTPException(400, "留言不能是空的")
+    async with Session() as s:
+        n = (await s.execute(select(func.count(ShareComment.id)).where(ShareComment.project_id == project_id))).scalar()
+        if n >= THREAD_LIMIT:
+            raise HTTPException(409, f"這支影片的留言已達 {THREAD_LIMIT} 則上限")
+        c = ShareComment(project_id=project_id, share_id="", name=(user.display_name or "影片主人")[:80], text=text_[:2000],
+                         owner=True, read_at=datetime.now(timezone.utc))
+        s.add(c)
+        await s.commit()
+    return _comment_dict(c)
 
 
 @app.post("/api/projects/{project_id}/comments/read")
@@ -1081,7 +1154,23 @@ async def share_view(token: str):
         await s.commit()
     return {"project_name": p.name, "note": sh.note, "allow_download": sh.allow_download,
             "brand": {"name": "人客多", "tagline": "專業旅遊剪輯 AI"}, "versions": _share_versions(sh, p, assets),
-            "signup_url": f"/signup?ref={sh.token}", "signup_points": pricing.SIGNUP_POINTS}
+            "signup_url": f"/signup?ref={sh.token}", "signup_points": pricing.SIGNUP_POINTS, **await _thread(p.id)}
+
+
+async def _thread(project_id: str) -> dict:
+    """The public conversation under a shared video: every friend's message and the owner's replies,
+    oldest first, capped at THREAD_LIMIT per project."""
+    async with Session() as s:
+        rows = (await s.execute(select(ShareComment).where(ShareComment.project_id == project_id)
+                                .order_by(ShareComment.id).limit(THREAD_LIMIT))).scalars().all()
+    return {"comments": [{"id": c.id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat(), "owner": bool(c.owner)} for c in rows],
+            "comments_limit": THREAD_LIMIT, "comments_full": len(rows) >= THREAD_LIMIT}
+
+
+@app.get("/api/s/{token}/comments")
+async def share_thread(token: str):
+    _sh, p = await _share_by_token(token)
+    return await _thread(p.id)
 
 
 @app.get("/api/s/{token}/file/{asset_id}")
@@ -1114,9 +1203,13 @@ async def share_comment(token: str, body: CommentBody):
     if not text_:
         raise HTTPException(400, "留言不能是空的")
     async with Session() as s:
-        s.add(ShareComment(project_id=p.id, share_id=sh.id, name=body.name.strip()[:80], text=text_[:2000]))
+        n = (await s.execute(select(func.count(ShareComment.id)).where(ShareComment.project_id == p.id))).scalar()
+        if n >= THREAD_LIMIT:
+            raise HTTPException(409, f"這支影片的留言已達 {THREAD_LIMIT} 則上限，沒辦法再留了")
+        c = ShareComment(project_id=p.id, share_id=sh.id, name=body.name.strip()[:80], text=text_[:2000])
+        s.add(c)
         await s.commit()
-    return {"ok": True}
+    return {"ok": True, "comment": {"id": c.id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat(), "owner": False}}
 
 
 @app.get("/api/gallery")

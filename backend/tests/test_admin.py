@@ -170,3 +170,57 @@ def test_feedback_inbox_and_referral(client):
     assert us["friend@x.y"]["referred_by"] == "paying@x.y"
     assert c.get(f"/api/admin/users/{a.id}").json()["referred"] == ["friend@x.y"]
     assert TestClient(M.app).post("/api/auth/signup", json={"email": "f2@x.y", "password": "password123", "ref": "nope"}).status_code == 200
+
+
+def test_public_thread_cap_and_owner_reply(client):
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = a
+
+    async def seed_share():
+        async with D.Session() as s:
+            p = (await s.execute(D.select(D.Project).where(D.Project.user_id == a.id))).scalar_one()
+            s.add(D.Share(token="thr", project_id=p.id)); await s.commit()
+            return p.id
+    pid = asyncio.run(seed_share())
+    anon = TestClient(M.app)
+    r = anon.post("/api/s/thr/comment", json={"name": "小美", "text": "封面 B 好看"})
+    assert r.status_code == 200 and r.json()["comment"]["owner"] is False
+    # the owner replies from the app: visible to friends, not an unread notification
+    r = c.post(f"/api/projects/{pid}/comments", json={"text": "謝謝！下一版用 B"})
+    assert r.status_code == 200 and r.json()["owner"] is True and r.json()["read"] is True
+    t = anon.get("/api/s/thr").json()
+    assert [(x["name"], x["owner"]) for x in t["comments"]] == [("小美", False), ("Ken", True)]   # owner replies carry the display name
+    assert t["comments_limit"] == 100 and not t["comments_full"]
+    assert c.get("/api/notifications").json()["unread"] == 1
+    assert anon.get("/api/s/thr/comments").json()["comments"][0]["text"] == "封面 B 好看"
+    assert c.post(f"/api/projects/{pid}/comments", json={"text": "  "}).status_code == 400
+    # cap: 100 messages per project, friends and owner alike
+    async def fill():
+        async with D.Session() as s:
+            for i in range(98):
+                s.add(D.ShareComment(project_id=pid, share_id="x", name="n", text=f"m{i}"))
+            await s.commit()
+    asyncio.run(fill())
+    assert anon.get("/api/s/thr").json()["comments_full"] is True
+    assert anon.post("/api/s/thr/comment", json={"text": "再一則"}).status_code == 409
+    assert c.post(f"/api/projects/{pid}/comments", json={"text": "再一則"}).status_code == 409
+    assert len(anon.get("/api/s/thr/comments").json()["comments"]) == 100
+
+
+def test_voice_input_stt(client, monkeypatch, tmp_path: Path):
+    import subprocess
+    from app.pipeline import eleven as E
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = a
+    clip = tmp_path / "v.webm"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "libopus", str(clip)], check=True)
+    monkeypatch.setattr(E, "transcribe", lambda path, language="zho": {"text": "价格字幕再大一点", "words": []})
+    r = c.post("/api/stt", files={"audio": ("v.webm", clip.read_bytes(), "audio/webm")}, data={"project_id": ""})
+    assert r.status_code == 200, r.text
+    assert r.json()["text"] == "價格字幕再大一點" and 1.5 < r.json()["seconds"] < 2.5   # converted to Traditional
+    assert c.post("/api/stt", files={"audio": ("v.webm", b"", "audio/webm")}).status_code == 400
+    assert c.post("/api/stt", files={"audio": ("v.webm", b"not audio at all", "audio/webm")}).status_code == 400
+    monkeypatch.setattr(E, "transcribe", lambda path, language="zho": (_ for _ in ()).throw(RuntimeError("down")))
+    assert c.post("/api/stt", files={"audio": ("v.webm", clip.read_bytes(), "audio/webm")}).status_code == 502

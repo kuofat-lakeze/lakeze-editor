@@ -13,31 +13,54 @@ const emptyLive = (): Live => ({ text: '', thinking: '', tools: [] })
 const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent)
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
 const IS_TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
-/* Speech: browser-native, free. Mic = 語音輸入 (Web Speech API, zh-TW); speaker = 朗讀 (speechSynthesis). */
-type SR = { lang: string; continuous: boolean; interimResults: boolean; start(): void; stop(): void; onresult: ((e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null }
-const SRCtor = (window as unknown as { SpeechRecognition?: new () => SR; webkitSpeechRecognition?: new () => SR }).SpeechRecognition
-  ?? (window as unknown as { webkitSpeechRecognition?: new () => SR }).webkitSpeechRecognition
+/* Voice input: record with MediaRecorder (works in Chrome, Safari, iOS, LINE's browser), send the clip to
+   /api/stt and paste the transcript. The Web Speech API was unreliable (silent failures, no Safari/Android
+   support in many builds), so recognition happens server side. Read-aloud uses speechSynthesis. */
 const CAN_TTS = typeof speechSynthesis !== 'undefined'
+const CAN_REC = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
+const MIC_MAX_SECONDS = 60
 const plain = (md: string) => md.replace(/```[\s\S]*?```/g, '').replace(/[*_`#>|]/g, '').replace(/\[(.*?)\]\(.*?\)/g, '$1').replace(/\n{2,}/g, '。').trim()
-function useMic(onText: (t: string) => void) {
-  const [on, setOn] = useState(false)
-  const rec = useRef<SR | null>(null)
-  const stop = () => { rec.current?.stop(); rec.current = null; setOn(false) }
-  const start = () => {
-    if (!SRCtor) return
-    const r = new SRCtor(); r.lang = 'zh-TW'; r.continuous = true; r.interimResults = true
-    let committed = ''
-    r.onresult = e => {
-      let final = '', interim = ''
-      for (let i = 0; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) final += t; else interim += t }
-      if (final !== committed) { onText(final.slice(committed.length)); committed = final }
-      void interim
+function useMic(onText: (t: string) => void, projectId: string, onError: (m: string) => void) {
+  const [state, setState] = useState<'idle' | 'rec' | 'busy'>('idle')
+  const [seconds, setSeconds] = useState(0)
+  const rec = useRef<MediaRecorder | null>(null)
+  const chunks = useRef<Blob[]>([])
+  const timer = useRef<number | null>(null)
+  const stopTracks = () => { rec.current?.stream.getTracks().forEach(t => t.stop()) }
+  const stop = () => { if (rec.current && rec.current.state !== 'inactive') rec.current.stop() }
+  const start = async () => {
+    if (!CAN_REC) { onError('這個瀏覽器不支援錄音，請改用 Safari 或 Chrome。'); return }
+    let stream: MediaStream
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) }
+    catch { onError('沒有麥克風權限。請在瀏覽器網址列允許麥克風，再按一次。'); return }
+    const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find(m => MediaRecorder.isTypeSupported(m)) ?? ''
+    const r = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+    chunks.current = []
+    r.ondataavailable = e => { if (e.data.size) chunks.current.push(e.data) }
+    r.onstop = async () => {
+      stopTracks()
+      if (timer.current) { clearInterval(timer.current); timer.current = null }
+      const blob = new Blob(chunks.current, { type: r.mimeType || mime || 'audio/webm' })
+      rec.current = null
+      if (blob.size < 1000) { setState('idle'); return }
+      setState('busy')
+      try {
+        const res = await api.stt(blob, projectId)
+        if (res.text) onText(res.text); else onError('沒有聽到聲音，請靠近麥克風再說一次。')
+      } catch (e) { onError((e as Error).message || '語音辨識失敗') }
+      finally { setState('idle'); setSeconds(0) }
     }
-    r.onend = () => { rec.current = null; setOn(false) }; r.onerror = () => { rec.current = null; setOn(false) }
-    rec.current = r; r.start(); setOn(true)
+    rec.current = r
+    r.start(250)
+    setState('rec'); setSeconds(0)
+    const t0 = Date.now()
+    timer.current = window.setInterval(() => {
+      const sec = Math.floor((Date.now() - t0) / 1000); setSeconds(sec)
+      if (sec >= MIC_MAX_SECONDS) stop()
+    }, 250)
   }
-  useEffect(() => () => rec.current?.stop(), [])
-  return { on, toggle: () => (on ? stop() : start()), available: !!SRCtor }
+  useEffect(() => () => { stopTracks(); if (timer.current) clearInterval(timer.current) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  return { state, on: state === 'rec', busy: state === 'busy', seconds, toggle: () => (state === 'rec' ? stop() : state === 'idle' ? start() : undefined), available: CAN_REC }
 }
 const MicIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -139,6 +162,14 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   { projectId: string; name?: string; onUsage: () => void; onTopUp: (needPoints?: number) => void; onCredits?: () => void; onStorage?: () => void; onProjectsChanged?: () => void; feedbackUnread?: number; onFeedbackRead?: () => void }) {
   const [tab, setTab] = useState<'chat' | 'files'>('chat')
   const [fbOpen, setFbOpen] = useState(false)
+  const [reply, setReply] = useState('')
+  const [replying, setReplying] = useState(false)
+  const sendReply = async () => {
+    const t = reply.trim(); if (!t || replying) return
+    setReplying(true)
+    try { const c = await api.replyComment(projectId, t); setProj(p => p && { ...p, client_comments: [...(p.client_comments ?? []), c] }); setReply('') }
+    catch (e) { setErr((e as Error).message) } finally { setReplying(false) }
+  }
   const openFeedback = async () => {
     setFbOpen(true)
     const p = await api.project(projectId); setProj(p)   // fresh list, then mark as seen
@@ -148,7 +179,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [live, setLive] = useState<Live>(emptyLive())
   const [running, setRunning] = useState(false)
   const [text, setText] = useState('')
-  const mic = useMic(t => setText(x => (x ? x.replace(/\s*$/, '') : '') + t))
+  const mic = useMic(t => setText(x => (x ? x.replace(/\s*$/, '') : '') + t), projectId, m => setErr(m))
   const [err, setErr] = useState('')
   const [needCredits, setNeedCredits] = useState<{ needed: number; balance: number } | null>(null)
   const [needStorage, setNeedStorage] = useState<{ used_bytes: number; quota_bytes: number } | null>(null)
@@ -417,17 +448,24 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         <>
           <div className="scrim fb-scrim" onClick={() => setFbOpen(false)} />
           <aside className="drawer fb-drawer">
-            <div className="dr-head"><div><div className="dr-email">朋友的反饋</div><div className="muted small">看完分享連結後留的話。不會打斷剪輯師，想改再按「照這個改」。</div></div><a className="dr-close" onClick={() => setFbOpen(false)}>✕</a></div>
+            <div className="dr-head"><div><div className="dr-email">朋友的反饋</div><div className="muted small">分享頁底下的留言串，大家都看得到。不會打斷剪輯師；想改再按「照這個改」，想回話就在下面回。</div></div><a className="dr-close" onClick={() => setFbOpen(false)}>✕</a></div>
             {(proj.client_comments?.length ?? 0) === 0 && <div className="muted small">還沒有人留言。到「成品」頁把影片分享給朋友，他們看完可以直接留話。</div>}
-            {[...(proj.client_comments ?? [])].reverse().map(c => (
-              <div key={c.id} className={`fb-item ${c.read ? '' : 'new'}`}>
-                <div className="fb-item-head"><b>{c.name || '朋友'}</b>{!c.read && <em>新</em>}<span className="muted small">{new Date(c.created_at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}{c.version ? ` · 看的是 v${c.version}` : ''}</span></div>
-                <div className="fb-text">{c.text}</div>
-                <div className="fb-act">
-                  <a className="small" onClick={() => { setText(t => (t ? t + '\n' : '') + `朋友說：${c.text}。請照這個改。`); setFbOpen(false); setTab('chat') }}>照這個改</a>
-                  <a className="small muted" onClick={() => { navigator.clipboard?.writeText(c.text).catch(() => {}) }}>複製</a>
-                </div>
-              </div>))}
+            <div className="fb-list">
+              {(proj.client_comments ?? []).map(c => (
+                <div key={c.id} className={`fb-item ${c.read ? '' : 'new'} ${c.owner ? 'mine' : ''}`}>
+                  <div className="fb-item-head"><b>{c.owner ? '我' : (c.name || '朋友')}</b>{!c.read && <em>新</em>}<span className="muted small">{new Date(c.created_at.endsWith('Z') || c.created_at.includes('+') ? c.created_at : c.created_at + 'Z').toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}{c.version ? ` · 看的是 v${c.version}` : ''}</span></div>
+                  <div className="fb-text">{c.text}</div>
+                  {!c.owner && <div className="fb-act">
+                    <a className="small" onClick={() => { setText(t => (t ? t + '\n' : '') + `朋友說：${c.text}。請照這個改。`); setFbOpen(false); setTab('chat') }}>照這個改</a>
+                    <a className="small muted" onClick={() => setReply(r => r || `${c.name ? c.name + '，' : ''}`)}>回覆</a>
+                  </div>}
+                </div>))}
+            </div>
+            <div className="fb-reply">
+              <textarea rows={2} value={reply} onChange={e => setReply(e.target.value)} placeholder="回覆大家（會出現在分享頁的留言串）"
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !IS_TOUCH) { e.preventDefault(); sendReply() } }} />
+              <button className="btn primary small" disabled={!reply.trim() || replying} onClick={sendReply}>{replying ? '送出中…' : '回覆'}</button>
+            </div>
           </aside>
         </>
       )}
@@ -577,9 +615,9 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                       {!text.trim() && <span className="coach">在這裡打字</span>}
                       <textarea rows={4} value={text} onChange={e => setText(e.target.value)} autoFocus={!text}
                         placeholder={'例：宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑。'} />
-                      {mic.available && <button type="button" className={`attach mic ob-mic ${mic.on ? 'on' : ''}`} title="用說的" aria-label="語音輸入" onClick={mic.toggle}><MicIcon /></button>}
+                      {mic.available && <button type="button" className={`attach mic ob-mic ${mic.on ? 'on' : ''} ${mic.busy ? 'busy' : ''}`} title="用說的" aria-label="語音輸入" onClick={mic.toggle} disabled={mic.busy}>{mic.busy ? <span className="spinner" /> : <MicIcon />}</button>}
                     </div>
-                    {mic.on && <div className="muted small">聽寫中… 說完再按一次麥克風。</div>}
+                    {(mic.on || mic.busy) && <div className="small mic-hint">{mic.on ? `錄音中 ${mic.seconds}s · 說完再按一次麥克風` : '辨識中，文字馬上出現…'}</div>}
                     <div className="chips inline">
                       {!analysis && <a className="chipbtn on" onClick={() => setText(EXAMPLE_BRIEF)}>給我範例</a>}
                       {['地點：', '價格：平日每人 NT$', '店名：', '語氣：輕鬆活潑'].map(c => (
@@ -728,9 +766,10 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
             const composing = e.nativeEvent.isComposing || e.keyCode === 229
             if (e.key === 'Enter' && !e.shiftKey && !composing && !IS_TOUCH) { e.preventDefault(); send() }
           }} />
-        {mic.available && <button type="button" className={`attach mic ${mic.on ? 'on' : ''}`} title={mic.on ? '停止語音輸入' : '語音輸入'} aria-label="語音輸入" onClick={mic.toggle}><MicIcon /></button>}
+        {mic.available && <button type="button" className={`attach mic ${mic.on ? 'on' : ''} ${mic.busy ? 'busy' : ''}`} title={mic.on ? '按一下結束，開始辨識' : mic.busy ? '辨識中…' : '語音輸入（按一下開始說）'} aria-label="語音輸入" onClick={mic.toggle} disabled={mic.busy}>{mic.busy ? <span className="spinner" /> : <MicIcon />}{mic.on && <b className="mic-sec">{mic.seconds}s</b>}</button>}
         <button className="btn primary" onClick={send} disabled={running || uploading || !text.trim()}>送出</button>
-        {!IS_TOUCH && <span className="composer-hint muted small">Enter 送出 · Shift+Enter 換行{mic.on ? ' · 聽寫中…' : ''}</span>}
+        {(mic.on || mic.busy) ? <span className="composer-hint small mic-hint">{mic.on ? `錄音中 ${mic.seconds}s · 說完再按一次麥克風` : '辨識中，文字馬上出現…'}</span>
+          : !IS_TOUCH && <span className="composer-hint muted small">Enter 送出 · Shift+Enter 換行 · 🎙 可以用說的</span>}
       </footer>}
       </>}
     </div>

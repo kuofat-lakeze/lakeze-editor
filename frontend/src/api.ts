@@ -5,9 +5,11 @@ export type Project = { id: string; name: string; updated_at?: string; exports?:
 export type DeliverableVersion = { version: number; created_at: string; videos: Asset[]; covers: Asset[]; main: Asset | null }
 export type ShareLink = { id: string; token: string; url: string; version: number | null; allow_download: boolean; note: string; expires_at: string | null; revoked: boolean; views: number; created_at: string }
 export type DeliverablesData = { project: { id: string; name: string; final_version: number | null; exports: number }; versions: DeliverableVersion[]; shares: ShareLink[] }
-export type ShareView = { project_name: string; note: string; allow_download: boolean; brand: { name: string; tagline: string }; versions: DeliverableVersion[]; signup_url?: string; signup_points?: number }
+export type ThreadMsg = { id: number; name: string; text: string; created_at: string; owner: boolean }
+export type Thread = { comments: ThreadMsg[]; comments_limit: number; comments_full: boolean }
+export type ShareView = Thread & { project_name: string; note: string; allow_download: boolean; brand: { name: string; tagline: string }; versions: DeliverableVersion[]; signup_url?: string; signup_points?: number }
 export type GalleryItem = { project_id: string; name: string; version: number; final: boolean; cover: Asset | null; video: Asset | null; updated_at: string }
-export type ClientComment = { id: number; project_id?: string; project_name?: string; name: string; text: string; created_at: string; read?: boolean; version?: number | null; share_note?: string }
+export type ClientComment = { id: number; project_id?: string; project_name?: string; name: string; text: string; created_at: string; read?: boolean; owner?: boolean; version?: number | null; share_note?: string }
 export type Notifications = { unread: number; items: ClientComment[]; by_project: Record<string, number>; total: number }
 export type CreditsSummary = {
   balance: number; purchased: number; refunded: number; used: number; waived: number; revision_points: number; first_video_points: number
@@ -98,6 +100,7 @@ export const api = {
     if (r.status === 402) { const d = await r.json(); throw Object.assign(new Error(d.detail), { needed: d.needed as number, balance: d.balance as number }) }
     return j<Analysis>(r)
   },
+  stt: (blob: Blob, projectId = '') => { const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'v.mp4' : blob.type.includes('ogg') ? 'v.ogg' : 'v.webm'); fd.append('project_id', projectId); return fetch('/api/stt', { method: 'POST', body: fd }).then(j<{ text: string; seconds: number }>) },
   frameUrl: (id: string, clip: number, t: number) => `/api/projects/${id}/frame/${clip}?t=${t}`,
   projects: () => fetch('/api/projects').then(j<Project[]>),
   createProject: (name: string) => post('/api/projects', { name }).then(j<Project>),
@@ -119,7 +122,9 @@ export const api = {
   deleteVoice: () => fetch('/api/voice/clone', { method: 'DELETE' }).then(j<{ ok: boolean }>),
   setStoragePlan: (plan: string) => post('/api/storage/plan', { plan }).then(j<{ ok: boolean; storage: StorageState; balance?: number }>),
   share: (token: string) => fetch(`/api/s/${token}`).then(j<ShareView>),
-  shareComment: (token: string, name: string, text: string) => post(`/api/s/${token}/comment`, { name, text }).then(j<{ ok: boolean }>),
+  shareComment: (token: string, name: string, text: string) => post(`/api/s/${token}/comment`, { name, text }).then(j<{ ok: boolean; comment: ThreadMsg }>),
+  shareThread: (token: string) => fetch(`/api/s/${token}/comments`).then(j<Thread>),
+  replyComment: (id: string, text: string) => post(`/api/projects/${id}/comments`, { text }).then(j<ClientComment>),
   gallery: () => fetch('/api/gallery').then(j<GalleryItem[]>),
   checkout: (pack: string) => fetch(`/api/checkout/${pack}`).then(j<CheckoutResult>),
   admin: {

@@ -140,6 +140,7 @@ class ShareComment(Base):
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # when the owner opened it
+    owner: Mapped[bool] = mapped_column(Boolean, default=False)   # a reply by the project owner, shown in the public thread
 
 
 class Usage(Base):
@@ -166,7 +167,7 @@ _MIGRATIONS = [
     ("users", "voice_id", "VARCHAR(64)"), ("users", "voice_name", "VARCHAR(80)"), ("users", "voice_trial_seconds", "FLOAT DEFAULT 0"),
     ("users", "provider", "VARCHAR(20) DEFAULT ''"), ("users", "provider_id", "VARCHAR(80)"), ("users", "display_name", "VARCHAR(120)"),
     ("users", "tags", "VARCHAR(200) DEFAULT ''"), ("users", "last_seen_at", "DATETIME"),
-    ("share_comments", "read_at", "DATETIME"), ("users", "referrer_id", "VARCHAR(12)"),
+    ("share_comments", "read_at", "DATETIME"), ("users", "referrer_id", "VARCHAR(12)"), ("share_comments", "owner", "BOOLEAN DEFAULT 0"),
 ]
 
 
