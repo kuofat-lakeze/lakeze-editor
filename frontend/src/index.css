@@ -934,8 +934,6 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 @keyframes micpulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(236,90,30,.45); } 50% { box-shadow: 0 0 0 8px rgba(236,90,30,0); } }
 .composer { position: relative; flex-wrap: wrap; } .composer-hint { flex-basis: 100%; text-align: right; margin-top: -4px; font-size: 11px; }
 .spot .ob-mic { position: absolute; right: 10px; bottom: 10px; width: 38px; height: 38px; }
-.speak { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); margin-top: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); }
-.speak:hover { color: var(--brand); border-color: var(--brand-2); text-decoration: none; } .speak.on { color: #fff; background: var(--brand); border-color: var(--brand); }
 
 /* ---- 朋友的反饋 ---- */
 .fb-bell { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; position: relative; }

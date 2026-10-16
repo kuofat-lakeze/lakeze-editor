@@ -16,11 +16,9 @@ const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
 const IS_TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 /* Voice input: record with MediaRecorder (works in Chrome, Safari, iOS, LINE's browser), send the clip to
    /api/stt and paste the transcript. The Web Speech API was unreliable (silent failures, no Safari/Android
-   support in many builds), so recognition happens server side. Read-aloud uses speechSynthesis. */
-const CAN_TTS = typeof speechSynthesis !== 'undefined'
+   support in many builds), so recognition happens server side. */
 const CAN_REC = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
 const MIC_MAX_SECONDS = 60
-const plain = (md: string) => md.replace(/```[\s\S]*?```/g, '').replace(/[*_`#>|]/g, '').replace(/\[(.*?)\]\(.*?\)/g, '$1').replace(/\n{2,}/g, '。').trim()
 function useMic(onText: (t: string) => void, projectId: string, onError: (m: string) => void) {
   const [state, setState] = useState<'idle' | 'rec' | 'busy'>('idle')
   const [seconds, setSeconds] = useState(0)
@@ -68,32 +66,6 @@ const MicIcon = () => (
     <path d="M12 15a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v5a4 4 0 0 0 4 4zm7-4a7 7 0 0 1-14 0M12 18v3M8 21h8" />
   </svg>
 )
-const SpeakIcon = ({ on }: { on: boolean }) => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M11 5 6 9H2v6h4l5 4z" />{on ? <path d="M23 9l-6 6M17 9l6 6" /> : <path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14" />}
-  </svg>
-)
-/* One utterance at a time across the whole thread. */
-let speakingId: string | number | null = null
-const speakListeners = new Set<() => void>()
-function speakToggle(id: string | number, text: string) {
-  if (!CAN_TTS) return
-  const was = speakingId === id
-  speechSynthesis.cancel(); speakingId = null
-  if (!was) {
-    const u = new SpeechSynthesisUtterance(plain(text)); u.lang = 'zh-TW'; u.rate = 1.05
-    const v = speechSynthesis.getVoices().find(v => /zh[-_]TW/i.test(v.lang)) ?? speechSynthesis.getVoices().find(v => /^zh/i.test(v.lang))
-    if (v) u.voice = v
-    u.onend = u.onerror = () => { if (speakingId === id) { speakingId = null; speakListeners.forEach(f => f()) } }
-    speakingId = id; speechSynthesis.speak(u)
-  }
-  speakListeners.forEach(f => f())
-}
-function useSpeaking(id: string | number) {
-  const [, tick] = useState(0)
-  useEffect(() => { const f = () => tick(x => x + 1); speakListeners.add(f); return () => { speakListeners.delete(f) } }, [])
-  return speakingId === id
-}
 const CRIOS = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent)  // third-party iOS browsers: file picker is flakier than Safari
 type Stage = 'start' | 'working' | 'progress' | 'revise'
 const PLACEHOLDER: Record<Stage, string> = {
@@ -864,8 +836,6 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
 }
 
 function Bubble({ m, assets, onOpenFiles, onRecord }: { m: Msg; assets: Asset[]; onOpenFiles?: () => void; onRecord?: (lines: Line[]) => void }) {
-  const speaking = useSpeaking(m.id)
-  const spoken = m.parts.filter(p => p.type === 'text').map(p => (p as { text: string }).text).join('\n')
   // Consecutive tool parts collapse into one quiet "did N steps" line; the editor's words stay prominent.
   const groups: ({ kind: 'text'; text: string } | { kind: 'tools'; names: string[] })[] = []
   for (const p of m.parts) {
@@ -885,8 +855,6 @@ function Bubble({ m, assets, onOpenFiles, onRecord }: { m: Msg; assets: Asset[];
           </details>
         ))}
       {assets.map(a => <AssetCard key={a.id} a={a} onOpenFiles={onOpenFiles} />)}
-      {m.role === 'assistant' && CAN_TTS && spoken.trim() && (
-        <a className={`speak ${speaking ? 'on' : ''}`} onClick={() => speakToggle(m.id, spoken)} title={speaking ? '停止朗讀' : '朗讀這則'}><SpeakIcon on={speaking} />{speaking ? '停止' : '朗讀'}</a>)}
     </div>
   )
 }
