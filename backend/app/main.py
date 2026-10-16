@@ -360,33 +360,16 @@ def _sub_dict(u: User) -> dict | None:
             "renews_at": u.sub_renews_at.isoformat() if u.sub_renews_at else None}
 
 
-async def _expire_subscription_points(u: User) -> int:
-    """End of a subscription period: whatever is left of that period's included points expires.
-    Charges during the period are attributed to the included points first, so top-up points
-    (which never expire) are only touched after the included ones are used up."""
-    if not u.subscription or not u.sub_period_start:
-        return 0
-    granted = pricing.SUBSCRIPTIONS.get(u.subscription, {}).get("points", 0)
-    start = u.sub_period_start if u.sub_period_start.tzinfo else u.sub_period_start.replace(tzinfo=timezone.utc)
-    async with Session() as s:
-        used = -int((await s.execute(select(func.coalesce(func.sum(CreditTx.delta), 0))
-                                     .where(CreditTx.user_id == u.id, CreditTx.kind == "charge", CreditTx.created_at >= start))).scalar() or 0)
-    expire = min(max(0, granted - used), await balance(u.id))
-    if expire > 0:
-        await add_credits(u.id, -expire, "expire", "expire", meta={"plan": u.subscription, "granted": granted, "used": used})
-    return expire
-
-
 async def activate_subscription(user_id: str, plan_id: str, *, paid_twd: int = 0, meta: dict | None = None) -> dict:
-    """Start (or renew) a subscription period: expire the previous period's leftover, grant this
-    period's points, bundle the storage. Called by the payment webhook or by an admin."""
+    """Start (or renew) a subscription period: grant this period's points (unused points from earlier
+    periods stay; nothing expires), bundle the storage. Called by the payment webhook or by an admin."""
     sub = pricing.SUBSCRIPTIONS[plan_id]
     now = datetime.now(timezone.utc)
     async with Session() as s:
         u = await s.get(User, user_id)
     if not u:
         raise HTTPException(404, "user not found")
-    expired = await _expire_subscription_points(u)
+    expired = 0   # unused points carry over: nothing expires when a period ends or a plan is cancelled
     await add_credits(user_id, sub["points"], "subscription", f"subscription {plan_id}", amount_twd=paid_twd,
                       meta={"plan": plan_id, **(meta or {})})
     async with Session() as s:
@@ -402,12 +385,12 @@ async def activate_subscription(user_id: str, plan_id: str, *, paid_twd: int = 0
 
 
 async def cancel_subscription(user_id: str) -> dict:
-    """End the subscription now: leftover included points expire, storage goes back to free."""
+    """End the subscription now: the points stay with the user, storage goes back to free."""
     async with Session() as s:
         u = await s.get(User, user_id)
     if not u or not u.subscription:
         return {"expired": 0}
-    expired = await _expire_subscription_points(u)
+    expired = 0   # unused points carry over: nothing expires when a period ends or a plan is cancelled
     async with Session() as s:
         u = await s.get(User, user_id)
         u.subscription = ""; u.sub_period_start = None; u.sub_renews_at = None
@@ -516,7 +499,7 @@ async def get_pricing():
     packs = []
     for pid, p in pricing.PACKS.items():   # "<pack>m" is the member-price checkout for the same pack
         packs.append({"id": pid, **p, "checkout_url": config.CHECKOUT_URLS.get(pid),
-                      "member_checkout_url": {"sub5": config.CHECKOUT_URLS.get(pid + "m"), "sub15": config.CHECKOUT_URLS.get(pid + "m2")}})
+                      "member_checkout_url": {}})
     subs = [{**s, "checkout_url": config.CHECKOUT_URLS.get(s["id"])} for s in pricing.public_pricing()["subscriptions"]]
     return {**pricing.public_pricing(), "menu": [{"item": i, "points": p} for i, p in pricing.MENU],
             "free_revision_turns": pricing.FREE_REVISION_TURNS, "packs": packs, "subscriptions": subs,
@@ -590,9 +573,10 @@ async def credits_summary(user: User = CurrentUser):
 def _item(item: str, user: User) -> dict:
     if item in pricing.PACKS:
         pk = pricing.PACKS[item]
-        member = user.subscription if user.subscription in pk["member_twd"] else ""
-        return {"kind": "pack", "label": f"{pk['points']} 點", "points": pk["points"],
-                "amount_twd": pk["member_twd"][member] if member else pk["twd"], "list_twd": pk["twd"], "member": member}
+        member = user.subscription if user.subscription in pk.get("member_bonus", {}) else ""
+        extra = pk["member_bonus"][member] if member else 0
+        return {"kind": "pack", "label": pk["label"] + (f" + 會員送 {extra}" if extra else ""), "points": pricing.pack_points(pk, member),
+                "amount_twd": pk["twd"], "list_twd": pk["twd"], "member": member}
     if item in pricing.SUBSCRIPTIONS:
         sb = pricing.SUBSCRIPTIONS[item]
         return {"kind": "sub", "label": f"{sb['label']}（月繳）", "points": sb["points"], "amount_twd": sb["twd"], "list_twd": sb["payg_twd"], "member": ""}
@@ -600,12 +584,7 @@ def _item(item: str, user: User) -> dict:
 
 
 def _card_url(item: str, user: User, order_id: str) -> str | None:
-    key = item
-    if item in pricing.PACKS and user.subscription:
-        k2 = item + ("m2" if user.subscription == "sub15" else "m")
-        if config.CHECKOUT_URLS.get(k2):
-            key = k2
-    url = config.CHECKOUT_URLS.get(key)
+    url = config.CHECKOUT_URLS.get(item)   # one price for everyone: members get extra points, not a member checkout
     if not url:
         return None
     sep = "&" if "?" in url else "?"
@@ -740,13 +719,10 @@ async def checkout(pack_id: str, user: User = CurrentUser):
             return {"url": None, "test": True, "subscription": pack_id, "balance": await balance(user.id)}
         if pack_id in pricing.PACKS:
             pack = pricing.PACKS[pack_id]
-            bal = await add_credits(user.id, pack["points"], "purchase", f"test {pack_id}", amount_twd=0, meta={"test": True})
-            return {"url": None, "test": True, "granted": pack["points"], "balance": bal}
+            got = pricing.pack_points(pack, user.subscription)
+            bal = await add_credits(user.id, got, "purchase", f"test {pack_id}", amount_twd=0, meta={"test": True, "bonus": got - pack["points"]})
+            return {"url": None, "test": True, "granted": got, "balance": bal}
         raise HTTPException(404, "unknown pack")
-    if pack_id in pricing.PACKS and user.subscription:   # member checkout: p500m (專業旅人 rate) / p500m2 (超級玩家 rate)
-        key = pack_id + ("m2" if user.subscription == "sub15" else "m")
-        if config.CHECKOUT_URLS.get(key):
-            pack_id = key
     url = config.CHECKOUT_URLS.get(pack_id)   # packs, member packs and subscriptions share the map
     if not url:
         raise HTTPException(404, "此方案未開放線上付款")
@@ -798,8 +774,11 @@ async def lemonsqueezy_webhook(request: Request):
         await activate_subscription(user_id, plan_id, paid_twd=pricing.SUBSCRIPTIONS[plan_id]["twd"], meta=meta)
         return {"ok": True, "subscription": plan_id}
     pack = pricing.PACKS[plan_id]
-    await add_credits(user_id, pack["points"], "purchase", f"lemonsqueezy {plan_id}{' member' if member else ''}",
-                      amount_twd=pack["member_twd"][member] if member else pack["twd"], meta={**meta, "member": member})
+    async with Session() as s:   # member bonus follows the buyer's plan at the time of purchase
+        buyer = await s.get(User, user_id)
+    member = member or ((buyer.subscription or "") if buyer else "")
+    await add_credits(user_id, pricing.pack_points(pack, member), "purchase", f"lemonsqueezy {plan_id}{' member' if member else ''}",
+                      amount_twd=pack["twd"], meta={**meta, "member": member})
     return {"ok": True}
 
 

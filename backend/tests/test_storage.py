@@ -115,8 +115,8 @@ async def _set_final(pid, v):
 
 
 def test_subscription_lifecycle():
-    """Activate grants the period's points and bundles storage; renewing expires the unused part
-    (included points are used first, top-ups survive); cancelling drops storage back to free."""
+    """Activate grants the period's points and bundles storage; renewing adds the next period's points on
+    top (nothing expires); a lapsed plan drops storage back to free and the user keeps every point."""
     from app import pricing as P
     sub = P.SUBSCRIPTIONS["sub5"]
 
@@ -131,8 +131,8 @@ def test_subscription_lifecycle():
         assert (await D.storage_state(u.id))["quota_bytes"] == sub["storage_gb"] * D.GB
         await D.add_credits(u.id, -100, "charge", "build_cut")   # used 100 of the included points
         r = await M.activate_subscription(u.id, "sub5", paid_twd=sub["twd"])   # next month
-        assert r["expired"] == sub["points"] - 100                              # leftover of month 1 gone
-        assert await D.balance(u.id) == 20 + sub["points"]                      # top-up 20 intact, fresh grant
+        assert r["expired"] == 0                                                # unused points carry over
+        assert await D.balance(u.id) == 20 + 2 * sub["points"] - 100
         # storage renewals never touch a bundled plan
         assert await M.renew_storage_plans() == {"renewed": 0, "lapsed": 0}
         # lapse: renewal date + grace passed
@@ -142,7 +142,7 @@ def test_subscription_lifecycle():
         async with D.Session() as s:
             uu = await s.get(D.User, u.id)
             assert uu.subscription == "" and uu.storage_plan == "free"
-        assert await D.balance(u.id) == 20
+        assert await D.balance(u.id) == 20 + 2 * sub["points"] - 100            # still all there after the plan ends
     asyncio.run(go())
 
 
@@ -305,3 +305,29 @@ def test_doubled_ledger_is_halved_once():
         await D.init_db()
         assert await D.balance(u.id) == 110 - 64
     asyncio.run(go())
+
+
+def test_packs_bonus_points_stay_below_the_subscription_discount():
+    """300 點起加送；入帳＝購買＋加送，價格只算購買的點數；每點實價仍高於專業旅人會員價。"""
+    from app import pricing as P
+    pk = P.PACKS["p300"]
+    assert pk["total"] == 315 and pk["twd"] == 1050 and pk["label"] == "300 點 + 送 15"
+    assert M._item("p300", NS(subscription=""))["points"] == 315
+    assert all(P.PACKS[k]["bonus"] == 0 for k in ("p50", "p100"))
+    for k, v in P.PACKS.items():
+        assert v["twd"] / v["total"] > P.SUBSCRIPTIONS["sub5"]["point_twd"], k
+
+
+
+def test_members_get_extra_points_not_a_lower_price():
+    """訂閱期間買點數一律用該級距每點價格（專業旅人 NT$3.1、超級玩家 NT$2.9）：付一樣的錢、拿更多點。"""
+    from app import pricing as P
+    pk = P.PACKS["p1000"]
+    free, pro, big = (M._item("p1000", NS(subscription=x)) for x in ("", "sub5", "sub15"))
+    assert free["amount_twd"] == pro["amount_twd"] == big["amount_twd"] == pk["twd"] == 3500
+    assert (free["points"], pro["points"], big["points"]) == (1100, round(3500 / 3.1), round(3500 / 2.9)) == (1100, 1129, 1207)
+    assert pro["label"] == "1,000 點 + 送 100 + 會員送 29"
+    for k, v in P.PACKS.items():   # any pack, any size: the member's price per point is the plan's rate
+        for plan in ("sub5", "sub15"):
+            got = P.pack_points(v, plan)
+            assert abs(v["twd"] / got - P.SUBSCRIPTIONS[plan]["point_twd"]) < 0.05 or got == v["total"], (k, plan)

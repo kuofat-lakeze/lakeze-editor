@@ -50,8 +50,8 @@ export type Me = { id: string; email: string; is_admin: boolean; balance: number
   provider?: 'google' | 'facebook' | null; name?: string | null; test_account?: boolean }
 export type Providers = { google: boolean; facebook: boolean }
 export type CheckoutResult = { url: string | null; test?: boolean; granted?: number; subscription?: string; balance?: number }
-export type Pack = { id: string; twd: number; points: number; label: string; checkout_url: string | null; member_twd: Record<string, number>; member_checkout_url?: Record<string, string | null> }
-export type Subscription = { id: string; label: string; who: string; desc: string; features: string[]; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
+export type Pack = { id: string; twd: number; points: number; bonus?: number; total?: number; member_bonus?: Record<string, number>; label: string; checkout_url: string | null; member_twd: Record<string, number>; member_checkout_url?: Record<string, string | null> }
+export type Subscription = { member_bonus_pct?: number; id: string; label: string; who: string; desc: string; features: string[]; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
   twd: number; payg_twd: number; save_twd: number; save_pct: number; per_video_twd: number; point_twd: number; member_discount_pct: number; checkout_url?: string | null }
 export type MySubscription = { id: string; label: string; points: number; videos: number; storage_gb: number; features: string[]; period_start: string | null; renews_at: string | null }
 export type Tier = { id: string; label: string; who: string; features?: string[]; voice_seconds?: number }

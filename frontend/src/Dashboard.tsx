@@ -317,7 +317,7 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
               </form>
               <form className="row" onSubmit={async e => {
                 e.preventDefault(); const f = new FormData(e.currentTarget); const plan = String(f.get('plan'))
-                if (!await ask.confirm(plan ? `開通／續約 ${plan}？會入帳該方案的點數並綁定空間。` : '結束訂閱？剩餘的訂閱點數會到期，空間降回免費。')) return
+                if (!await ask.confirm(plan ? `開通／續約 ${plan}？會入帳該方案的點數並綁定空間。` : '結束訂閱？用戶的點數全部保留，空間降回免費。')) return
                 await api.admin.subscription(id, plan, Number(f.get('subtwd') || 0)); load(); onChanged()
               }}>
                 <select name="plan" defaultValue={u.subscription || 'sub5'}>

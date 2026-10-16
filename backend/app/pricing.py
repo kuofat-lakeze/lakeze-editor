@@ -82,13 +82,17 @@ TRIAL_VOICE_SECONDS = 30
 # ones in the plan.
 
 
-def _pack(points: int, label: str) -> dict:
-    """member_twd: the pack at each subscription's own price per point (filled in after SUBSCRIPTIONS)."""
-    return {"twd": int(round(points * POINT_TWD)), "points": points, "label": label, "member_twd": {}}
+def _pack(points: int, bonus: int = 0) -> dict:
+    """A top-up pack: pay for `points`, receive points + bonus. Bonuses start at 300 and grow with the
+    pack, but stay below the subscription discount (專業旅人 −12 %) so subscribing remains the better
+    deal for regular use. member_twd: the paid points at each plan's own price per point."""
+    return {"twd": int(round(points * POINT_TWD)), "points": points, "bonus": bonus, "total": points + bonus,
+            "label": f"{points:,} 點" + (f" + 送 {bonus}" if bonus else ""), "member_twd": {}}
 
 
 PACKS: dict[str, dict] = {
-    "p50": _pack(50, "50 點"), "p100": _pack(100, "100 點"), "p300": _pack(300, "300 點"), "p1000": _pack(1000, "1,000 點"),
+    "p50": _pack(50), "p100": _pack(100), "p300": _pack(300, 15), "p500": _pack(500, 35),
+    "p700": _pack(700, 60), "p1000": _pack(1000, 100), "p2000": _pack(2000, 240),
 }
 
 # Deliverable storage (成品: exported videos + covers, every version). Raw footage and work files are
@@ -130,6 +134,10 @@ OWN_VOICE = "own_voice"       # feature flag: narrate with a clone of the custom
 # Subscriptions are the discount path: the same points bought pay-as-you-go, minus this much.
 SUB_DISCOUNT = {"sub5": 0.12, "sub15": 0.20}
 SUB_SHAPE = {"sub5": (5, 2, 20), "sub15": (15, 2, 100)}   # videos, revisions per video, storage GB
+# Member perk on top-ups: while subscribed, every point bought costs the plan's own price per point
+# (專業旅人 ≈ NT$3.1, 超級玩家 ≈ NT$2.9), whatever the pack. It's paid as extra points, not a lower price:
+# the same NT$ for everyone, points = price ÷ the plan's rate (never fewer than a non-member gets). That
+# keeps revenue per purchase whole and one price list for every buyer.
 SUBSCRIPTIONS: dict[str, dict] = {
     "sub5": {"label": "專業旅人", "who": "一間民宿、每週固定發片的你", "desc": "每月 5 支影片，每支含 2 輪修改", "features": [OWN_VOICE]},
     "sub15": {"label": "超級玩家", "who": "多間店、代操團隊，大量出片", "desc": "每月 15 支影片，每支含 2 輪修改", "features": [OWN_VOICE]},
@@ -180,10 +188,14 @@ def apply_point_price(point_twd: float) -> None:
         SUBSCRIPTIONS[k].update(_sub(v, r, gb, SUB_DISCOUNT[k]))
     for k, o in _OVERRIDE.get("subscriptions", {}).items():
         SUBSCRIPTIONS.setdefault(k, {}).update(o)
-    for pk in PACKS.values():   # each pack at each plan's price per point
-        pk["member_twd"] = {k: int(round(pk["points"] * v["point_twd"] / 10.0) * 10) for k, v in SUBSCRIPTIONS.items()}
+    for k, v in SUBSCRIPTIONS.items():
+        v["member_bonus_pct"] = round((POINT_TWD / v["point_twd"] - 1) * 100)
+    for pk in PACKS.values():   # members pay the same price and receive points at their plan's rate
+        pk["member_bonus"] = {k: max(0, int(round(pk["twd"] / v["point_twd"])) - pk["total"]) for k, v in SUBSCRIPTIONS.items()}
+        pk["member_twd"] = {k: pk["twd"] for k in SUBSCRIPTIONS}   # kept for older clients: no member price any more
     for k, o in _OVERRIDE.get("packs", {}).items():
         PACKS.setdefault(k, {}).update(o)
+        PACKS[k]["total"] = PACKS[k].get("points", 0) + PACKS[k].get("bonus", 0)
     MEMBER_POINT_TWD = SUBSCRIPTIONS["sub5"]["point_twd"]
     MEMBER_DISCOUNT_PCT = SUBSCRIPTIONS["sub5"]["member_discount_pct"]
 
@@ -214,7 +226,7 @@ def margins(point_twd: float | None = None, video_cost_twd: float | None = None)
         x["margin_pct"] = round((x["twd"] - x["cost_twd"]) / x["cost_twd"] * 100) if x["cost_twd"] else None
     return {"point_twd": p, "signup_points": SIGNUP_POINTS, "signup_cost_twd": round(SIGNUP_POINTS * cost / pts), "video_cost_twd": round(cost),
             "estimated_video_cost_twd": round(FIRST_VIDEO_COST + 2 * REVISION_COST),
-            "rows": rows, "packs": [{"id": k, "points": v["points"], "twd": int(round(v["points"] * p))} for k, v in PACKS.items()]}
+            "rows": rows, "packs": [{"id": k, "points": v["points"], "bonus": v.get("bonus", 0), "twd": int(round(v["points"] * p))} for k, v in PACKS.items()]}
 
 
 def tool_cost(name: str, inp: dict) -> int:
@@ -235,3 +247,8 @@ def public_pricing() -> dict:
         "free_storage_gb": FREE_STORAGE_GB, "free_retention_days": FREE_RETENTION_DAYS, "free_revision_turns": FREE_REVISION_TURNS, "trial_voice_seconds": TRIAL_VOICE_SECONDS,
         "storage_plans": [{"id": k, **v, "twd": int(round(v["points"] * POINT_TWD))} for k, v in STORAGE_PLANS.items()],
     }
+
+
+def pack_points(pack: dict, subscription: str = "") -> int:
+    """Points a buyer receives for a pack: paid + the pack's bonus + the member bonus of their plan."""
+    return pack["points"] + pack.get("bonus", 0) + pack.get("member_bonus", {}).get(subscription or "", 0)

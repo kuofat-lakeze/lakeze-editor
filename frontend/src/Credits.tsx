@@ -12,15 +12,16 @@ const twd = (n: number) => `NT$${n.toLocaleString()}`
 
 type PackLike = { id: string; points: number }
 /** The cheapest set of packs that covers `need` points (fewest packs on a tie). Small knapsack in pack-size steps. */
-function cheapestCombo<T extends PackLike>(packs: T[], need: number, price: (k: T) => number): T[] {
+const got = (k: PackLike & { total?: number }) => k.total ?? k.points   // points received: paid + bonus
+function cheapestCombo<T extends PackLike & { total?: number }>(packs: T[], need: number, price: (k: T) => number): T[] {
   if (!packs.length || need <= 0) return packs.slice(0, 1)
   const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a)
-  const step = packs.reduce((g, k) => gcd(g, k.points), packs[0].points)
-  const top = Math.ceil(need / step) + Math.max(...packs.map(k => k.points)) / step
+  const step = packs.reduce((g, k) => gcd(g, got(k)), got(packs[0]))
+  const top = Math.ceil(need / step) + Math.max(...packs.map(got)) / step
   const best: ({ cost: number; n: number; from: number; pack: T } | null)[] = Array(top + 1).fill(null)
   best[0] = { cost: 0, n: 0, from: -1, pack: packs[0] }
   for (let i = 1; i <= top; i++) for (const k of packs) {
-    const j = i - k.points / step
+    const j = i - got(k) / step
     const b = j >= 0 ? best[j] : null
     if (!b) continue
     const c = { cost: b.cost + price(k), n: b.n + 1, from: j, pack: k }
@@ -103,9 +104,12 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   const need = nVideos * FIRST + nVideos * nRev * REV
   const member = !!sub                                   // subscribers top up at their plan's price per point
   const myPlan = sub ? p.subscriptions.find(x => x.id === sub.id) : undefined
-  const rate = myPlan ? myPlan.point_twd : p.point_twd
-  const packPrice = (k: typeof p.packs[number]) => (sub && k.member_twd[sub.id] ? k.member_twd[sub.id] : k.twd)
-  const combo = cheapestCombo(p.packs, needPoints > 0 ? needPoints : need, packPrice)
+  // One price for everyone; members get extra points on every pack (專業旅人 +15 %, 超級玩家 +25 %).
+  const memberBonus = (k: typeof p.packs[number], plan = sub?.id) => (plan ? k.member_bonus?.[plan] ?? 0 : 0)
+  const gotPts = (k: typeof p.packs[number], plan = sub?.id) => (k.total ?? k.points) + memberBonus(k, plan)
+  const rate = p.point_twd
+  const packPrice = (k: typeof p.packs[number]) => k.twd
+  const combo = cheapestCombo(p.packs.map(k => ({ ...k, total: gotPts(k) })), needPoints > 0 ? needPoints : need, packPrice)
   const bestPack = combo.reduce((a, k) => (k.points > a.points ? k : a), combo[0] ?? p.packs[0])
   const comboLabel = (c: typeof combo) => groupPacks(c).map(([k, n]) => `${n > 1 ? `${n}×` : ''}${k.points.toLocaleString()}`).join(' ＋ ') + ' 點'
 
@@ -114,8 +118,8 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
       {toast && <div className="buy-toast">{toast}</div>}
       {paying && p && (() => {
         const pk = p.packs.find(x => x.id === paying); const sb = p.subscriptions.find(x => x.id === paying)
-        const memberTwd = pk && me?.subscription ? pk.member_twd[me.subscription.id] : undefined
-        const item = pk ? { id: pk.id, kind: 'pack' as const, title: `${pk.points} 點`, sub: `約可剪 ${Math.max(0, Math.floor(pk.points / (p.first_video_points + 2 * p.revision_points)))} 支（含封面與 2 輪修改）`, points: pk.points, twd: memberTwd ?? pk.twd, listTwd: memberTwd ? pk.twd : undefined }
+        const got = pk ? gotPts(pk, me?.subscription?.id) : 0
+        const item = pk ? { id: pk.id, kind: 'pack' as const, title: `${pk.points.toLocaleString()} 點${got > pk.points ? `（實得 ${got.toLocaleString()} 點）` : ''}`, sub: `約可剪 ${Math.max(0, Math.floor(got / (p.first_video_points + 2 * p.revision_points)))} 支（含封面與 2 輪修改）`, points: got, twd: pk.twd, listTwd: undefined }
           : sb ? { id: sb.id, kind: 'sub' as const, title: `${sb.label} · 月繳`, sub: `每月 ${sb.points} 點，約 ${sb.videos} 支 · ${sb.storage_gb} GB 空間`, points: sb.points, twd: sb.twd, listTwd: sb.payg_twd } : null
         return item && <PayFlow item={item} onClose={() => { setPaying(null); reload(); onBought?.() }} onPaid={() => { setPaying(null); setToast(`完成！${item.title}已入帳`); setTimeout(() => setToast(''), 5000); reload(); onBought?.() }} />
       })()}
@@ -145,7 +149,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
               {sub && (
                 <div className="hero-free sub">
                   訂閱中：<b>{sub.label}</b>，本期含 {sub.points} 點（約 {sub.videos} 支影片）與 {sub.storage_gb} GB 成品空間
-                  {sub.renews_at && <>，{sub.renews_at.slice(5, 10).replace('-', '/')} 續約</>}。訂閱點數當期有效，儲值點數不過期。
+                  {sub.renews_at && <>，{sub.renews_at.slice(5, 10).replace('-', '/')} 續約</>}。沒用完的點數會一直累積，不會重置；訂閱期間加買點數一律 1 點 {twd(myPlan?.point_twd ?? 0)}。
                 </div>
               )}
               {sum.free_project && sum.free_project.in_free && (
@@ -294,13 +298,12 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                 <div className="pl-who">{p.tiers.payg.who}</div>
                 <div className="pl-price">{twd(single)}<small> / 支</small></div>
                 <div className="pl-pts">一次買 <b>{Math.min(...p.packs.map(k => k.points)).toLocaleString()}～{Math.max(...p.packs.map(k => k.points)).toLocaleString()}</b> 點</div>
-                <div className="pl-sub">1 點 {twd(p.point_twd)}，用多少扣多少</div>
-                <div className="pl-off none">原價</div>
+                <div className="pl-rate">1 點 <b>{twd(p.point_twd)}</b></div>
+                <div className="pl-sub"><b className="pl-hi">300 點起加送</b>，最多送 {Math.max(...p.packs.map(k => k.bonus ?? 0))} 點</div>
                 <ul className="pl-list"><li>點數永久有效</li><li>全部功能都能用</li></ul>
                 <button className="btn block" onClick={() => setTab('buy')}>{!sub && !inFree && me?.tier !== 'free' ? '再儲值' : '儲值點數'}</button>
               </div>
               {p.subscriptions.map(s => {
-                const off = Math.round((1 - s.per_video_twd / single) * 100)
                 const isCur = sub?.id === s.id
                 const best = s.id === 'sub5'
                 return (
@@ -310,8 +313,9 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                     <div className="pl-who">{s.who}</div>
                     <div className="pl-price">{twd(s.per_video_twd)}<small> / 支</small></div>
                     <div className="pl-pts">每月 <b>{s.points.toLocaleString()}</b> 點</div>
+                    <div className="pl-rate">1 點 <b>{twd(s.point_twd)}</b><span>比單次省 {Math.round((1 - s.point_twd / p.point_twd) * 100)}%</span></div>
                     <div className="pl-sub">每月 {twd(s.twd)}，約 {s.videos} 支影片</div>
-                    <div className="pl-off">比單次省 {off}%</div>
+                    <div className="pl-member">訂閱期間加買點數，不論買多少，<b>一律 1 點 {twd(s.point_twd)}</b>：付一樣的錢，點數多 {s.member_bonus_pct}%（例：{twd((p.packs.find(x => x.points === 1000) ?? p.packs[p.packs.length - 1]).twd)} 實得 <b>{gotPts(p.packs.find(x => x.points === 1000) ?? p.packs[p.packs.length - 1], s.id).toLocaleString()}</b> 點）</div>
                     <ul className="pl-list"><li>每支含 2 輪修改</li><li>{s.storage_gb} GB 成品空間，一直保存</li></ul>
                     {isCur ? <button className="btn block" disabled>使用中</button>
                       : canBuy(s.checkout_url) ? <button className={`btn block ${best ? 'primary' : ''}`} onClick={() => buy(s.id)}>訂閱{s.label}</button>
@@ -349,8 +353,8 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                   </tbody>
                 </table>
                 <ul className="muted small pl-rules">
-                  <li>訂閱立即生效，每 30 天續約；訂閱附的點數當期有效，不夠再儲值（儲值點數不過期）。</li>
-                  <li>訂閱會員儲值也享會員價：每點約 {twd(sub5.point_twd)} 起。</li>
+                  <li>訂閱立即生效，每 30 天續約；沒用完的點數（訂閱附的、自己買的）都會一直累積，不會重置。</li>
+                  <li>點數包 300 點起加送。訂閱期間加買點數，一律用該方案的每點價格：{p.subscriptions.map(x => `${x.label} 1 點 ${twd(x.point_twd)}`).join('、')}（付一樣的錢，用多給點數的方式計算）。</li>
                   <li>免費空間的成品保留 {p.free_retention_days} 天後自動移除；加購空間（從點數扣，每 30 天續扣）就一直保存。點數不夠續扣時降回免費空間，從那天起再保留 {p.free_retention_days} 天。</li>
                 </ul>
               </div>
@@ -374,10 +378,10 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
               </div>
               <div className="calc-out">
                 <div><span className="muted small">需要</span><div className="num">{need}<span className="unit">點</span></div></div>
-                <div><span className="muted small">約{member ? '（會員價）' : ''}</span><div className="num">{twd(Math.round(need * rate))}</div></div>
+                <div><span className="muted small">約</span><div className="num">{twd(Math.round(need * rate))}</div></div>
                 <div><span className="muted small">建議</span><div className="num small">{comboLabel(combo)}<span className="unit">{twd(combo.reduce((a, k) => a + packPrice(k), 0))}</span></div></div>
               </div>
-              {member && myPlan && <div className="calc-tip member">你是 {myPlan.label} 會員，儲值一律會員價 NT${myPlan.point_twd} / 點（省 {myPlan.member_discount_pct}%），加買的影片跟方案內一樣划算。</div>}
+              {member && myPlan && <div className="calc-tip member">你是 {myPlan.label} 會員：訂閱期間買點數一律 <b>1 點 {twd(myPlan.point_twd)}</b>（付一樣的錢、點數多 {myPlan.member_bonus_pct}%），已經算進上面的建議組合。</div>}
               {nVideos >= sub5.videos && !sub && (
                 <div className="calc-tip">一個月要剪 {nVideos} 支的話，<b>{sub5.label}</b>訂閱 {twd(sub5.twd)} 含 {sub5.videos} 支＋{sub5.revisions} 輪修改＋{sub5.storage_gb} GB，每支 {twd(sub5.per_video_twd)}。<a onClick={() => setTab('plans')}>看方案</a></div>
               )}
@@ -386,13 +390,19 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
               {p.packs.map(k => (
                 <div key={k.id} className={`packc card ${k.id === bestPack.id ? 'best' : ''}`}>
                   {k.id === bestPack.id && <div className="ribbon">{combo.length > 1 ? '建議組合' : '剛好夠'}</div>}
-                  <div className="packc-pts">{k.points}<span className="unit">點</span></div>
-                  <div className="packc-price">{twd(packPrice(k))}{member && <s className="muted small">{twd(k.twd)}</s>}{member && <span className="member-tag">會員價</span>}</div>
-                  {k.points >= FIRST + 2 * REV
-                    ? <div className="packc-videos">約可剪 <b>{Math.floor(k.points / (FIRST + 2 * REV))}</b> 支<span className="muted small">（含封面與 2 輪修改）</span></div>
-                    : <div className="packc-videos">補點用<span className="muted small">：約 {Math.floor(k.points / REV)} 輪修改，或補足第一支</span></div>}
-                  <div className="muted small">點數不過期{!member && <> · 包月會員 {twd(Math.min(...Object.values(k.member_twd)))} 起</>}</div>
-                  {canBuy(sub ? (k.member_checkout_url?.[sub.id] || k.checkout_url) : k.checkout_url)
+                  <div className="packc-pts">{k.points.toLocaleString()}<span className="unit">點</span></div>
+                  {(k.bonus || memberBonus(k)) ? <div className="packc-chips">
+                    {k.bonus ? <span className="packc-bonus">＋送 {k.bonus}</span> : null}
+                    {memberBonus(k) ? <span className="packc-bonus member">會員價 1 點 {twd(myPlan?.point_twd ?? 0)}・多 {memberBonus(k)} 點</span> : null}
+                  </div> : null}
+                  <div className="packc-price">{twd(k.twd)}</div>
+                  <div className="packc-got">實得 <b>{gotPts(k).toLocaleString()}</b> 點 · 每點約 {twd(Math.round(k.twd / gotPts(k) * 100) / 100)}</div>
+                  {gotPts(k) >= FIRST + 2 * REV
+                    ? <div className="packc-videos">約可剪 <b>{Math.floor(gotPts(k) / (FIRST + 2 * REV))}</b> 支<span className="muted small">（含封面與 2 輪修改）</span></div>
+                    : <div className="packc-videos">補點用<span className="muted small">：約 {Math.floor(gotPts(k) / REV)} 輪修改，或補足第一支</span></div>}
+                  {!member && k.member_bonus && <div className="packc-tease">訂閱會員同價實得：{p.subscriptions.map(x => <span key={x.id}>{x.label} <b>{gotPts(k, x.id).toLocaleString()}</b> 點</span>)}</div>}
+                  <div className="muted small">點數不過期，用不完會累積</div>
+                  {canBuy(k.checkout_url)
                     ? <button className="btn primary block" onClick={() => buy(k.id)}>購買</button>
                     : <button className="btn block" disabled>洽客服開通</button>}
                 </div>
