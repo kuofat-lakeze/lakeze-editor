@@ -24,7 +24,7 @@ export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false
   const drop = (e: DragEvent) => {
     e.preventDefault(); setDrag(false)
     if (disabled) return
-    const fs = Array.from(e.dataTransfer.files).filter(f => /^video\//.test(f.type) || /\.(mp4|mov|m4v)$/i.test(f.name))
+    const fs = Array.from(e.dataTransfer.files).filter(f => /^(video|image)\//.test(f.type) || /\.(mp4|mov|m4v|jpe?g|png|webp|heic|heif)$/i.test(f.name))
     if (fs.length) onFiles(fs)
   }
   return (
@@ -32,23 +32,27 @@ export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false
       onDragOver={over} onDragEnter={over} onDragLeave={() => setDrag(false)} onDrop={drop}>
       <span className="dz-icon"><FilmIcon /></span>
       <span className="dz-text">
-        <b>{disabled ? '上傳中…' : count ? `再加影片（已 ${count} 支）` : drag ? '放開就開始上傳' : '點一下選影片，或直接拖進來'}</b>
-        <span className="muted small">一次最多 {MAX_FILES} 支 · 每支 1 GB 內 · MP4 / MOV</span>
+        <b>{disabled ? '上傳中…' : count ? `再加素材（已 ${count} 個）` : drag ? '放開就開始上傳' : '點一下選影片或照片，或直接拖進來'}</b>
+        <span className="muted small">影片、照片可以混著給 · 一次最多 {MAX_FILES} 個 · 每個 1 GB 內 · MP4 / MOV / JPG / PNG</span>
       </span>
       <span className="dz-cta">選擇</span>
-      <input type="file" multiple accept="video/*,.mp4,.mov,.m4v" hidden disabled={disabled} onClick={onPick}
+      <input type="file" multiple accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp,.heic" hidden disabled={disabled} onClick={onPick}
         onChange={e => { onFiles(e.target.files); e.target.value = '' }} />
     </label>
   )
 }
 
+const isImage = (f: File) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)
+
 function Thumb({ file }: { file: File }) {
   const url = useMemo(() => URL.createObjectURL(file), [file])
   useEffect(() => () => URL.revokeObjectURL(url), [url])
+  const img = isImage(file)
   return (
-    <span className="uq-thumb">
+    <span className={`uq-thumb ${img ? 'photo' : ''}`}>
       <FilmIcon />
-      <video src={url} muted playsInline preload="metadata" onLoadedMetadata={e => { try { e.currentTarget.currentTime = 0.1 } catch { /* ignore */ } }} />
+      {img ? <img src={url} alt="" /> : <video src={url} muted playsInline preload="metadata" onLoadedMetadata={e => { try { e.currentTarget.currentTime = 0.1 } catch { /* ignore */ } }} />}
+      <i className="uq-kind">{img ? '照片' : '影片'}</i>
     </span>
   )
 }
@@ -73,7 +77,7 @@ export function UploadQueue({ ups, onRetry, onRemove, onClose, hint }:
           {busy ? <i>{Math.round(pct)}</i> : failed ? <i className="x">!</i> : <i className="ok">✓</i>}
         </span>
         <span className="uq-title">
-          <b>{busy ? `上傳中 ${ok}/${ups.length}` : failed ? `${ok} 支完成，${failed} 支失敗` : `${ok} 支影片上傳完成`}</b>
+          <b>{busy ? `上傳中 ${ok}/${ups.length}` : failed ? `${ok} 個完成，${failed} 個失敗` : `${ok} 個素材上傳完成`}</b>
           <span className="muted small">
             {busy ? <>{fmtMB(loaded)} / {fmtMB(total)}{rate > 0 && <> · {fmtMB(rate)}/s</>}{eta !== null && <> · 約剩 {fmtEta(eta)}</>}</> : <>共 {fmtMB(total)}</>}
             {busy && hint ? ` · ${hint}` : ''}

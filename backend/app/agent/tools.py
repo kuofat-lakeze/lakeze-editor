@@ -161,8 +161,11 @@ def _probe(inp, ctx):
         return [_text("專案裡沒有影片。請用戶上傳或給 Drive 連結。")]
     sheets = footage.contact_sheets(ctx.root)
     table = "\n".join(f"#{r['n']:02d}\t{r.get('dur', '?')}s\t{r.get('w', '?')}x{r.get('h', '?')}\t{r['path']}"
+                      + ("\t照片（已轉成 5 秒緩推鏡頭片段，當一般片段使用）" if r.get("photo") and "error" not in r else "")
                       + (f"\tERROR {r['error']}" if "error" in r else "") for r in rows)
-    out = [_text(f"{len(rows)} 支素材（每支 4 格縮圖，時間由左到右）：\n{table}")]
+    n_photo = sum(1 for r in rows if r.get("photo"))
+    head = f"{len(rows)} 個素材（{len(rows) - n_photo} 支影片、{n_photo} 張照片；每個 4 格縮圖，時間由左到右）" if n_photo else f"{len(rows)} 支素材（每支 4 格縮圖，時間由左到右）"
+    out = [_text(f"{head}：\n{table}")]
     for s in sheets:
         out.append(_image(s))
     return out

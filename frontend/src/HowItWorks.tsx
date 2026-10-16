@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { MiaoMark } from './Logo'
 
 /* Scroll-driven "how it works": a sticky phone on one side, three steps on the other. As each step
-   scrolls into view it lights up and the phone screen switches to that moment of the product. The
-   screens mirror the real app: the upload queue, the chat with the editor working, the deliverable. */
+   scrolls into view it lights up and the phone screen switches to that moment of the product. On
+   phones the step copy moves under the sticky mockup as a caption (the list becomes invisible
+   scroll spacers), so nothing scrolls underneath the device. */
 const STEPS = [
-  { k: 'upload', n: '01', t: '丟素材', d: '手機相簿直接上傳，或貼 Google Drive 連結。每支影片都看得到進度，大檔案也不怕斷線。', tag: '約 1 分鐘' },
+  { k: 'upload', n: '01', t: '丟素材', d: '影片、照片混著給都行：手機相簿直接上傳，或貼 Google Drive 連結。每個檔案都看得到進度，大檔案也不怕斷線。', tag: '約 1 分鐘' },
   { k: 'chat', n: '02', t: '選風格、說賣點', d: '挑一個風格和聲音，像傳訊息一樣把賣點講給剪輯師。他一步一步回報進度，你不用盯著。', tag: '約 2 分鐘' },
-  { k: 'done', n: '03', t: '收影片', d: '15 分鐘後拿到有旁白、配樂、雙層字幕的直式影片與封面，歸檔在成品頁，一鍵產生連結給客戶看。', tag: '約 15 分鐘' },
+  { k: 'done', n: '03', t: '收影片、封面', d: '15 分鐘後拿到有旁白口播、配樂、雙層字幕的直式影片，封面一起做好，全部歸檔在成品頁，一鍵給客戶看。', tag: '約 15 分鐘' },
 ]
 
 export function HowItWorks() {
@@ -20,6 +21,7 @@ export function HowItWorks() {
     refs.current.forEach(el => el && io.observe(el))
     return () => io.disconnect()
   }, [])
+  const cur = STEPS[active]
   return (
     <section className="hiw" id="how">
       <div className="hiw-head reveal">
@@ -30,6 +32,12 @@ export function HowItWorks() {
       <div className="hiw-grid">
         <div className="hiw-sticky">
           <Phone step={active} />
+          <div className="hiw-caption" key={active}>
+            <div className="hiw-cap-no">{cur.n}<i /></div>
+            <h3>{cur.t}<span className="hiw-tag">{cur.tag}</span></h3>
+            <p>{cur.d}</p>
+            <div className="hiw-dots" aria-hidden="true">{STEPS.map((_, i) => <i key={i} className={active === i ? 'on' : ''} />)}</div>
+          </div>
         </div>
         <ol className="hiw-steps">
           {STEPS.map((s, i) => (
@@ -43,15 +51,15 @@ export function HowItWorks() {
           ))}
         </ol>
       </div>
-      <div className="hiw-dots" aria-hidden="true">{STEPS.map((_, i) => <i key={i} className={active === i ? 'on' : ''} />)}</div>
     </section>
   )
 }
 
 const FILES = [
-  { n: 'DJI_0001.MP4', c: 'a', p: 100, s: '412 MB' },
-  { n: 'IMG_5540.MOV', c: 'b', p: 100, s: '286 MB' },
-  { n: 'DJI_0007.MP4', c: 'c', p: 62, s: '1.1 GB' },
+  { n: 'DJI_0001.MP4', c: 'a', kind: '影片', p: 100, s: '412 MB' },
+  { n: 'IMG_5540.JPG', c: 'b', kind: '照片', p: 100, s: '4.2 MB' },
+  { n: 'IMG_5541.JPG', c: 'd', kind: '照片', p: 100, s: '3.9 MB' },
+  { n: 'DJI_0007.MP4', c: 'c', kind: '影片', p: 62, s: '1.1 GB' },
 ]
 const R = 15, C = 2 * Math.PI * R
 
@@ -62,21 +70,21 @@ function Phone({ step }: { step: number }) {
       <div className="phone-screen">
         <div className="ps-bar"><MiaoMark size={18} radius={.28} /><span>旅剪</span><i /></div>
 
-        {/* screen 1: upload queue, exactly like the app */}
+        {/* screen 1: upload queue with videos and photos mixed, exactly like the app */}
         <div className={`ps ps-upload ${step === 0 ? 'on' : ''}`}>
           <div className="ps-title">1 · 給素材</div>
           <div className="ps-dz">
             <span className="ps-dz-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M7 5v14M17 5v14M3 10h4M3 14h4M17 10h4M17 14h4" /></svg></span>
-            <span><b>點一下選影片，或拖進來</b><small>最多 6 支 · 每支 1 GB</small></span>
+            <span><b>影片、照片一起選</b><small>最多 6 個 · 每個 1 GB</small></span>
           </div>
           <div className="ps-uq">
             <div className="ps-uqhead">
-              <span className="ps-ring"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r={R} /><circle cx="18" cy="18" r={R} style={{ strokeDasharray: C, strokeDashoffset: C * .27 }} /></svg><i>73</i></span>
-              <span><b>上傳中 2/3</b><small>1.3 GB / 1.8 GB · 4.2 MB/s · 約剩 2 分</small></span>
+              <span className="ps-ring"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r={R} /><circle cx="18" cy="18" r={R} style={{ strokeDasharray: C, strokeDashoffset: C * .22 }} /></svg><i>78</i></span>
+              <span><b>上傳中 3/4</b><small>1.2 GB / 1.5 GB · 4.2 MB/s · 約剩 1 分</small></span>
             </div>
             {FILES.map((f, i) => (
-              <div key={f.n} className={`ps-uqrow ${f.p === 100 ? 'ok' : 'up'}`} style={{ animationDelay: `${.25 + i * .3}s` }}>
-                <span className={`ps-th ${f.c}`} />
+              <div key={f.n} className={`ps-uqrow ${f.p === 100 ? 'ok' : 'up'}`} style={{ animationDelay: `${.25 + i * .25}s` }}>
+                <span className={`ps-th ${f.c}`}><i className={f.kind === '照片' ? 'photo' : ''}>{f.kind}</i></span>
                 <span className="ps-uqmain"><span className="ps-uqname">{f.n}</span><small>{f.p === 100 ? `完成 · ${f.s}` : `62% · ${f.s}`}</small><span className="ps-uqbar"><i style={{ width: `${f.p}%` }} /></span></span>
                 <em>{f.p === 100 ? '✓' : ''}</em>
               </div>
@@ -102,17 +110,23 @@ function Phone({ step }: { step: number }) {
           <div className="ps-compose"><i /><span>要改哪裡？例如：價格字幕放大…</span><b>送出</b></div>
         </div>
 
-        {/* screen 3: the deliverable in the 成品 tab */}
+        {/* screen 3: video + covers + narration, as in the 成品 tab */}
         <div className={`ps ps-done ${step === 2 ? 'on' : ''}`}>
-          <div className="ps-title">3 · 成品</div>
-          <div className="ps-vhead"><b>v1</b><span className="ps-pill">最終版</span><small>36 秒 · 22 MB</small></div>
-          <div className="ps-video">
-            <div className="ps-super">KTV · 電動麻將 · 寵物友善</div>
-            <div className="ps-headline">宜蘭海邊包棟<br /><em>25米戲水池</em></div>
-            <div className="ps-price"><small>平日每人</small>NT$1,500</div>
-            <div className="ps-play" />
+          <div className="ps-vhead"><b>v1</b><span className="ps-pill">最終版</span><small>36 秒 · 影片＋2 張封面</small></div>
+          <div className="ps-result">
+            <div className="ps-video">
+              <div className="ps-super">KTV · 電動麻將 · 寵物友善</div>
+              <div className="ps-headline">宜蘭海邊包棟<br /><em>25米戲水池</em></div>
+              <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /><b /><b /></span><small>Vivian 旁白</small></div>
+              <div className="ps-sub">推開窗就是龜山島海景</div>
+              <div className="ps-play" />
+            </div>
+            <div className="ps-covers">
+              <div className="ps-cover a"><span>封面 A</span><b>宜蘭海邊<br />包棟民宿</b><em>NT$1,500</em></div>
+              <div className="ps-cover b"><span>封面 B</span><b>25 米<br />戲水池</b><em>平日每人 1,500</em></div>
+            </div>
           </div>
-          <div className="ps-actions"><span>下載 1080p</span><span className="pri">分享給客戶</span></div>
+          <div className="ps-actions"><span>下載</span><span className="pri">分享給客戶</span></div>
         </div>
       </div>
     </div>

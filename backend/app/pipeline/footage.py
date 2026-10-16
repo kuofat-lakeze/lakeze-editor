@@ -9,6 +9,23 @@ from . import ff
 from .fonts import FONTS_DIR
 
 VIDEO_EXT = (".mp4", ".mov", ".m4v")
+IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif")
+STILL_SECONDS = 5.0
+
+
+def still_to_clip(img: Path, dest: Path, seconds: float = STILL_SECONDS) -> Path:
+    """A photo becomes a short vertical clip with a slow push-in, so the cut can treat it like footage.
+    Cover-fit to 1080x1920 (portrait is what every export uses), 30 fps, no audio."""
+    if dest.exists():
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    frames = int(seconds * 30)
+    vf = ("scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,"
+          f"zoompan=z='min(zoom+0.0006,1.12)':d={frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30,"
+          "format=yuv420p")
+    ff.ffmpeg("-y", "-loop", "1", "-framerate", "30", "-i", str(img), "-vf", vf, "-t", f"{seconds}", "-an",
+              "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", str(dest))
+    return dest
 DRIVE_DL = "https://drive.usercontent.google.com/download?id={id}&export=download&confirm=t"
 
 
@@ -71,23 +88,32 @@ def _thumb(n: int, p: Path, d: float, th: Path) -> None:
 def probe_footage(root: Path) -> list[dict]:
     """Index every clip under raw/, write sheets/index.tsv, make per-clip thumbnails."""
     raw = root / "raw"
-    files = sorted(p for p in raw.rglob("*") if p.suffix.lower() in VIDEO_EXT and p.is_file())
+    stills = raw / ".stills"   # photos rendered as clips live here; hidden from the listing below
+    files = sorted(p for p in raw.rglob("*") if p.is_file() and stills not in p.parents
+                   and p.suffix.lower() in VIDEO_EXT + IMAGE_EXT)
     rows = []
     for n, p in enumerate(files, 1):
+        rel = str(p.relative_to(raw))
+        photo = p.suffix.lower() in IMAGE_EXT
         try:
+            if photo:
+                p = still_to_clip(p, stills / f"{p.stem}.mp4")
             info = ff.video_info(p)
         except Exception as e:  # unreadable file: keep going, report it
-            rows.append({"n": n, "path": str(p.relative_to(raw)), "error": str(e)[:120]})
+            msg = str(e)[:120]
+            if photo and p.suffix.lower() in (".heic", ".heif"):
+                msg = "HEIC 讀不了，請在手機相簿分享時選「最相容」或改存 JPG"
+            rows.append({"n": n, "path": rel, "error": msg, **({"photo": True} if photo else {})})
             continue
-        rows.append({"n": n, "path": str(p.relative_to(raw)), "dur": round(info["duration"], 1),
+        rows.append({"n": n, "path": rel, "dur": round(info["duration"], 1),
                      "w": info["width"], "h": info["height"], "fps": info["fps"], "pix": info["pix_fmt"],
-                     "mb": p.stat().st_size // 2**20})
+                     "mb": p.stat().st_size // 2**20, **({"photo": True, "clip": str(p.relative_to(raw))} if photo else {})})
         _thumb(n, p, info["duration"], root / "sheets" / "thumbs" / f"{n:02d}.jpg")
     with open(root / "sheets" / "index.tsv", "w") as f:
         for r in rows:
             if "error" in r:
                 continue
-            f.write(f"{r['n']:02d}\t{r['dur']}s\t{r['w']},{r['h']},{r['fps']}\t{r['mb']}MB\t{r['path']}\n")
+            f.write(f"{r['n']:02d}\t{r['dur']}s\t{r['w']},{r['h']},{r['fps']}\t{r['mb']}MB\t{r.get('clip', r['path'])}\n")
     return rows
 
 

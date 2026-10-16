@@ -37,7 +37,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
         <div className="ld-blob a" aria-hidden="true" /><div className="ld-blob b" aria-hidden="true" />
         <div className="ld-kicker reveal in">{PRODUCT.brand}</div>
         <h1 className="reveal in d1"><MiaoLogo size={96} tagline /></h1>
-        <p className="ld-sub reveal in d2">給素材、說賣點，15 分鐘自動剪出有旁白、配樂、雙層字幕的旅遊短影音和封面。</p>
+        <p className="ld-sub reveal in d2">丟影片或照片、說賣點，<b>15 分鐘</b>自動剪出有旁白口播、配樂、雙層字幕的旅遊短影音，<b>封面一起做好</b>。</p>
         <div className="ld-cta reveal in d3">
           <a className="btn primary lg" onClick={onStart}>免費試做第一支</a>
           <span className="muted small">第一支影片、封面與 4 輪修改免費，不用綁卡。</span>
