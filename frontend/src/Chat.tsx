@@ -12,6 +12,64 @@ const fmtDur = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); r
 const emptyLive = (): Live => ({ text: '', thinking: '', tools: [] })
 const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent)
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
+const IS_TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+/* Speech: browser-native, free. Mic = 語音輸入 (Web Speech API, zh-TW); speaker = 朗讀 (speechSynthesis). */
+type SR = { lang: string; continuous: boolean; interimResults: boolean; start(): void; stop(): void; onresult: ((e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null }
+const SRCtor = (window as unknown as { SpeechRecognition?: new () => SR; webkitSpeechRecognition?: new () => SR }).SpeechRecognition
+  ?? (window as unknown as { webkitSpeechRecognition?: new () => SR }).webkitSpeechRecognition
+const CAN_TTS = typeof speechSynthesis !== 'undefined'
+const plain = (md: string) => md.replace(/```[\s\S]*?```/g, '').replace(/[*_`#>|]/g, '').replace(/\[(.*?)\]\(.*?\)/g, '$1').replace(/\n{2,}/g, '。').trim()
+function useMic(onText: (t: string) => void) {
+  const [on, setOn] = useState(false)
+  const rec = useRef<SR | null>(null)
+  const stop = () => { rec.current?.stop(); rec.current = null; setOn(false) }
+  const start = () => {
+    if (!SRCtor) return
+    const r = new SRCtor(); r.lang = 'zh-TW'; r.continuous = true; r.interimResults = true
+    let committed = ''
+    r.onresult = e => {
+      let final = '', interim = ''
+      for (let i = 0; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) final += t; else interim += t }
+      if (final !== committed) { onText(final.slice(committed.length)); committed = final }
+      void interim
+    }
+    r.onend = () => { rec.current = null; setOn(false) }; r.onerror = () => { rec.current = null; setOn(false) }
+    rec.current = r; r.start(); setOn(true)
+  }
+  useEffect(() => () => rec.current?.stop(), [])
+  return { on, toggle: () => (on ? stop() : start()), available: !!SRCtor }
+}
+const MicIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 15a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v5a4 4 0 0 0 4 4zm7-4a7 7 0 0 1-14 0M12 18v3M8 21h8" />
+  </svg>
+)
+const SpeakIcon = ({ on }: { on: boolean }) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M11 5 6 9H2v6h4l5 4z" />{on ? <path d="M23 9l-6 6M17 9l6 6" /> : <path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14" />}
+  </svg>
+)
+/* One utterance at a time across the whole thread. */
+let speakingId: string | number | null = null
+const speakListeners = new Set<() => void>()
+function speakToggle(id: string | number, text: string) {
+  if (!CAN_TTS) return
+  const was = speakingId === id
+  speechSynthesis.cancel(); speakingId = null
+  if (!was) {
+    const u = new SpeechSynthesisUtterance(plain(text)); u.lang = 'zh-TW'; u.rate = 1.05
+    const v = speechSynthesis.getVoices().find(v => /zh[-_]TW/i.test(v.lang)) ?? speechSynthesis.getVoices().find(v => /^zh/i.test(v.lang))
+    if (v) u.voice = v
+    u.onend = u.onerror = () => { if (speakingId === id) { speakingId = null; speakListeners.forEach(f => f()) } }
+    speakingId = id; speechSynthesis.speak(u)
+  }
+  speakListeners.forEach(f => f())
+}
+function useSpeaking(id: string | number) {
+  const [, tick] = useState(0)
+  useEffect(() => { const f = () => tick(x => x + 1); speakListeners.add(f); return () => { speakListeners.delete(f) } }, [])
+  return speakingId === id
+}
 const CRIOS = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent)  // third-party iOS browsers: file picker is flakier than Safari
 type Stage = 'start' | 'working' | 'progress' | 'revise'
 const PLACEHOLDER: Record<Stage, string> = {
@@ -84,6 +142,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [live, setLive] = useState<Live>(emptyLive())
   const [running, setRunning] = useState(false)
   const [text, setText] = useState('')
+  const mic = useMic(t => setText(x => (x ? x.replace(/\s*$/, '') : '') + t))
   const [err, setErr] = useState('')
   const [needCredits, setNeedCredits] = useState<{ needed: number; balance: number } | null>(null)
   const [needStorage, setNeedStorage] = useState<{ used_bytes: number; quota_bytes: number } | null>(null)
@@ -337,11 +396,9 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
           <a className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>對話</a>
           <a className={tab === 'files' ? 'on' : ''} onClick={() => setTab('files')}>成品{(proj.exports ?? 0) > 0 && <span className="cnt">{proj.exports}</span>}</a>
         </div>
-        <span className={`chip ${proj.credits.in_free ? '' : 'pay'}`} onClick={onCredits} role="button">
-          {proj.credits.in_free
-            ? (proj.credits.free_revisions_left === null ? '免費專案：第一版 + 封面免費' : `免費專案：免費修改還剩 ${proj.credits.free_revisions_left} 輪`)
-            : '照價目扣點'}
-        </span>
+        {proj.credits.in_free && <span className="chip" onClick={onCredits} role="button">
+          {proj.credits.free_revisions_left === null ? '免費專案：第一版 + 封面免費' : `免費專案：免費修改還剩 ${proj.credits.free_revisions_left} 輪`}
+        </span>}
         {running && <span className="working-chip"><span className="spinner" />工作中 {turnStart.current ? fmtDur(now - turnStart.current) : ''}</span>}
         {running && <button className="btn small" onClick={() => api.cancel(projectId)}>停止</button>}
       </header>
@@ -491,7 +548,9 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                       {!text.trim() && <span className="coach">在這裡打字</span>}
                       <textarea rows={4} value={text} onChange={e => setText(e.target.value)} autoFocus={!text}
                         placeholder={'例：宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑。'} />
+                      {mic.available && <button type="button" className={`attach mic ob-mic ${mic.on ? 'on' : ''}`} title="用說的" aria-label="語音輸入" onClick={mic.toggle}><MicIcon /></button>}
                     </div>
+                    {mic.on && <div className="muted small">聽寫中… 說完再按一次麥克風。</div>}
                     <div className="chips inline">
                       {!analysis && <a className="chipbtn on" onClick={() => setText(EXAMPLE_BRIEF)}>給我範例</a>}
                       {['地點：', '價格：平日每人 NT$', '店名：', '語氣：輕鬆活潑'].map(c => (
@@ -539,7 +598,6 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                     </div>
                     <div className="muted small" style={{ textAlign: 'center' }}>
                       送出後剪輯師會一路做到輸出影片與封面，約 15 分鐘，中途不會停下來問。
-                      {analysis && <> 第一版約 {analysis.estimate.first_video_points} 點，餘額 {analysis.estimate.balance} 點。</>}
                     </div>
                   </>
                 )}
@@ -566,7 +624,6 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                     <ToolIcon name={t.name} />
                     <span className="sx-label">{TOOL_LABEL[t.name] ?? t.name}</span>
                     <span className="sx-meta">
-                      {t.charged ? <span className="charge">−{t.charged} 點</span> : null}
                       {t.status === 'run' ? (t.startedAt ? fmtDur(now - t.startedAt) : '') : t.status === 'err' ? '失敗' : t.seconds !== undefined ? `${t.seconds}s` : ''}
                     </span>
                     {t.status === 'ok' && shortSummary(t.summary) && <span className="sx-sum">{shortSummary(t.summary)}</span>}
@@ -648,8 +705,15 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
             onChange={e => { onFiles(e.target.files); e.target.value = '' }} /></label>
         <textarea value={text} onChange={e => setText(e.target.value)} rows={2}
           placeholder={uploading ? '上傳中，完成後再送出…' : PLACEHOLDER[stage]}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
+          onKeyDown={e => {
+            // Enter sends only on desktop, never while the IME (注音／拼音) is still composing, and never on phones
+            // (there Enter is a newline; send with the button). Shift+Enter is always a newline.
+            const composing = e.nativeEvent.isComposing || e.keyCode === 229
+            if (e.key === 'Enter' && !e.shiftKey && !composing && !IS_TOUCH) { e.preventDefault(); send() }
+          }} />
+        {mic.available && <button type="button" className={`attach mic ${mic.on ? 'on' : ''}`} title={mic.on ? '停止語音輸入' : '語音輸入'} aria-label="語音輸入" onClick={mic.toggle}><MicIcon /></button>}
         <button className="btn primary" onClick={send} disabled={running || uploading || !text.trim()}>送出</button>
+        {!IS_TOUCH && <span className="composer-hint muted small">Enter 送出 · Shift+Enter 換行{mic.on ? ' · 聽寫中…' : ''}</span>}
       </footer>}
       </>}
     </div>
@@ -657,6 +721,8 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
 }
 
 function Bubble({ m, assets, onOpenFiles }: { m: Msg; assets: Asset[]; onOpenFiles?: () => void }) {
+  const speaking = useSpeaking(m.id)
+  const spoken = m.parts.filter(p => p.type === 'text').map(p => (p as { text: string }).text).join('\n')
   // Consecutive tool parts collapse into one quiet "did N steps" line; the editor's words stay prominent.
   const groups: ({ kind: 'text'; text: string } | { kind: 'tools'; names: string[] })[] = []
   for (const p of m.parts) {
@@ -676,6 +742,8 @@ function Bubble({ m, assets, onOpenFiles }: { m: Msg; assets: Asset[]; onOpenFil
           </details>
         ))}
       {assets.map(a => <AssetCard key={a.id} a={a} onOpenFiles={onOpenFiles} />)}
+      {m.role === 'assistant' && CAN_TTS && spoken.trim() && (
+        <a className={`speak ${speaking ? 'on' : ''}`} onClick={() => speakToggle(m.id, spoken)} title={speaking ? '停止朗讀' : '朗讀這則'}><SpeakIcon on={speaking} />{speaking ? '停止' : '朗讀'}</a>)}
     </div>
   )
 }

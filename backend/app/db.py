@@ -57,6 +57,9 @@ class User(Base):
     provider: Mapped[str] = mapped_column(String(20), default="")
     provider_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # CRM: free-form tags ("vip,民宿,宜蘭") and the last authenticated request (refreshed every few minutes).
+    tags: Mapped[str] = mapped_column(String(200), default="")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Project(Base):
@@ -159,6 +162,7 @@ _MIGRATIONS = [
     ("users", "subscription", "VARCHAR(20) DEFAULT ''"), ("users", "sub_period_start", "DATETIME"), ("users", "sub_renews_at", "DATETIME"),
     ("users", "voice_id", "VARCHAR(64)"), ("users", "voice_name", "VARCHAR(80)"), ("users", "voice_trial_seconds", "FLOAT DEFAULT 0"),
     ("users", "provider", "VARCHAR(20) DEFAULT ''"), ("users", "provider_id", "VARCHAR(80)"), ("users", "display_name", "VARCHAR(120)"),
+    ("users", "tags", "VARCHAR(200) DEFAULT ''"), ("users", "last_seen_at", "DATETIME"),
 ]
 
 

@@ -165,7 +165,7 @@ async def signup(c: Creds, request: Request):
         await s.commit()
     await add_credits(u.id, pricing.SIGNUP_POINTS, "grant", "signup", meta={"welcome": True})   # 註冊送點
     resp = JSONResponse({"id": u.id, "email": u.email})
-    set_session(resp, u.id, request.url.scheme == "https")
+    set_session(resp, u.id, request.url.scheme == "https", request.headers.get("host"))
     return resp
 
 
@@ -183,14 +183,14 @@ async def login(c: Creds, request: Request):
     if u.disabled:
         raise HTTPException(403, "帳號已停用")
     resp = JSONResponse({"id": u.id, "email": u.email})
-    set_session(resp, u.id, request.url.scheme == "https")
+    set_session(resp, u.id, request.url.scheme == "https", request.headers.get("host"))
     return resp
 
 
 @app.post("/api/auth/logout")
-async def logout():
+async def logout(request: Request):
     resp = JSONResponse({"ok": True})
-    clear_session(resp)
+    clear_session(resp, request.headers.get("host"))
     return resp
 
 

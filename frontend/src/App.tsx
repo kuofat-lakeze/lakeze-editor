@@ -3,7 +3,7 @@ import { api, type Me, type Project } from './api'
 import { Login } from './Login'
 import { Chat } from './Chat'
 import { Credits, type CreditsTab } from './Credits'
-import { Admin } from './Admin'
+import { DashboardApp } from './Dashboard'
 import { Gallery } from './Gallery'
 import { SharePage } from './SharePage'
 import { Landing } from './Landing'
@@ -11,17 +11,34 @@ import logo from './assets/logo.png'
 import { StorageMeter } from './Storage'
 
 const SHARE_TOKEN = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/)?.[1]
+// The CRM lives at /dashboard on the app host and is the whole site on dashboard.<app host>.
+const IS_DASH = location.hostname.startsWith('dashboard.') || /^\/dashboard(\/|$)/.test(location.pathname)
 
 export default function App() {
   if (SHARE_TOKEN) return <SharePage token={SHARE_TOKEN} />
+  if (IS_DASH) return <DashboardGate />
   return <Workspace />
+}
+
+function DashboardGate() {
+  const [me, setMe] = useState<Me | null | undefined>(undefined)
+  useEffect(() => { api.me().then(setMe) }, [])
+  const oauthError = new URLSearchParams(location.search).get('oauth_error') ?? ''
+  if (me === undefined) return <div className="center muted">載入中…</div>
+  if (!me) return <Login initialMode="login" initialError={oauthError} next={location.href.split('?')[0]} onDone={setMe} />
+  if (!me.is_admin) return (
+    <div className="center" style={{ flexDirection: 'column', gap: 10 }}>
+      <b>這個帳號沒有管理權限</b><span className="muted small">{me.email}</span>
+      <a className="small" onClick={() => api.logout().then(() => setMe(null))}>換個帳號登入</a>
+    </div>)
+  return <DashboardApp me={me} onLogout={() => api.logout().then(() => setMe(null))} />
 }
 
 function Workspace() {
   const [me, setMe] = useState<Me | null | undefined>(undefined)
   const [projects, setProjects] = useState<Project[]>([])
   const [current, setCurrent] = useState<string | null>(null)
-  const [view, setView] = useState<'chat' | 'admin' | 'credits' | 'gallery'>('chat')
+  const [view, setView] = useState<'chat' | 'credits' | 'gallery'>('chat')
   const [creditsTab, setCreditsTab] = useState<CreditsTab>('overview')
   const [needPoints, setNeedPoints] = useState(0)
   const showCredits = (t: CreditsTab = 'plans', need = 0) => { setCreditsTab(t); setNeedPoints(need); setView('credits'); setMenu(false) }
@@ -80,15 +97,14 @@ function Workspace() {
           ))}
         </nav>
         <div className="me">
-          {me.is_admin && <a className={view === 'admin' ? 'small active' : 'small'} onClick={() => { setView('admin'); setMenu(false) }}>管理後台</a>}
+          {me.is_admin && <a className="small" href="/dashboard">管理後台 ↗</a>}
           <div className="muted small">{me.email}</div>
           <a className="small" onClick={() => api.logout().then(() => setMe(null))}>登出</a>
         </div>
       </aside>
 
       <main className="main">
-        {view === 'admin' && me.is_admin ? <Admin />
-          : view === 'gallery' ? <Gallery onOpen={openProject} />
+        {view === 'gallery' ? <Gallery onOpen={openProject} />
           : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} needPoints={needPoints} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} onBought={refreshMe} />
           : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits('buy', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
               onProjectsChanged={() => api.projects().then(setProjects)} />

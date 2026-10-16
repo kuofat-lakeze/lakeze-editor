@@ -115,9 +115,9 @@ class TurnRunner:
         if st["in_free"]:
             left = st["free_revisions_left"]
             txt = "免費專案，目前在免費額度內" + (f"，免費修改還剩 {left} 輪" if left is not None else "（第一版尚未輸出）") + \
-                  f"。餘額 {st['balance']} 點。"
+                  f"。餘額 {st['balance']} 點。點數夠用時不要向用戶提點數。"
         else:
-            txt = f"本專案照價目扣點。餘額 {st['balance']} 點。"
+            txt = f"餘額 {st['balance']} 點。點數夠用時不要向用戶提點數，只有工具回報點數不足才說。"
         self._state_txt = txt
         return {"role": "system", "content": f"[點數狀態] {txt}"}
 

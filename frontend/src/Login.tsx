@@ -24,8 +24,8 @@ const FacebookIcon = () => (
   </svg>
 )
 
-export function Login({ onDone, initialMode = 'login', onBack, initialError = '' }:
-  { onDone: (m: Me) => void; initialMode?: 'login' | 'signup'; onBack?: () => void; initialError?: string }) {
+export function Login({ onDone, initialMode = 'login', onBack, initialError = '', next }:
+  { onDone: (m: Me) => void; initialMode?: 'login' | 'signup'; onBack?: () => void; initialError?: string; next?: string }) {
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode)
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
@@ -64,8 +64,8 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
           {social && (
             <>
               <div className="social">
-                {prov.google && <a className="btn social-btn google" href={api.oauthStart('google', mode)}><GoogleIcon />用 Google {verb}</a>}
-                {prov.facebook && <a className="btn social-btn facebook" href={api.oauthStart('facebook', mode)}><FacebookIcon />用 Facebook {verb}</a>}
+                {prov.google && <a className="btn social-btn google" href={api.oauthStart('google', mode, next)}><GoogleIcon />用 Google {verb}</a>}
+                {prov.facebook && <a className="btn social-btn facebook" href={api.oauthStart('facebook', mode, next)}><FacebookIcon />用 Facebook {verb}</a>}
               </div>
               <div className="or"><span>或用 Email</span></div>
             </>

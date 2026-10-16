@@ -43,6 +43,8 @@ LS_WEBHOOK_SECRET = _env("LEMONSQUEEZY_WEBHOOK_SECRET")
 TOPUP_NOTE = _env("TOPUP_NOTE", "儲值請聯絡客服，入帳後點數會自動出現在側欄。")
 # Public origin of the app, used to build OAuth redirect URIs (must match what is registered at Google / Meta).
 PUBLIC_URL = _env("PUBLIC_URL", "https://editor.lakeze.com").rstrip("/")
+# Session cookie domain. Empty = derived from PUBLIC_URL (".editor.lakeze.com", shared with the dashboard host).
+COOKIE_DOMAIN = _env("COOKIE_DOMAIN")
 # Third-party sign-in. A provider's buttons appear only when both values are set.
 GOOGLE_CLIENT_ID = _env("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = _env("GOOGLE_CLIENT_SECRET")

@@ -59,8 +59,22 @@ async def providers():
     return {name: configured(name) for name in PROVIDERS}
 
 
+def _safe_next(url: str) -> str:
+    """Where to land after sign-in: a path on this app, or an absolute URL on the app's own domain
+    (e.g. the dashboard host). Anything else falls back to /."""
+    url = (url or "").strip()
+    if url.startswith("/") and not url.startswith("//"):
+        return url
+    base = config.PUBLIC_URL.split("://", 1)[-1].split("/")[0].lower()
+    if url.startswith("https://"):
+        host = url[8:].split("/")[0].split(":")[0].lower()
+        if host == base or host.endswith("." + base):
+            return url
+    return "/"
+
+
 @router.get("/api/auth/{name}/start")
-async def start(name: str, request: Request, mode: str = "login"):
+async def start(name: str, request: Request, mode: str = "login", next: str = "/"):
     if not configured(name):
         raise HTTPException(404, "此登入方式未開放")
     p = PROVIDERS[name]
@@ -69,7 +83,7 @@ async def start(name: str, request: Request, mode: str = "login"):
     if name == "google":
         q.update(access_type="online", prompt="select_account")
     resp = RedirectResponse(f"{p['auth']}?{urlencode(q)}", status_code=302)
-    resp.set_cookie(STATE_COOKIE, _state.sign(f"{nonce}:{name}:{mode}").decode(), max_age=600, httponly=True,
+    resp.set_cookie(STATE_COOKIE, _state.sign(f"{nonce}:{name}:{mode}:{_safe_next(next)}").decode(), max_age=600, httponly=True,
                     samesite="lax", secure=request.url.scheme == "https")
     return resp
 
@@ -108,7 +122,7 @@ async def callback(name: str, request: Request, code: str = "", state: str = "",
         return _fail("你取消了登入" if error in ("access_denied", "user_denied") else "登入沒有完成，請再試一次")
     try:
         raw = _state.unsign(request.cookies.get(STATE_COOKIE, ""), max_age=600).decode()
-        nonce, pname, _mode = raw.split(":", 2)
+        nonce, pname, _mode, nxt = raw.split(":", 3)
     except (BadSignature, ValueError):
         return _fail("登入逾時，請再試一次")
     if nonce != state or pname != name:
@@ -145,7 +159,7 @@ async def callback(name: str, request: Request, code: str = "", state: str = "",
     if created:
         await add_credits(uid, pricing.SIGNUP_POINTS, "grant", "signup", meta={"welcome": True, "provider": name})
         log.info("new %s account %s", label, email)
-    resp = RedirectResponse("/", status_code=302)
+    resp = RedirectResponse(_safe_next(nxt), status_code=302)
     resp.delete_cookie(STATE_COOKIE)
-    set_session(resp, uid, request.url.scheme == "https")
+    set_session(resp, uid, request.url.scheme == "https", request.headers.get("host"))
     return resp

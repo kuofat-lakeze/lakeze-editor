@@ -46,10 +46,31 @@ export type Pricing = { point_twd: number; menu: { item: string; points: number 
   first_video_points: number; revision_points: number; first_video_twd: number; revision_twd: number; subscriptions: Subscription[]; storage_plans: StoragePlan[]
   tiers: { free: Tier; payg: Tier }; free_storage_gb: number; member_point_twd: number; member_discount_pct: number; trial_voice_seconds: number; signup_points: number }
 export type MyVoice = { voice_id: string; name: string }
-export type AdminUser = { id: string; email: string; created_at: string; is_admin: boolean; disabled: boolean; note: string; balance: number; waived: number; paid_twd: number; cost_usd: number; projects: number; exports: number; last_active?: string | null; storage_plan?: string; storage_bytes?: number; storage_quota_bytes?: number; subscription?: string }
+export type Stage = 'disabled' | 'sub' | 'paid' | 'churn' | 'trial_done' | 'trial' | 'new'
+export type AdminUser = { id: string; email: string; name?: string | null; provider: string; created_at: string; is_admin: boolean; disabled: boolean; note: string; tags: string[]
+  balance: number; waived: number; paid_twd: number; purchases: number; purchased_points: number; granted_points: number; used_points: number; last_purchase_at: string | null
+  cost_usd: number; cost_twd: number; projects: number; exports: number; revision_turns: number; last_active: string | null
+  storage_plan: string; storage_bytes: number; storage_quota_bytes: number; subscription: string; sub_renews_at: string | null; voice: boolean; stage: Stage }
+export type DashRow = { id: string; email: string; name?: string | null; balance: number; paid_twd: number; exports: number; projects: number; subscription: string; last_active: string | null; stage: Stage; points_used?: number }
+export type DashPeriod = { revenue_twd: number; points_used: number; points_waived: number; points_sold: number; points_granted: number; exports: number; cost_usd: number; cost_twd: number; signups: number; buyers: number; active_users?: number; margin_pct?: number | null }
+export type Dashboard = {
+  days: number; generated_at: string
+  totals: { users: number; paying_users: number; subscribers: number; mrr_twd: number; revenue_twd: number; points_used: number; exports: number; cost_usd: number; cost_twd: number; conversion_pct: number; points_outstanding: number }
+  period: DashPeriod; previous: DashPeriod
+  daily: { date: string; signups: number; revenue_twd: number; points_used: number; points_waived: number; cost_twd: number; exports: number; active: number }[]
+  tiers: Record<'free' | 'payg' | 'sub5' | 'sub15' | 'disabled', number>; funnel: { label: string; n: number }[]
+  by_category: { id: string; label: string; points: number }[]; low_balance: DashRow[]; churn: DashRow[]; top: DashRow[]; recent: DashRow[]
+  stages: Record<Stage, string>; point_twd: number
+}
 export type AdminStats = { users: number; new_users_7d: number; projects: number; exports: number; revenue_twd: number; points_sold: number; points_used: number; points_waived: number; cost_usd: number; claude_cost_usd: number; eleven_cost_usd: number }
 export type Ledger = { id?: number; delta: number; waived: number; kind: string; reason: string; amount_twd?: number; project_id: string | null; created_at: string }
-export type AdminUserDetail = { id: string; email: string; is_admin: boolean; disabled: boolean; note: string; created_at: string; subscription?: string; storage_plan?: string; storage_quota_gb?: number | null; ledger: Ledger[]; projects: { id: string; name: string; exports: number; revision_turns: number; free: boolean; cost_usd: number; updated_at: string }[] }
+export type AdminUserDetail = { id: string; email: string; name?: string | null; provider: string; is_admin: boolean; disabled: boolean; note: string; tags: string[]; created_at: string; last_active: string | null
+  subscription: string; sub_period_start: string | null; sub_renews_at: string | null; storage_plan: string; storage_quota_gb: number | null; storage_bytes: number; storage_quota_bytes: number
+  voice: { voice_id: string; name: string | null } | null; voice_trial_seconds: number; stage: Stage
+  summary: { balance: number; paid_twd: number; purchases: number; purchased_points: number; granted_points: number; used_points: number; expired_points: number; waived_points: number; cost_usd: number; cost_twd: number; profit_twd: number; margin_pct: number | null; exports: number; revision_turns: number }
+  by_category: { id: string; label: string; points: number }[]; daily: { date: string; points: number; cost_twd: number }[]
+  ledger: (Ledger & { meta?: Record<string, unknown> })[]
+  projects: { id: string; name: string; exports: number; revision_turns: number; final_version: number | null; free: boolean; cost_usd: number; created_at: string; updated_at: string }[] }
 
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {
@@ -68,7 +89,7 @@ export const api = {
   signup: (email: string, password: string) => post('/api/auth/signup', { email, password }).then(j<Me>),
   logout: () => post('/api/auth/logout', {}),
   authProviders: () => fetch('/api/auth/providers').then(j<Providers>).catch(() => ({ google: false, facebook: false } as Providers)),
-  oauthStart: (p: 'google' | 'facebook', mode: 'login' | 'signup') => `/api/auth/${p}/start?mode=${mode}`,
+  oauthStart: (p: 'google' | 'facebook', mode: 'login' | 'signup', next?: string) => `/api/auth/${p}/start?mode=${mode}${next ? `&next=${encodeURIComponent(next)}` : ''}`,
   analyze: async (id: string, body: { brief?: string; drive_url?: string }) => {
     const r = await post(`/api/projects/${id}/analyze`, body)
     if (r.status === 402) { const d = await r.json(); throw Object.assign(new Error(d.detail), { needed: d.needed as number, balance: d.balance as number }) }
@@ -99,7 +120,8 @@ export const api = {
   gallery: () => fetch('/api/gallery').then(j<GalleryItem[]>),
   checkout: (pack: string) => fetch(`/api/checkout/${pack}`).then(j<CheckoutResult>),
   admin: {
-    stats: () => fetch('/api/admin/stats').then(j<AdminStats>),
+    dashboard: (days = 30) => fetch(`/api/admin/dashboard?days=${days}`).then(j<Dashboard>),
+    csvUrl: (q = '') => `/api/admin/users.csv?q=${encodeURIComponent(q)}`,
     users: (q = '') => fetch(`/api/admin/users?q=${encodeURIComponent(q)}`).then(j<AdminUser[]>),
     user: (id: string) => fetch(`/api/admin/users/${id}`).then(j<AdminUserDetail>),
     grant: (id: string, delta: number, reason: string, amount_twd: number) =>
