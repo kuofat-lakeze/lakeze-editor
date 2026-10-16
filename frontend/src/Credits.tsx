@@ -65,9 +65,10 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   const need = nVideos * FIRST + nVideos * nRev * REV
   const bestPack = p.packs.find(k => k.points >= (needPoints > 0 ? needPoints : need)) ?? p.packs[p.packs.length - 1]
   const packsNeeded = Math.ceil(need / bestPack.points)
-  const member = !!sub                                   // subscribers top up at the member rate
-  const rate = member ? p.member_point_twd : p.point_twd
-  const packPrice = (k: typeof p.packs[number]) => (member ? k.member_twd : k.twd)
+  const member = !!sub                                   // subscribers top up at their plan's price per point
+  const myPlan = sub ? p.subscriptions.find(x => x.id === sub.id) : undefined
+  const rate = myPlan ? myPlan.point_twd : p.point_twd
+  const packPrice = (k: typeof p.packs[number]) => (sub && k.member_twd[sub.id] ? k.member_twd[sub.id] : k.twd)
 
   return (
     <div className="credits">
@@ -146,7 +147,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
             </section>
 
             <section className="howto muted small">
-              每個動作按價目扣點：第一版完整影片（含封面）約 {FIRST} 點，修改一輪約 {REV} 點；第一個專案的第一版、封面與 {p.free_revision_turns} 輪修改免費。
+              每個動作按價目扣點：第一版完整影片（含封面）約 {FIRST} 點，修改一輪約 {REV} 點，一支含 2 輪修改約 {FIRST + 2 * REV} 點；註冊送的 {p.signup_points} 點剛好夠做第一支。
               <a onClick={() => setTab('buy')}> 看價目</a>
             </section>
           </>
@@ -237,8 +238,8 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
           <>
             <div className="free-line">
               <span className="free-dot">免費</span>
-              <span><b>第一支免費試做</b>：影片＋封面、{p.free_revision_turns} 輪修改（平均 2 輪就定稿）、全部功能，連自己的聲音都能試 {p.trial_voice_seconds} 秒。不用綁卡。</span>
-              {inFree && !sub && <span className="pill">進行中</span>}
+              <span><b>註冊就送 {p.signup_points} 點</b>：約一支影片含封面與 2 輪修改（平均 2 輪就定稿）。全部功能都能用，連自己的聲音都能試 {p.trial_voice_seconds} 秒。不用綁卡。</span>
+              {me?.tier === 'free' && <span className="pill">已入帳</span>}
             </div>
 
             <section className="plans-head">
@@ -262,7 +263,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
 
             <section className="plans-head">
               <b>包月更便宜</b>
-              <span className="muted small">同樣的點數，包月 1 點只要約 {twd(p.member_point_twd)}。一支含 2 輪修改：單次約 {twd(single)}，包月約 <b>{twd(sub5.per_video_twd)}</b>。</span>
+              <span className="muted small">同樣的點數，包月 1 點只要約 {twd(p.member_point_twd)} 起。一支含 2 輪修改：單次約 {twd(single)}，包月約 <b>{twd(sub5.per_video_twd)}</b> 起。</span>
             </section>
             <section className="plans-grid subs">
               {p.subscriptions.map((s, i) => (
@@ -312,7 +313,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                 <div><span className="muted small">約{member ? '（會員價）' : ''}</span><div className="num">{twd(Math.round(need * rate))}</div></div>
                 <div><span className="muted small">建議</span><div className="num small">{packsNeeded > 1 ? `${packsNeeded} 份 ` : ''}{bestPack.points} 點包<span className="unit">{twd(packPrice(bestPack) * packsNeeded)}</span></div></div>
               </div>
-              {member && <div className="calc-tip member">你是訂閱會員，儲值一律會員價 NT${p.member_point_twd} / 點（省 {p.member_discount_pct}%），加買的影片跟方案內一樣划算。</div>}
+              {member && myPlan && <div className="calc-tip member">你是 {myPlan.label} 會員，儲值一律會員價 NT${myPlan.point_twd} / 點（省 {myPlan.member_discount_pct}%），加買的影片跟方案內一樣划算。</div>}
               {nVideos >= sub5.videos && !sub && (
                 <div className="calc-tip">一個月要剪 {nVideos} 支的話，<b>{sub5.label}</b>訂閱 {twd(sub5.twd)} 含 {sub5.videos} 支＋{sub5.revisions} 輪修改＋{sub5.storage_gb} GB，每支 {twd(sub5.per_video_twd)}。<a onClick={() => setTab('plans')}>看方案</a></div>
               )}
@@ -324,8 +325,8 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                   <div className="packc-pts">{k.points}<span className="unit">點</span></div>
                   <div className="packc-price">{twd(packPrice(k))}{member && <s className="muted small">{twd(k.twd)}</s>}{member && <span className="member-tag">會員價</span>}</div>
                   <div className="packc-videos">約可剪 <b>{Math.floor(k.points / FIRST)}</b> 支<span className="muted small">（含封面，每支 {twd(Math.round(FIRST * rate))}）</span></div>
-                  <div className="muted small">或修改 {Math.floor(k.points / REV)} 輪 · 點數不過期{!member && <> · 訂閱會員 {twd(k.member_twd)}</>}</div>
-                  {(member ? (k.member_checkout_url || k.checkout_url) : k.checkout_url)
+                  <div className="muted small">或修改 {Math.floor(k.points / REV)} 輪 · 點數不過期{!member && <> · 包月會員 {twd(k.member_twd.sub5)} 起</>}</div>
+                  {(sub ? (k.member_checkout_url?.[sub.id] || k.checkout_url) : k.checkout_url)
                     ? <button className="btn primary block" onClick={() => buy(k.id)}>購買</button>
                     : <button className="btn block" disabled>洽客服開通</button>}
                 </div>
@@ -349,14 +350,13 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
 function PlanCard({ s, prev, single, singlePts, pointTwd, current, onBuy }:
   { s: Subscription; prev: string; single: number; singlePts: number; pointTwd: number; current: boolean; onBuy: (id: string) => void }) {
   const best = s.id === 'sub5'
-  const perPoint = s.twd / s.points
   return (
     <div className={`plan card sub ${best ? 'best' : ''} ${current ? 'cur' : ''}`}>
       {current ? <div className="ribbon cur">目前方案</div> : best ? <div className="ribbon">最划算</div> : <div className="ribbon alt">大量出片</div>}
       <div className="plan-name">{s.label}</div>
       <div className="plan-who">{s.who}</div>
       <div className="plan-price">{s.points.toLocaleString()}<small>點 / 月</small></div>
-      <div className="plan-sub">{twd(s.twd)} / 月<span className="muted"> · 1 點約 {twd(Math.round(perPoint * 10) / 10)}（單次 {twd(pointTwd)}）</span></div>
+      <div className="plan-sub">{twd(s.twd)} / 月<span className="muted"> · 1 點約 {twd(s.point_twd)}（單次 {twd(pointTwd)}）</span></div>
       <ul className="plan-list">
         <li>約 <b>{s.videos} 支</b>，每支含 2 輪修改（{singlePts} 點）</li>
         <li>每支約 <b>{twd(s.per_video_twd)}</b><s className="muted">單次 {twd(single)}</s></li>

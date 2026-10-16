@@ -183,6 +183,17 @@ def test_own_voice_is_a_subscription_feature(client, monkeypatch, tmp_path: Path
     assert c.delete("/api/voice/clone").status_code == 200 and ("del", "v_clone") in calls
 
 
+def test_signup_gets_welcome_points(client):
+    from app import pricing as P
+    c, holder = client
+    holder["u"] = asyncio.run(_mk_user(email="other@x.y"))
+    r = c.post("/api/auth/signup", json={"email": "new@lakeze.com", "password": "password123"})
+    assert r.status_code == 200, r.text
+    assert asyncio.run(D.balance(r.json()["id"])) == P.SIGNUP_POINTS == 110
+    assert P.FIRST_VIDEO_POINTS + 2 * P.REVISION_POINTS == 100 and P.POINT_TWD == 7
+    assert not asyncio.run(D.has_paid(r.json()["id"]))   # a gift isn't a purchase: trial rules still apply
+
+
 def test_trial_voice_cap():
     """On the free tier the owner's clone may narrate TRIAL_VOICE_SECONDS; a longer script is refused
     before anything is generated, and paying lifts the cap."""

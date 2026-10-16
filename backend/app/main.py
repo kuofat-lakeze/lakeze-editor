@@ -159,6 +159,7 @@ async def signup(c: Creds, request: Request):
         u = User(email=c.email.lower(), pw_hash=hash_pw(c.password), is_admin=c.email.lower() in config.ADMIN_EMAILS)
         s.add(u)
         await s.commit()
+    await add_credits(u.id, pricing.SIGNUP_POINTS, "grant", "signup", meta={"welcome": True})   # 註冊送點
     resp = JSONResponse({"id": u.id, "email": u.email})
     set_session(resp, u.id, request.url.scheme == "https")
     return resp
@@ -431,7 +432,8 @@ async def delete_version(project_id: str, version: int, user: User = CurrentUser
 async def get_pricing():
     packs = []
     for pid, p in pricing.PACKS.items():   # "<pack>m" is the member-price checkout for the same pack
-        packs.append({"id": pid, **p, "checkout_url": config.CHECKOUT_URLS.get(pid), "member_checkout_url": config.CHECKOUT_URLS.get(pid + "m")})
+        packs.append({"id": pid, **p, "checkout_url": config.CHECKOUT_URLS.get(pid),
+                      "member_checkout_url": {"sub5": config.CHECKOUT_URLS.get(pid + "m"), "sub15": config.CHECKOUT_URLS.get(pid + "m2")}})
     subs = [{**s, "checkout_url": config.CHECKOUT_URLS.get(s["id"])} for s in pricing.public_pricing()["subscriptions"]]
     return {**pricing.public_pricing(), "menu": [{"item": i, "points": p} for i, p in pricing.MENU],
             "free_revision_turns": pricing.FREE_REVISION_TURNS, "packs": packs, "subscriptions": subs,
@@ -505,9 +507,11 @@ async def credits_summary(user: User = CurrentUser):
 async def checkout(pack_id: str, user: User = CurrentUser):
     """Hosted checkout link with the user id attached so the webhook can credit the right account.
     A subscriber asking for a pack gets the member-price checkout when one is configured."""
-    if pack_id in pricing.PACKS and user.subscription and config.CHECKOUT_URLS.get(pack_id + "m"):
-        pack_id = pack_id + "m"
-    url = config.CHECKOUT_URLS.get(pack_id)   # packs, member packs and subscriptions share the map (p500, p500m, sub5…)
+    if pack_id in pricing.PACKS and user.subscription:   # member checkout: p500m (專業旅人 rate) / p500m2 (超級玩家 rate)
+        key = pack_id + ("m2" if user.subscription == "sub15" else "m")
+        if config.CHECKOUT_URLS.get(key):
+            pack_id = key
+    url = config.CHECKOUT_URLS.get(pack_id)   # packs, member packs and subscriptions share the map
     if not url:
         raise HTTPException(404, "此方案未開放線上付款")
     sep = "&" if "?" in url else "?"
@@ -533,10 +537,12 @@ async def lemonsqueezy_webhook(request: Request):
     user_id = (ev["meta"].get("custom_data") or {}).get("user_id")
     variant = str((attrs.get("first_order_item") or {}).get("variant_id") or (attrs.get("first_subscription_item") or {}).get("variant_id")
                   or attrs.get("variant_id"))
-    plan_id = config.LS_VARIANTS.get(variant)
-    member = bool(plan_id) and plan_id.endswith("m") and plan_id[:-1] in pricing.PACKS
-    if member:
-        plan_id = plan_id[:-1]
+    plan_id = config.LS_VARIANTS.get(variant) or ""
+    member = ""   # which plan's rate a member pack was bought at
+    for suffix, sub_id in (("m2", "sub15"), ("m", "sub5")):
+        if plan_id.endswith(suffix) and plan_id[: -len(suffix)] in pricing.PACKS:
+            member, plan_id = sub_id, plan_id[: -len(suffix)]
+            break
     if not user_id or not plan_id or (plan_id not in pricing.PACKS and plan_id not in pricing.SUBSCRIPTIONS):
         log.warning("webhook: unmapped %s %s variant=%s user=%s", event, order_id, variant, user_id)
         return {"ignored": True}
@@ -549,8 +555,8 @@ async def lemonsqueezy_webhook(request: Request):
         await activate_subscription(user_id, plan_id, paid_twd=pricing.SUBSCRIPTIONS[plan_id]["twd"], meta=meta)
         return {"ok": True, "subscription": plan_id}
     pack = pricing.PACKS[plan_id]
-    await add_credits(user_id, pack["points"], "purchase", f"lemonsqueezy {plan_id}{'m' if member else ''}",
-                      amount_twd=pack["member_twd"] if member else pack["twd"], meta={**meta, "member": member})
+    await add_credits(user_id, pack["points"], "purchase", f"lemonsqueezy {plan_id}{' member' if member else ''}",
+                      amount_twd=pack["member_twd"][member] if member else pack["twd"], meta={**meta, "member": member})
     return {"ok": True}
 
 
@@ -581,14 +587,9 @@ async def create_project(body: NewProject, user: User = CurrentUser):
         p = Project(user_id=user.id, name=body.name.strip()[:200] or "未命名")
         s.add(p)
         await s.flush()
-        u = await s.get(User, user.id)
-        free = False
-        if u.free_project_id is None:  # the first project runs on the free-trial allowance
-            u.free_project_id = p.id
-            free = True
         await s.commit()
     project_dir(p.id)
-    return {"id": p.id, "name": p.name, "free": free}
+    return {"id": p.id, "name": p.name, "free": False}   # the welcome credit replaced the free-project waiver
 
 
 @app.get("/api/projects/{project_id}")

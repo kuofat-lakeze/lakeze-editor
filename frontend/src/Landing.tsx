@@ -6,9 +6,9 @@ import { useEffect } from 'react'
 export const PRODUCT = { name: '旅剪', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
 const MARKET = { days: 3, low: 2000, high: 3000 }      // what a studio charges today
 // One video with cover and 2 revision rounds (the usual path to a final cut); from backend/app/pricing.py.
-const OURS = { minutes: 15, twd: 730 }                 // pay-as-you-go: 47 + 2 × 13 points
+const OURS = { minutes: 15, twd: 700 }                 // pay-as-you-go: 100 points × NT$7
 const SUB = { name: '專業旅人', twd: 2800, videos: 5, perVideo: 560 }   // monthly: 5 videos, 2 revisions each, 20 GB
-const FREE_REVISIONS = 3
+const SIGNUP_POINTS = 110
 
 
 function useReveal() {
@@ -42,7 +42,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
         <p className="ld-sub reveal in d2">丟影片或照片、說賣點，<b>15 分鐘</b>自動剪出有旁白口播、配樂、雙層字幕的旅遊短影音，<b>封面一起做好</b>。</p>
         <div className="ld-cta reveal in d3">
           <a className="btn primary lg" onClick={onStart}>免費試做第一支</a>
-          <span className="muted small">第一支影片、封面與 {FREE_REVISIONS} 輪修改免費，所有功能都能用，不用綁卡。</span>
+          <span className="muted small">註冊送 {SIGNUP_POINTS} 點，第一支影片含封面與 2 輪修改免費，所有功能都能用，不用綁卡。</span>
         </div>
       </section>
 
@@ -70,7 +70,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
           <div className="reveal"><div className="ld-save-num">{timePct}%</div><div className="muted small">時間省下來：3 天變 15 分鐘，今天拍今天發</div></div>
           <div className="reveal d1"><div className="ld-save-num">NT${saveLow.toLocaleString()}–{saveHigh.toLocaleString()}</div><div className="muted small">每支省下約 {savePct}% 的費用；包月 {SUB.name} 每支再降到 NT${SUB.perVideo}（每月 NT${SUB.twd.toLocaleString()}，{SUB.videos} 支）</div></div>
         </div>
-        <div className="muted small ld-note">單次購買以第一版含封面 47 點＋2 輪修改各 13 點計（1 點 = NT$10）；包月另含成品空間。業界行情為市場常見報價區間。</div>
+        <div className="muted small ld-note">單次購買以一支含封面與 2 輪修改 100 點計（1 點 = NT$7）；包月另含成品空間。業界行情為市場常見報價區間。</div>
       </section>
 
       <section className="ld-foot-cta reveal">

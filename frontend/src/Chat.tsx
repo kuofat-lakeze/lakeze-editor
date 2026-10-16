@@ -257,7 +257,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
     api.clientLog('files_selected', { n: list.length, files: list.map(f => ({ name: f.name, size: f.size, type: f.type })) })
     if (!list.length) return
     setErr('')
-    if (list.length > MAX_FILES) { setErr(`一次最多上傳 ${MAX_FILES} 支影片，這次只會傳前 ${MAX_FILES} 支，其餘請再選一次。`); list.splice(MAX_FILES) }
+    if (list.length > MAX_FILES) { setErr(`一次最多上傳 ${MAX_FILES} 個，這次只會傳前 ${MAX_FILES} 個，其餘請再選一次。`); list.splice(MAX_FILES) }
     const ups: Up[] = list.map(f => ({ id: Math.random().toString(36).slice(2, 10), file: f, name: f.name || 'clip.mp4', size: f.size, loaded: 0,
       status: f.size > MAX_FILE_BYTES ? 'err' : 'wait', error: f.size > MAX_FILE_BYTES ? `超過 1 GB 上限（${fmtMB(f.size)}），請先壓縮，或放到 Google Drive 貼連結` : undefined }))
     setUploads(us => [...us, ...ups])
@@ -322,7 +322,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                   <i>{obDone[i] && i !== obStep ? '✓' : i + 1}</i><span>{t}</span>
                 </a>
               ))}
-              <span className="ob-count muted small">第 {obStep + 1} 步，共 3 步 · 第一個專案免費</span>
+              <span className="ob-count muted small">第 {obStep + 1} 步，共 3 步 · 註冊送的 110 點夠做第一支</span>
             </div>
 
             <div className="ob-main">
@@ -330,7 +330,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                 {obStep === 0 && (
                   <>
                     <h3>先把素材給剪輯師</h3>
-                    <p className="muted">手機拍的影片、照片都可以，3 到 6 個最剛好。選好就會自動上傳。</p>
+                    <p className="muted">手機拍的影片、照片都可以，一次建議 6 個以內（最多 30 個）。選好就會自動上傳。</p>
                     <div className={`spot ${!(linkOk || okUploads > 0) ? 'on' : ''}`}>
                       {!(linkOk || okUploads > 0) && !uploading && <span className="coach">點這裡選影片</span>}
                       <DropZone onFiles={onFiles} onPick={pick} disabled={uploading} count={okUploads} />
@@ -464,7 +464,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         {needCredits && (
           <div className="card need">
             <div><b>點數不足</b>：這一步需要 {needCredits.needed} 點，目前 {needCredits.balance} 點，差 {Math.max(0, needCredits.needed - needCredits.balance)} 點。
-              <div className="muted small">最小 50 點 = NT$500。儲值入帳後回來輸入「繼續」，剪輯師會接著做。</div></div>
+              <div className="muted small">最小 50 點 = NT$350。儲值入帳後回來輸入「繼續」，剪輯師會接著做。</div></div>
             <button className="btn primary small" onClick={() => onTopUp(Math.max(0, needCredits.needed - needCredits.balance))}>去儲值</button>
           </div>
         )}

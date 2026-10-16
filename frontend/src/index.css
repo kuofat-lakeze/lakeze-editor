@@ -783,3 +783,16 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
   .ob-card { padding: 16px 14px 14px; } .ob-count { display: none; } .ob-pn span { display: none; } .ob-pn.on span { display: inline; }
   .ob-nav .btn { flex: 1; }
 }
+/* upload thumbnails: real poster, duration, play glyph */
+.uq-row { grid-template-columns: 64px 1fr auto; }
+.uq-thumb { width: 64px; height: 64px; border-radius: 12px; background: linear-gradient(145deg, #2E3440, #15171C); color: #8A919C; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 4px 12px rgba(34,38,46,.18); }
+.uq-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; animation: capin .3s ease-out; }
+.uq-thumb.has::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,.55)); pointer-events: none; }
+.uq-thumb .uq-play { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: rgba(255,255,255,.88); box-shadow: 0 2px 8px rgba(0,0,0,.3); z-index: 1; }
+.uq-thumb .uq-play::after { content: ""; position: absolute; left: 8px; top: 6px; border-left: 8px solid var(--brand); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+.uq-thumb .uq-kind { left: auto; right: 5px; bottom: 5px; width: auto; padding: 1px 6px; border-radius: 6px; font-size: 10px; background: rgba(0,0,0,.6); letter-spacing: .02em; z-index: 1; font-variant-numeric: tabular-nums; }
+.uq-thumb.photo .uq-kind { background: rgba(236,90,30,.9); }
+.uq-row.ok .uq-thumb { box-shadow: 0 0 0 2px var(--teal), 0 4px 12px rgba(34,38,46,.14); }
+.uq-row.up .uq-thumb::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.18) 50%, transparent 70%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; z-index: 1; }
+@keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@media (max-width: 760px) { .uq-row { grid-template-columns: 56px 1fr auto; } .uq-thumb { width: 56px; height: 56px; } }

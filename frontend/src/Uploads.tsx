@@ -6,7 +6,8 @@ export type Up = {
   id: string; file: File; name: string; size: number; loaded: number
   status: 'wait' | 'up' | 'ok' | 'err'; error?: string; rate?: number   // rate: bytes/s (smoothed)
 }
-export const MAX_FILES = 6
+export const MAX_FILES = 30
+export const SUGGESTED_FILES = 6
 export const MAX_FILE_BYTES = 1024 * 2 ** 20  // 1 GB per file (backend MAX_UPLOAD_MB defaults to the same)
 export const fmtMB = (b: number) => b >= 2 ** 30 ? `${(b / 2 ** 30).toFixed(2)} GB` : `${(b / 2 ** 20).toFixed(b > 100 * 2 ** 20 ? 0 : 1)} MB`
 const fmtEta = (s: number) => s < 60 ? `${Math.max(1, Math.round(s))} 秒` : `${Math.floor(s / 60)} 分 ${String(Math.round(s % 60)).padStart(2, '0')} 秒`
@@ -33,7 +34,7 @@ export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false
       <span className="dz-icon"><FilmIcon /></span>
       <span className="dz-text">
         <b>{disabled ? '上傳中…' : count ? `再加素材（已 ${count} 個）` : drag ? '放開就開始上傳' : '點一下選影片或照片，或直接拖進來'}</b>
-        <span className="muted small">影片、照片可以混著給 · 一次最多 {MAX_FILES} 個 · 每個 1 GB 內 · MP4 / MOV / JPG / PNG</span>
+        <span className="muted small">影片、照片可以混著給 · 一次建議 {SUGGESTED_FILES} 個、最多 {MAX_FILES} 個 · 每個 1 GB 內</span>
       </span>
       <span className="dz-cta">選擇</span>
       <input type="file" multiple accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp,.heic" hidden disabled={disabled} onClick={onPick}
@@ -43,16 +44,38 @@ export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false
 }
 
 const isImage = (f: File) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)
+const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
+/* A real poster for each clip: the browser decodes a frame a second in, we paint it to a canvas and
+   keep the JPEG, so the tile looks the same on every phone (iOS won't paint a paused <video> reliably). */
 function Thumb({ file }: { file: File }) {
   const url = useMemo(() => URL.createObjectURL(file), [file])
-  useEffect(() => () => URL.revokeObjectURL(url), [url])
+  const [poster, setPoster] = useState<string | null>(null)
+  const [dur, setDur] = useState<number | null>(null)
   const img = isImage(file)
+  useEffect(() => {
+    if (img) { setPoster(url); return () => URL.revokeObjectURL(url) }
+    const v = document.createElement('video')
+    v.muted = true; v.playsInline = true; v.preload = 'metadata'; v.src = url
+    let done = false
+    const paint = () => {
+      if (done || !v.videoWidth) return
+      done = true
+      const c = document.createElement('canvas'); const s = 160 / Math.max(v.videoWidth, v.videoHeight)
+      c.width = Math.round(v.videoWidth * s); c.height = Math.round(v.videoHeight * s)
+      c.getContext('2d')?.drawImage(v, 0, 0, c.width, c.height)
+      try { setPoster(c.toDataURL('image/jpeg', .8)) } catch { /* tainted canvas: keep the icon */ }
+      v.src = ''
+    }
+    v.onloadedmetadata = () => { setDur(v.duration); try { v.currentTime = Math.min(1, v.duration / 3) } catch { /* ignore */ } }
+    v.onseeked = paint; v.onloadeddata = () => setTimeout(paint, 150)
+    return () => { done = true; v.src = ''; URL.revokeObjectURL(url) }
+  }, [url, img])
   return (
-    <span className={`uq-thumb ${img ? 'photo' : ''}`}>
-      <FilmIcon />
-      {img ? <img src={url} alt="" /> : <video src={url} muted playsInline preload="metadata" onLoadedMetadata={e => { try { e.currentTarget.currentTime = 0.1 } catch { /* ignore */ } }} />}
-      <i className="uq-kind">{img ? '照片' : '影片'}</i>
+    <span className={`uq-thumb ${img ? 'photo' : 'clip'} ${poster ? 'has' : ''}`}>
+      {poster ? <img src={poster} alt="" /> : <FilmIcon />}
+      {!img && <i className="uq-play" />}
+      <i className="uq-kind">{img ? '照片' : dur ? fmtClock(dur) : '影片'}</i>
     </span>
   )
 }
