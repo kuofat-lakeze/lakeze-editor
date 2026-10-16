@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { api, type Analysis, type Asset, type Me, type Msg, type ProjectDetail, type Voice } from './api'
+import { api, type Analysis, type Asset, type DriveCheck, type Me, type Msg, type ProjectDetail, type Voice } from './api'
 import { Deliverables } from './Deliverables'
 import { VoiceCloneDialog } from './VoiceClone'
-import { DropZone, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
+import { MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
 import { fmtBytes } from './Storage'
 
 type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string; charged?: number; balance?: number; startedAt?: number }[] }
@@ -190,6 +190,18 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [style, setStyle] = useState('travel')
   const [obStep, setObStep] = useState(0)
   const [link, setLink] = useState('')
+  const [drive, setDrive] = useState<{ state: 'idle' | 'checking' | 'ok' | 'err'; info?: DriveCheck; error?: string }>({ state: 'idle' })
+  // Verify the folder as soon as a Drive link is pasted: shows what's inside, or why it can't be opened.
+  useEffect(() => {
+    const m = /drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/[\w-]+/.test(link)
+    if (!m) { setDrive({ state: 'idle' }); return }
+    let dead = false
+    setDrive({ state: 'checking' })
+    const t = setTimeout(() => {
+      api.driveCheck(projectId, link.trim()).then(info => { if (!dead) setDrive({ state: 'ok', info }) }).catch(e => { if (!dead) setDrive({ state: 'err', error: (e as Error).message }) })
+    }, 500)
+    return () => { dead = true; clearTimeout(t) }
+  }, [link, projectId])
   // 先解析素材 (wizard step 2): one call that returns selling points, storyboard, script and the estimate
   const [analyzing, setAnalyzing] = useState(false)
   const [anStart, setAnStart] = useState(0)
@@ -309,7 +321,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   }
 
   const okUploads = uploads.filter(u => u.status === 'ok').length
-  const linkOk = /drive\.google\.com\/drive\/folders\//.test(link)
+  const linkOk = drive.state === 'ok' && (drive.info?.media ?? 0) > 0
   const analysis = proj?.analysis ?? null
   const hasFootage = linkOk || okUploads > 0 || !!analysis
   const canStart = hasFootage && text.trim().length > 0 && !uploading && voice !== null
@@ -493,20 +505,34 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
               <section className="card ob-card" key={obStep}>
                 {obStep === 0 && (
                   <>
-                    <h3>先把素材給剪輯師</h3>
-                    <p className="muted">手機拍的影片、照片都可以，一次建議 6 個以內（最多 30 個）。選好就會自動上傳。</p>
-                    <div className={`spot ${!(linkOk || okUploads > 0) ? 'on' : ''}`}>
-                      {!(linkOk || okUploads > 0) && !uploading && <span className="coach">點這裡選影片</span>}
-                      <DropZone onFiles={onFiles} onPick={pick} disabled={uploading} count={okUploads} />
+                    <h3>把素材放在 Google 雲端，貼連結給剪輯師</h3>
+                    <p className="muted">手機拍的影片、照片先放進雲端硬碟的一個資料夾，貼連結就好，不用等上傳。</p>
+                    <ol className="dg-steps">
+                      <li><i>1</i><div><b>開 Google 雲端硬碟</b><span>把這次要用的影片、照片放進同一個資料夾（6 個以內最順）。</span></div></li>
+                      <li><i>2</i><div><b>資料夾 → 分享 → 「知道連結的使用者」</b><span>再按「複製連結」。這樣剪輯師才讀得到。</span></div></li>
+                      <li><i>3</i><div><b>貼到下面</b><span>貼上後會自動檢查資料夾裡有什麼。</span></div></li>
+                    </ol>
+                    <div className={`spot ${!linkOk ? 'on' : ''}`}>
+                      {!link && <span className="coach">連結貼在這裡</span>}
+                      <div className={`dg-input ${drive.state}`}>
+                        <input className="link" placeholder="https://drive.google.com/drive/folders/…" value={link}
+                          onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" autoFocus={!IS_TOUCH} />
+                        {drive.state === 'checking' && <span className="spinner" />}
+                        {drive.state === 'ok' && <span className="dg-ok">✓</span>}
+                        {link && drive.state !== 'checking' && <a className="small dg-clear" onClick={() => setLink('')}>清除</a>}
+                      </div>
                     </div>
-                    {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />}
-                    <details className="ob-alt" open={!!link}>
-                      <summary className="small">素材在 Google Drive？貼資料夾連結</summary>
-                      <input className="link" placeholder="https://drive.google.com/drive/folders/…（設為「知道連結的人都能檢視」）" value={link}
-                        onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" />
-                    </details>
+                    {drive.state === 'checking' && <div className="muted small">正在打開資料夾…</div>}
+                    {drive.state === 'ok' && drive.info && (drive.info.media > 0 ? (
+                      <div className="dg-found">
+                        <b>找到 {drive.info.media} 個素材</b><span className="muted small">{drive.info.videos} 支影片、{drive.info.photos} 張照片{drive.info.other ? `，另有 ${drive.info.other} 個其他檔案會略過` : ''}</span>
+                        <div className="dg-names">{drive.info.names.map(n => <em key={n}>{n}</em>)}{drive.info.media > drive.info.names.length && <em>…</em>}</div>
+                      </div>
+                    ) : <div className="card need">資料夾打得開，但裡面沒有影片或照片（支援 MP4、MOV、JPG、PNG、HEIC）。</div>)}
+                    {drive.state === 'err' && <div className="card need"><div><b>連結還不能用</b><div className="muted small">{drive.error}</div></div></div>}
+                    {link && drive.state === 'idle' && <div className="muted small">這看起來不是資料夾連結。到雲端硬碟對「資料夾」按分享 → 複製連結（網址會含 /folders/）。</div>}
                     <div className="ob-nav">
-                      <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : linkOk ? 'Drive 連結已就緒' : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : uploading ? '上傳中…' : '還沒有素材'}</span>
+                      <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : linkOk ? `雲端資料夾就緒 · ${drive.info?.media} 個素材` : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : uploading ? '上傳中…' : drive.state === 'checking' ? '檢查連結中…' : '還沒有素材'}</span>
                       <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading} onClick={() => goStep(1)}>下一步：解析素材 →</button>
                     </div>
                   </>
@@ -848,7 +874,7 @@ function ObPreview({ step, style, voiceName, uploads, linkOk, text, analysis, an
   const hook = analysis?.script[0]?.text
   return (
     <aside className="ob-prev">
-      <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? (analysis ? '開頭 3 秒會是這樣' : analyzing ? '解析完你會看到' : '解析完你會看到') : '上傳好會是這樣'}</span></div>
+      <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? (analysis ? '開頭 3 秒會是這樣' : analyzing ? '解析完你會看到' : '解析完你會看到') : '貼好連結，剪輯師會自己把素材抓下來'}</span></div>
       {step === 1 && !analysis && (
         <div className="ob-prev-an">
           <div className="pa-chips">{['無邊際泳池看海', '包棟', '龜山島日出', '寵物友善'].map((c, i) => <span key={c} className={i === 0 ? 'top' : ''}>{c}</span>)}</div>
@@ -877,7 +903,7 @@ function ObPreview({ step, style, voiceName, uploads, linkOk, text, analysis, an
               <span className={`ps-th ${c}`}><i className={k === '照片' ? 'photo' : ''}>{k}</i></span>
               <span className="ps-uqmain"><span className="ps-uqname">{n}</span><small>完成</small><span className="ps-uqbar"><i style={{ width: '100%' }} /></span></span><em>✓</em>
             </div>))}
-          <div className="muted small">剪輯師會自己看完每一個，挑最好的畫面。{uploads > 0 && <b> 你已經上傳 {uploads} 個。</b>}</div>
+          <div className="muted small">資料夾裡的每一個影片、照片剪輯師都會自己看完，挑最好的畫面。{uploads > 0 && <b> 你已經上傳 {uploads} 個。</b>}</div>
         </div>
       )}
       {step === 2 && (

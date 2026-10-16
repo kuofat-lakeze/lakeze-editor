@@ -21,6 +21,7 @@ export type CreditsSummary = {
 }
 export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null; custom?: boolean }
 export type CreditState = { balance: number; free_project: boolean; in_free: boolean; free_revisions_left: number | null; exports: number }
+export type DriveCheck = { ok: boolean; files: number; media: number; videos: number; photos: number; names: string[]; other: number }
 export type Shot = { n: number; clip: number; t: number; dur: number; shot: string; role: 'hook' | 'feature' | 'price' | 'cta' }
 export type Estimate = { first_video_points: number; revision_points: number; two_revisions_points: number; balance: number; enough_first: boolean; enough_two: boolean; short_first: number; short_two: number }
 export type Analysis = {
@@ -101,6 +102,7 @@ export const api = {
     return j<Analysis>(r)
   },
   stt: (blob: Blob, projectId = '') => { const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'v.mp4' : blob.type.includes('ogg') ? 'v.ogg' : 'v.webm'); fd.append('project_id', projectId); return fetch('/api/stt', { method: 'POST', body: fd }).then(j<{ text: string; seconds: number }>) },
+  driveCheck: (id: string, url: string) => post(`/api/projects/${id}/drive/check`, { url }).then(j<DriveCheck>),
   frameUrl: (id: string, clip: number, t: number) => `/api/projects/${id}/frame/${clip}?t=${t}`,
   projects: () => fetch('/api/projects').then(j<Project[]>),
   createProject: (name: string) => post('/api/projects', { name }).then(j<Project>),

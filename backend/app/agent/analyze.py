@@ -108,7 +108,7 @@ async def run(root: Path, brief: str = "", record_usage=None) -> dict:
         content.append(_image(s))
     content.append({"type": "text", "text": "請回傳 JSON。"})
     t0 = time.time()
-    msg = await _client().messages.create(model=config.ANTHROPIC_MODEL, max_tokens=4000, temperature=0.4,
+    msg = await _client().messages.create(model=config.ANTHROPIC_MODEL, max_tokens=4000,
                                           system="你只回傳合法 JSON，不加說明、不加 markdown 圍欄。",
                                           messages=[{"role": "user", "content": content}])
     text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")

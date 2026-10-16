@@ -71,7 +71,12 @@ SAMPLE = {"summary": "海邊民宿，有泳池", "selling_points": ["無邊際�
 
 
 def _fake_client(text=json.dumps(SAMPLE, ensure_ascii=False)):
+    import inspect
+    import anthropic
+    allowed = set(inspect.signature(anthropic.AsyncAnthropic(api_key="x").messages.create).parameters)
+
     async def create(**kw):
+        assert set(kw) <= allowed, set(kw) - allowed   # only arguments the real SDK accepts (temperature is gone)
         assert kw["messages"][0]["content"][1]["type"] == "image"   # the contact sheet went along
         return NS(content=[NS(type="text", text=text)], usage=NS(input_tokens=1000, output_tokens=200, cache_read_input_tokens=0, cache_creation_input_tokens=0))
     return NS(messages=NS(create=create))
@@ -177,3 +182,17 @@ def test_test_account_buys_without_payment(client):
     # a normal account without checkout URLs is still told to contact support
     holder["u"] = asyncio.run(_user(email="x@y.z"))
     assert c.get("/api/checkout/p100").status_code == 404
+
+
+def test_drive_check(client, monkeypatch):
+    c, holder = client
+    u = asyncio.run(_user()); holder["u"] = u
+    pid = asyncio.run(_project(u.id))
+    assert c.post(f"/api/projects/{pid}/drive/check", json={"url": "https://drive.google.com/file/d/abc/view"}).status_code == 400
+    from app.pipeline import footage as F
+    monkeypatch.setattr(F, "list_drive_folder", lambda url, root: [{"id": "1", "path": "a.MOV"}, {"id": "2", "path": "sub/b.jpg"}, {"id": "3", "path": "notes.txt"}])
+    r = c.post(f"/api/projects/{pid}/drive/check", json={"url": "https://drive.google.com/drive/folders/XYZ_1?usp=sharing"})
+    assert r.status_code == 200 and r.json()["media"] == 2 and r.json()["videos"] == 1 and r.json()["photos"] == 1 and r.json()["other"] == 1
+    monkeypatch.setattr(F, "list_drive_folder", lambda url, root: (_ for _ in ()).throw(ValueError("folder is empty or not shared publicly")))
+    r = c.post(f"/api/projects/{pid}/drive/check", json={"url": "https://drive.google.com/drive/folders/XYZ"})
+    assert r.status_code == 400 and "知道連結的使用者" in r.json()["detail"]

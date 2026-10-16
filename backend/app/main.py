@@ -671,6 +671,34 @@ def _has_footage(root: Path) -> bool:
                                 and (raw / ".stills") not in p.parents for p in raw.rglob("*"))
 
 
+class DriveBody(BaseModel):
+    url: str
+
+
+@app.post("/api/projects/{project_id}/drive/check")
+async def drive_check(project_id: str, body: DriveBody, user: User = CurrentUser):
+    """Peek into a shared Drive folder (no download) so the wizard can confirm the link works and show
+    what is inside before anything is charged."""
+    await _own(project_id, user)
+    url = body.url.strip()
+    if not re.search(r"drive\.google\.com/drive/(?:u/\d+/)?folders/[\w-]+", url):
+        raise HTTPException(400, "這不是 Google 雲端硬碟的「資料夾」連結。請在雲端硬碟對資料夾按「分享」→「複製連結」。")
+    try:
+        items = await asyncio.wait_for(asyncio.to_thread(footage.list_drive_folder, url, project_dir(project_id)), timeout=90)
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "讀取資料夾逾時，請再試一次")
+    except Exception as e:
+        msg = str(e)
+        if "shared" in msg or "empty" in msg or "permission" in msg.lower() or "403" in msg:
+            raise HTTPException(400, "打不開這個資料夾。請把資料夾的分享設定改成「知道連結的使用者」都能檢視，再貼一次。")
+        raise HTTPException(400, f"讀不到資料夾：{msg[:160]}")
+    names = [it["path"] for it in items]
+    media = [n for n in names if Path(n).suffix.lower() in footage.VIDEO_EXT + footage.IMAGE_EXT]
+    videos = sum(1 for n in media if Path(n).suffix.lower() in footage.VIDEO_EXT)
+    return {"ok": True, "files": len(names), "media": len(media), "videos": videos, "photos": len(media) - videos,
+            "names": [Path(n).name for n in media[:8]], "other": len(names) - len(media)}
+
+
 @app.post("/api/projects/{project_id}/analyze")
 async def analyze_project(project_id: str, body: AnalyzeBody, user: User = CurrentUser):
     """Before the brief is written: selling points, storyboard, narration draft and the point estimate.
