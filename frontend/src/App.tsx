@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type Me, type Project } from './api'
 import { Login } from './Login'
 import { Chat } from './Chat'
-import { TopUp } from './TopUp'
+import { Credits, type CreditsTab } from './Credits'
 import { Admin } from './Admin'
 import logo from './assets/logo.png'
 
@@ -10,8 +10,9 @@ export default function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined)
   const [projects, setProjects] = useState<Project[]>([])
   const [current, setCurrent] = useState<string | null>(null)
-  const [view, setView] = useState<'chat' | 'admin'>('chat')
-  const [topup, setTopup] = useState(false)
+  const [view, setView] = useState<'chat' | 'admin' | 'credits'>('chat')
+  const [creditsTab, setCreditsTab] = useState<CreditsTab>('overview')
+  const showCredits = (t: CreditsTab = 'overview') => { setCreditsTab(t); setView('credits'); setMenu(false) }
   const [menu, setMenu] = useState(false)
 
   const refreshMe = () => api.me().then(setMe)
@@ -40,16 +41,16 @@ export default function App() {
         <button className="btn icon" aria-label="選單" onClick={() => setMenu(true)}>☰</button>
         <img className="logo" src={logo} alt="Lakeze 人客多" />
         <span className="spacer" />
-        <a className="pts" onClick={() => setTopup(true)}>{me.balance} <small>點</small></a>
+        <a className="pts" onClick={() => showCredits()}>{me.balance} <small>點</small></a>
       </div>
       {menu && <div className="scrim" onClick={() => setMenu(false)} />}
 
       <aside className={`sidebar ${menu ? 'open' : ''}`}>
         <div className="brand"><img className="logo" src={logo} alt="Lakeze 人客多" /></div>
-        <div className="balance card" onClick={() => setTopup(true)}>
+        <div className={`balance card ${view === 'credits' ? 'active' : ''}`} onClick={() => showCredits()}>
           <div className="muted small">點數餘額</div>
           <div className="big">{me.balance}</div>
-          <button className="btn primary small">儲值</button>
+          <button className="btn primary small" onClick={e => { e.stopPropagation(); showCredits('buy') }}>儲值</button>
         </div>
         <button className="btn block" onClick={newProject}>＋ 新專案</button>
         <nav>
@@ -68,10 +69,10 @@ export default function App() {
 
       <main className="main">
         {view === 'admin' && me.is_admin ? <Admin />
-          : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={() => setTopup(true)} />
+          : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} onClose={() => { setView('chat'); refreshMe() }} />
+          : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={() => showCredits('buy')} onCredits={() => showCredits()} />
             : <div className="center muted">建立一個專案開始剪片。第一個專案免費。</div>}
       </main>
-      {topup && <TopUp balance={me.balance} onClose={() => { setTopup(false); refreshMe() }} />}
     </div>
   )
 }

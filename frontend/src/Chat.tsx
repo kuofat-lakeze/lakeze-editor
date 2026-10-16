@@ -3,7 +3,8 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { api, type Asset, type Msg, type ProjectDetail, type Voice } from './api'
 
-type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string }[] }
+type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string; charged?: number; balance?: number; startedAt?: number }[] }
+const fmtDur = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${String(s % 60).padStart(2, '0')} 秒` }
 const emptyLive = (): Live => ({ text: '', thinking: '', tools: [] })
 type Up = { name: string; size: number; loaded: number; status: 'wait' | 'up' | 'ok' | 'err'; error?: string }
 const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent)
@@ -31,7 +32,7 @@ const TOOL_LABEL: Record<string, string> = {
   render_captions: '燒字幕', export_video: '輸出成品', make_cover: '做封面',
 }
 
-export function Chat({ projectId, name, onUsage, onTopUp }: { projectId: string; name?: string; onUsage: () => void; onTopUp: () => void }) {
+export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { projectId: string; name?: string; onUsage: () => void; onTopUp: () => void; onCredits?: () => void }) {
   const [proj, setProj] = useState<ProjectDetail | null>(null)
   const [live, setLive] = useState<Live>(emptyLive())
   const [running, setRunning] = useState(false)
@@ -54,8 +55,25 @@ export function Chat({ projectId, name, onUsage, onTopUp }: { projectId: string;
   const atBottom = useRef(true)
   const [unseen, setUnseen] = useState(false)
   const firstLoad = useRef(true)
+  // Elapsed-time display while the editor works (like Claude's "running… 1m 23s").
+  const turnStart = useRef<number | null>(null)
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (!running) { turnStart.current = null; return }
+    if (!turnStart.current) turnStart.current = Date.now()
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [running])
 
-  const reload = () => api.project(projectId).then(p => { setProj(p); setRunning(p.running); if (p.running) listen() })
+  const reload = () => api.project(projectId).then(p => {
+    setProj(p); setRunning(p.running)
+    if (p.running) {
+      const lastUser = [...p.messages].reverse().find(m => m.role === 'user')
+      const t = lastUser ? Date.parse(lastUser.created_at.endsWith('Z') || lastUser.created_at.includes('+') ? lastUser.created_at : lastUser.created_at + 'Z') : NaN
+      if (!turnStart.current && !isNaN(t)) turnStart.current = t
+      listen()
+    }
+  })
   useEffect(() => { reload() }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!proj) return
@@ -88,14 +106,18 @@ export function Chat({ projectId, name, onUsage, onTopUp }: { projectId: string;
       switch (ev.type) {
         case 'text': setLive(l => ({ ...l, text: l.text + ev.text })); break
         case 'thinking': setLive(l => ({ ...l, thinking: (l.thinking + ev.text).slice(-600) })); break
-        case 'tool_run': setLive(l => ({ ...l, tools: [...l.tools, { name: ev.name, status: 'run' }] })); break
+        case 'tool_run': setLive(l => ({ ...l, tools: [...l.tools, { name: ev.name, status: 'run', startedAt: Date.now() }] })); break
         case 'tool_end': setLive(l => {
           const tools = [...l.tools]; const i = tools.map(t => t.name).lastIndexOf(ev.name)
           if (i >= 0) tools[i] = { ...tools[i], status: ev.ok ? 'ok' : 'err', seconds: ev.seconds, summary: ev.summary }
           return { ...l, tools }
         }); break
         case 'asset': liveAssets.current.push(ev.asset); setLive(l => ({ ...l })); break
-        case 'credits': onUsage(); break
+        case 'credits': onUsage(); setLive(l => {  // attach the charge to the running tool so the thread shows "−3 點"
+          const tools = [...l.tools]; const i = tools.map(t => t.name).lastIndexOf(ev.tool)
+          if (i >= 0) tools[i] = { ...tools[i], charged: ev.charged, balance: ev.balance }
+          return { ...l, tools }
+        }); break
         case 'need_credits': setNeedCredits({ needed: ev.needed, balance: ev.balance }); break
         case 'error': setErr(ev.message); break
         case 'idle': es.close(); setRunning(false); break
@@ -112,7 +134,7 @@ export function Chat({ projectId, name, onUsage, onTopUp }: { projectId: string;
       t += voice === NO_VOICE ? '\n\n（不要配音：只要配樂和字幕，賣點用字幕呈現。）'
         : v ? `\n\n（旁白用 ${v.name}，voice_id ${v.voice_id}，直接做到輸出，不用再問我選聲音。）` : ''
     }
-    setErr(''); setText(''); setNeedCredits(null); atBottom.current = true
+    setErr(''); setText(''); setNeedCredits(null); atBottom.current = true; turnStart.current = Date.now()
     setProj(p => p && { ...p, messages: [...p.messages, { id: 'tmp', role: 'user', parts: [{ type: 'text', text: t }], created_at: '' }] })
     try { await api.send(projectId, t); setLive(emptyLive()); listen() } catch (e) { setErr((e as Error).message) }
   }
@@ -165,11 +187,12 @@ export function Chat({ projectId, name, onUsage, onTopUp }: { projectId: string;
     <div className="chat">
       <header>
         <h2>{name ?? proj.name}</h2>
-        <span className={`chip ${proj.credits.in_free ? '' : 'pay'}`}>
+        <span className={`chip ${proj.credits.in_free ? '' : 'pay'}`} onClick={onCredits} role="button">
           {proj.credits.in_free
             ? (proj.credits.free_revisions_left === null ? '免費：第一版 + 封面' : `免費修改剩 ${proj.credits.free_revisions_left} 輪`)
             : '照價目扣點'}
         </span>
+        {running && <span className="working-chip"><span className="spinner" />工作中 {turnStart.current ? fmtDur(now - turnStart.current) : ''}</span>}
         {running && <button className="btn small" onClick={() => api.cancel(projectId)}>停止</button>}
       </header>
       <div className="thread" ref={threadRef} onScroll={onScroll}>
@@ -209,12 +232,20 @@ export function Chat({ projectId, name, onUsage, onTopUp }: { projectId: string;
         {proj.messages.map((m, i) => <Bubble key={m.id} m={m} assets={assetsFor(m, i)} />)}
         {running && (
           <div className="bubble assistant">
+            {(() => { const cur = [...live.tools].reverse().find(t => t.status === 'run'); return (
+              <div className="working">
+                <span className="spinner" />
+                <b>剪輯師工作中</b>
+                <span className="muted">· {cur ? TOOL_LABEL[cur.name] ?? cur.name : live.text ? '回覆中' : '思考中'}</span>
+                {turnStart.current && <span className="muted">· 已 {fmtDur(now - turnStart.current)}</span>}
+              </div>) })()}
             {live.thinking && <details className="thinking"><summary>思考中…</summary>{live.thinking}</details>}
             {live.tools.map((t, i) => (
               <div key={i} className={`tool ${t.status}`}>
                 <span className="dot" /> {TOOL_LABEL[t.name] ?? t.name}
-                {t.status === 'run' ? '…' : t.seconds !== undefined ? ` ${t.seconds}s` : ''}
+                {t.status === 'run' ? ` … ${t.startedAt ? fmtDur(now - t.startedAt) : ''}` : t.seconds !== undefined ? ` ${t.seconds}s` : ''}
                 {t.status === 'err' && <span className="muted small"> 失敗</span>}
+                {t.charged ? <span className="charge">−{t.charged} 點 · 餘額 {t.balance}</span> : null}
               </div>
             ))}
             {liveAssets.current.map(a => <AssetCard key={a.id} a={a} />)}
@@ -224,9 +255,9 @@ export function Chat({ projectId, name, onUsage, onTopUp }: { projectId: string;
         )}
         {needCredits && (
           <div className="card need">
-            點數不足：這一步需要 {needCredits.needed} 點，目前 {needCredits.balance} 點。
-            <button className="btn primary small" onClick={onTopUp}>儲值</button>
-            <span className="muted small">儲值後輸入「繼續」即可接著做。</span>
+            <div><b>點數不足</b>：這一步需要 {needCredits.needed} 點，目前 {needCredits.balance} 點，差 {Math.max(0, needCredits.needed - needCredits.balance)} 點。
+              <div className="muted small">最小方案 NT$500 = 50 點。儲值後回來輸入「繼續」，剪輯師會接著做。</div></div>
+            <button className="btn primary small" onClick={onTopUp}>立即儲值</button>
           </div>
         )}
         {picking && !uploads.length && (

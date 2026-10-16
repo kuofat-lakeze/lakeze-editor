@@ -7,6 +7,7 @@ export function Admin() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [q, setQ] = useState('')
+  const [lowOnly, setLowOnly] = useState(false)
   const [sel, setSel] = useState<AdminUserDetail | null>(null)
   const [msgs, setMsgs] = useState<{ role: string; text?: string; tool?: string }[] | null>(null)
 
@@ -39,16 +40,19 @@ export function Admin() {
       )}
       <div className="admin-body">
         <div className="users">
-          <input placeholder="搜尋 email" value={q} onChange={e => setQ(e.target.value)} />
+          <div className="row" style={{ marginBottom: 8 }}>
+            <input placeholder="搜尋 email" value={q} onChange={e => setQ(e.target.value)} style={{ flex: 1, marginBottom: 0 }} />
+            <a className={`chipbtn ${lowOnly ? 'on' : ''}`} onClick={() => setLowOnly(!lowOnly)}>快沒點（&lt;10 點且 7 天內有活動）</a>
+          </div>
           <table>
-            <thead><tr><th>Email</th><th>餘額</th><th>已付 NT$</th><th>成本 $</th><th>影片</th><th>註冊</th><th></th></tr></thead>
+            <thead><tr><th>Email</th><th>餘額</th><th>已付 NT$</th><th>成本 $</th><th>影片</th><th>最近活動</th><th></th></tr></thead>
             <tbody>
-              {users.map(u => (
+              {users.filter(u => !lowOnly || (u.balance < 10 && u.last_active && Date.now() - Date.parse(u.last_active) < 7 * 86400e3)).map(u => (
                 <tr key={u.id} className={sel?.id === u.id ? 'active' : ''} onClick={() => open(u.id)}>
                   <td>{u.email}{u.is_admin && <span className="tag">admin</span>}{u.disabled && <span className="tag err">停用</span>}</td>
                   <td className="r">{u.balance}</td><td className="r">{u.paid_twd.toLocaleString()}</td>
                   <td className="r">{u.cost_usd}</td><td className="r">{u.exports}/{u.projects}</td>
-                  <td className="muted small">{u.created_at.slice(0, 10)}</td>
+                  <td className="muted small">{(u.last_active ?? u.created_at).slice(0, 10)}</td>
                   <td className="muted small">{u.note}</td>
                 </tr>
               ))}

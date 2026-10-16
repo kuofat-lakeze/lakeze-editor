@@ -18,6 +18,21 @@ TOOL_POINTS: dict[str, int] = {
 }
 VOICE_SAMPLE_POINTS = 1
 
+# Chinese label and spending category per tool (the credits page groups charges by category).
+TOOL_LABELS: dict[str, str] = {
+    "list_drive_folder": "讀取 Drive", "download_footage": "下載素材", "probe_footage": "素材分析", "sample_frames": "檢視畫面",
+    "build_cut": "剪輯畫面", "search_voices": "搜尋聲音", "generate_voice": "旁白生成", "generate_music": "配樂",
+    "generate_sfx": "音效", "preview_video": "預覽", "compose_audio": "混音", "render_captions": "字幕",
+    "export_video": "輸出影片", "make_cover": "封面",
+}
+TOOL_CATEGORY: dict[str, str] = {
+    "probe_footage": "cut", "sample_frames": "cut", "build_cut": "cut", "list_drive_folder": "cut", "download_footage": "cut",
+    "search_voices": "audio", "generate_voice": "audio", "generate_music": "audio", "generate_sfx": "audio",
+    "compose_audio": "subs", "render_captions": "subs", "preview_video": "subs",
+    "export_video": "export", "make_cover": "cover",
+}
+CATEGORIES = [("cut", "素材與剪輯"), ("audio", "旁白與配樂"), ("subs", "字幕與混音"), ("export", "輸出"), ("cover", "封面")]
+
 # Free trial: the user's first project is free through the first export plus this many revision turns.
 FREE_REVISION_TURNS = 4
 

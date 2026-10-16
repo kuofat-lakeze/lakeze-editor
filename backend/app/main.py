@@ -158,6 +158,53 @@ async def my_credits(user: User = CurrentUser):
                             "project_id": t.project_id, "created_at": t.created_at.isoformat()} for t in tx]}
 
 
+@app.get("/api/credits/summary")
+async def credits_summary(user: User = CurrentUser):
+    """Everything the credits page shows: totals, per-project spend by category, daily usage (30 days)."""
+    from datetime import datetime, timedelta, timezone
+    since = datetime.now(timezone.utc) - timedelta(days=30)
+    async with Session() as s:
+        tx = (await s.execute(select(CreditTx).where(CreditTx.user_id == user.id).order_by(CreditTx.id))).scalars().all()
+        projects = (await s.execute(select(Project).where(Project.user_id == user.id).order_by(Project.updated_at.desc()))).scalars().all()
+    purchased = sum(t.delta for t in tx if t.kind in ("purchase", "grant"))
+    refunded = sum(t.delta for t in tx if t.kind == "refund")
+    used = -sum(t.delta for t in tx if t.kind == "charge")
+    waived = sum(t.points_waived for t in tx)
+    by_proj: dict[str, dict] = {}
+    daily: dict[str, dict] = {}
+    for t in tx:
+        if t.kind != "charge":
+            continue
+        cat = pricing.TOOL_CATEGORY.get(t.reason, "subs")
+        pts_used, pts_waived = -t.delta, t.points_waived
+        if t.project_id:
+            d = by_proj.setdefault(t.project_id, {"used": 0, "waived": 0, "by_category": {c: 0 for c, _ in pricing.CATEGORIES},
+                                                 "by_tool": {}})
+            d["used"] += pts_used; d["waived"] += pts_waived
+            d["by_category"][cat] += pts_used + pts_waived
+            d["by_tool"][t.reason] = d["by_tool"].get(t.reason, 0) + pts_used + pts_waived
+        ts = t.created_at
+        if ts is not None and ts.tzinfo is None:  # SQLite hands back naive UTC timestamps
+            ts = ts.replace(tzinfo=timezone.utc)
+        if ts is not None and ts >= since:
+            k = ts.date().isoformat()
+            dd = daily.setdefault(k, {"date": k, "used": 0, "waived": 0})
+            dd["used"] += pts_used; dd["waived"] += pts_waived
+    days = [(since + timedelta(days=i + 1)).date().isoformat() for i in range(30)]
+    balance_now = await balance(user.id)
+    return {
+        "balance": balance_now, "purchased": purchased, "refunded": refunded, "used": used, "waived": waived,
+        "revision_points": 8,  # typical revision round (mix + captions + export), for the "about N more revisions" hint
+        "categories": [{"id": c, "label": l} for c, l in pricing.CATEGORIES],
+        "tool_labels": pricing.TOOL_LABELS,
+        "projects": [{"id": p.id, "name": p.name, "exports": p.exports, "revision_turns": p.revision_turns,
+                      "free": user.free_project_id == p.id, "updated_at": p.updated_at.isoformat(),
+                      **by_proj.get(p.id, {"used": 0, "waived": 0, "by_category": {c: 0 for c, _ in pricing.CATEGORIES}, "by_tool": {}})}
+                     for p in projects],
+        "daily": [daily.get(d, {"date": d, "used": 0, "waived": 0}) for d in days],
+    }
+
+
 @app.get("/api/checkout/{pack_id}")
 async def checkout(pack_id: str, user: User = CurrentUser):
     """Hosted checkout link with the user id attached so the webhook can credit the right account."""

@@ -44,8 +44,9 @@ async def users(q: str = "", _: User = Admin):
         bal = select(CreditTx.user_id, func.sum(CreditTx.delta).label("bal"), func.sum(CreditTx.points_waived).label("waived"),
                      func.sum(CreditTx.amount_twd).label("paid")).group_by(CreditTx.user_id).subquery()
         cost = select(Usage.user_id, func.sum(Usage.cost_usd).label("cost")).group_by(Usage.user_id).subquery()
-        proj = select(Project.user_id, func.count(Project.id).label("n"), func.sum(Project.exports).label("ex")).group_by(Project.user_id).subquery()
-        stmt = (select(User, bal.c.bal, bal.c.waived, bal.c.paid, cost.c.cost, proj.c.n, proj.c.ex)
+        proj = select(Project.user_id, func.count(Project.id).label("n"), func.sum(Project.exports).label("ex"),
+                      func.max(Project.updated_at).label("last")).group_by(Project.user_id).subquery()
+        stmt = (select(User, bal.c.bal, bal.c.waived, bal.c.paid, cost.c.cost, proj.c.n, proj.c.ex, proj.c.last)
                 .outerjoin(bal, bal.c.user_id == User.id).outerjoin(cost, cost.c.user_id == User.id)
                 .outerjoin(proj, proj.c.user_id == User.id).order_by(User.created_at.desc()))
         if q:
@@ -53,7 +54,8 @@ async def users(q: str = "", _: User = Admin):
         rows = (await s.execute(stmt.limit(500))).all()
     return [{"id": u.id, "email": u.email, "created_at": u.created_at.isoformat(), "is_admin": u.is_admin,
              "disabled": u.disabled, "note": u.note, "balance": int(b or 0), "waived": int(w or 0), "paid_twd": int(p or 0),
-             "cost_usd": round(c or 0, 2), "projects": int(n or 0), "exports": int(e or 0)} for u, b, w, p, c, n, e in rows]
+             "cost_usd": round(c or 0, 2), "projects": int(n or 0), "exports": int(e or 0),
+             "last_active": (last.isoformat() if last else None)} for u, b, w, p, c, n, e, last in rows]
 
 
 @router.get("/users/{user_id}")
