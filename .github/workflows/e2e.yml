@@ -15,9 +15,10 @@ on:
       brief: { description: "first message to the editor", required: true }
       revision: { description: "revision request", required: false, default: "把價格字幕改成金色、大一點" }
       results_branch: { description: "branch to push results to", required: false, default: "e2e-results" }
-      mode: { description: "full | revision | upload", required: false, default: "full" }
+      mode: { description: "full | revision | upload | dump", required: false, default: "full" }
       project_id: { description: "revision mode: existing project id", required: false, default: "" }
       grant_points: { description: "revision mode: points the admin grants itself first (0 = none)", required: false, default: "0" }
+      dump_projects: { description: "dump mode: project ids whose transcripts to fetch (space separated)", required: false, default: "" }
 permissions:
   contents: write
 jobs:
@@ -49,6 +50,7 @@ jobs:
           MODE: ${{ inputs.mode }}
           PROJECT_ID: ${{ inputs.project_id }}
           GRANT_POINTS: ${{ inputs.grant_points }}
+          DUMP_PROJECTS: ${{ inputs.dump_projects }}
           OUT: e2e_out
         run: bash deploy/e2e.sh
       - name: Publish results branch

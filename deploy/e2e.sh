@@ -72,6 +72,15 @@ if [ "$(echo "$ME" | jq -r '.free_project_id')" != null ]; then  # re-run: give 
   say "free trial already used → admin reset: $(api -X POST "$BASE/api/admin/users/$UID_" -d '{"reset_free_project":true}')"
 fi
 
+if [ "$MODE" = dump ]; then
+# ---- admin dump: users, their projects (exports / revision turns) and the transcript of DUMP_PROJECT -------------
+api "$BASE/api/admin/users" > "$OUT/users.json"; say "users: $(jq -c '[.[]|{email,balance,projects,exports}]' "$OUT/users.json")"
+for uid in $(jq -r '.[].id' "$OUT/users.json"); do api "$BASE/api/admin/users/$uid" > "$OUT/user_$uid.json"
+  say "user $(jq -r .email "$OUT/user_$uid.json"): $(jq -c '[.projects[]|{id,name,exports,revision_turns,free}]' "$OUT/user_$uid.json")"; done
+for pid in ${DUMP_PROJECTS:-}; do api "$BASE/api/admin/projects/$pid/messages" > "$OUT/msgs_$pid.json"; say "dumped $pid: $(jq length "$OUT/msgs_$pid.json") blocks"; done
+rm -f "$JAR"; exit 0
+fi
+
 if [ "$MODE" = upload ]; then
 # ---- upload-size probe: does a multipart upload of N MB reach the backend through the edge? -----------------
 P=$(api -X POST "$BASE/api/projects" -d '{"name":"upload probe"}'); PID=$(echo "$P" | jq -r .id); echo "$PID" > "$OUT/project_id.txt"
