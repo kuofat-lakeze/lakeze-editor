@@ -1401,3 +1401,5 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .pp-src.real { background: #E4F5EC; color: #1E7A4C; }
 .dr-kpis { grid-template-columns: repeat(2, 1fr); }
 .cost-drawer .dr-kpis { grid-template-columns: repeat(2, 1fr); }
+.pl-pts { align-self: flex-start; margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--brand); background: var(--brand-soft); padding: 4px 10px; border-radius: 8px; }
+.pl-pts b { font-size: 16px; font-weight: 800; }

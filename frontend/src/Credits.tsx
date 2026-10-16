@@ -293,7 +293,8 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                 <div className="pl-top"><b className="pl-name">{p.tiers.payg.label}</b><span className="pl-tag">單次購買</span></div>
                 <div className="pl-who">{p.tiers.payg.who}</div>
                 <div className="pl-price">{twd(single)}<small> / 支</small></div>
-                <div className="pl-sub">買點數，用多少扣多少</div>
+                <div className="pl-pts">一次買 <b>{Math.min(...p.packs.map(k => k.points)).toLocaleString()}～{Math.max(...p.packs.map(k => k.points)).toLocaleString()}</b> 點</div>
+                <div className="pl-sub">1 點 {twd(p.point_twd)}，用多少扣多少</div>
                 <div className="pl-off none">原價</div>
                 <ul className="pl-list"><li>點數永久有效</li><li>全部功能都能用</li></ul>
                 <button className="btn block" onClick={() => setTab('buy')}>{!sub && !inFree && me?.tier !== 'free' ? '再儲值' : '儲值點數'}</button>
@@ -308,7 +309,8 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                     <div className="pl-top"><b className="pl-name">{s.label}</b><span className="pl-tag">包月</span></div>
                     <div className="pl-who">{s.who}</div>
                     <div className="pl-price">{twd(s.per_video_twd)}<small> / 支</small></div>
-                    <div className="pl-sub">每月 {twd(s.twd)} · {s.videos} 支</div>
+                    <div className="pl-pts">每月 <b>{s.points.toLocaleString()}</b> 點</div>
+                    <div className="pl-sub">每月 {twd(s.twd)}，約 {s.videos} 支影片</div>
                     <div className="pl-off">比單次省 {off}%</div>
                     <ul className="pl-list"><li>每支含 2 輪修改</li><li>{s.storage_gb} GB 成品空間，一直保存</li></ul>
                     {isCur ? <button className="btn block" disabled>使用中</button>
