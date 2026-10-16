@@ -106,10 +106,11 @@ def tts_line(text: str, voice_id: str, dest_mp3: Path, *, model: str = "eleven_v
     body = {"text": f"{tags} {text}".strip(), "model_id": model,
             "voice_settings": {"stability": stability, "similarity_boost": 0.85, "style": style,
                                "use_speaker_boost": True, "speed": speed}}
-    if prev:
-        body["previous_text"] = prev
-    if nxt:
-        body["next_text"] = nxt
+    if not model.startswith("eleven_v3"):  # v3 rejects previous_text/next_text ("unsupported_model")
+        if prev:
+            body["previous_text"] = prev
+        if nxt:
+            body["next_text"] = nxt
     r = _post(f"/text-to-speech/{voice_id}?output_format=mp3_44100_128", json=body)
     dest_mp3.write_bytes(r.content)
 
