@@ -27,6 +27,7 @@ function Workspace() {
   const showCredits = (t: CreditsTab = 'plans', need = 0) => { setCreditsTab(t); setNeedPoints(need); setView('credits'); setMenu(false) }
   const [menu, setMenu] = useState(false)
   const [auth, setAuth] = useState<'login' | 'signup' | null>(location.pathname === '/login' ? 'login' : location.pathname === '/signup' ? 'signup' : null)
+  const oauthError = new URLSearchParams(location.search).get('oauth_error') ?? ''   // the OAuth callback lands on /login?oauth_error=…
 
   const refreshMe = () => api.me().then(setMe)
   useEffect(() => { refreshMe() }, [])
@@ -37,7 +38,7 @@ function Workspace() {
 
   if (me === undefined) return <div className="center muted">載入中…</div>
   if (!me) return auth
-    ? <Login initialMode={auth} onDone={m => { setMe(m); history.replaceState(null, '', '/') }} onBack={() => { setAuth(null); history.replaceState(null, '', '/') }} />
+    ? <Login initialMode={auth} initialError={oauthError} onDone={m => { setMe(m); history.replaceState(null, '', '/') }} onBack={() => { setAuth(null); history.replaceState(null, '', '/') }} />
     : <Landing onStart={() => { setAuth('signup'); history.pushState(null, '', '/signup') }} onLogin={() => { setAuth('login'); history.pushState(null, '', '/login') }} />
 
   const newProject = async () => {
@@ -88,7 +89,7 @@ function Workspace() {
       <main className="main">
         {view === 'admin' && me.is_admin ? <Admin />
           : view === 'gallery' ? <Gallery onOpen={openProject} />
-          : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} needPoints={needPoints} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} />
+          : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} needPoints={needPoints} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} onBought={refreshMe} />
           : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits('buy', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
               onProjectsChanged={() => api.projects().then(setProjects)} />
             : <div className="center muted">建立一個專案開始剪片。第一個專案免費。</div>}

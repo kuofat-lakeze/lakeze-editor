@@ -18,8 +18,11 @@ from datetime import datetime, timedelta, timezone
 
 from . import config, pricing
 from .admin import router as admin_router
+from .agent import analyze
 from .agent.runner import TurnRunner
 from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
+from .oauth import router as oauth_router
+from .pipeline import footage
 from .db import (GB, Asset, CreditTx, Message, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict,
                  backfill_sizes, backfill_versions, balance, has_paid, init_db, storage_quota_bytes, storage_state, storage_used)
 from .pipeline import eleven, ff
@@ -125,6 +128,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Lakeze Editor", lifespan=lifespan)
 app.include_router(admin_router)
+app.include_router(oauth_router)
 
 # ---- live turn registry -------------------------------------------------------
 _turns: dict[str, dict] = {}  # project_id -> {"task", "subs": set[Queue], "events": list}
@@ -172,6 +176,8 @@ async def login(c: Creds, request: Request):
         if u and u.email in config.ADMIN_EMAILS and not u.is_admin:
             u.is_admin = True
             await s.commit()
+    if u and not u.pw_hash:   # signed up with Google / Facebook: no password on file
+        raise HTTPException(401, f"這個帳號是用 {'Google' if u.provider == 'google' else 'Facebook'} 註冊的，請按上方按鈕登入")
     if not u or not check_pw(c.password, u.pw_hash):
         raise HTTPException(401, "email 或密碼錯誤")
     if u.disabled:
@@ -198,7 +204,13 @@ async def me(user: User = CurrentUser):
             "tier": (tier := user.subscription or ("payg" if await has_paid(user.id) else "free")),
             "voice": {"voice_id": user.voice_id, "name": user.voice_name or "我的聲音"} if user.voice_id else None,
             # on the free tier the clone may narrate up to TRIAL_VOICE_SECONDS of speech
-            "voice_trial": {"used": round(user.voice_trial_seconds or 0.0, 1), "limit": pricing.TRIAL_VOICE_SECONDS} if tier == "free" else None}
+            "voice_trial": {"used": round(user.voice_trial_seconds or 0.0, 1), "limit": pricing.TRIAL_VOICE_SECONDS} if tier == "free" else None,
+            "provider": user.provider or None, "name": user.display_name,
+            "test_account": user.email in config.TEST_EMAILS}   # purchases are credited directly, no payment
+
+
+def _is_test(user: User) -> bool:
+    return user.email in config.TEST_EMAILS
 
 
 async def _can_clone(user: User) -> bool:
@@ -506,7 +518,17 @@ async def credits_summary(user: User = CurrentUser):
 @app.get("/api/checkout/{pack_id}")
 async def checkout(pack_id: str, user: User = CurrentUser):
     """Hosted checkout link with the user id attached so the webhook can credit the right account.
-    A subscriber asking for a pack gets the member-price checkout when one is configured."""
+    A subscriber asking for a pack gets the member-price checkout when one is configured.
+    Test accounts skip the payment provider: the pack or plan is credited on the spot."""
+    if _is_test(user):
+        if pack_id in pricing.SUBSCRIPTIONS:
+            await activate_subscription(user.id, pack_id, paid_twd=0, meta={"test": True})
+            return {"url": None, "test": True, "subscription": pack_id, "balance": await balance(user.id)}
+        if pack_id in pricing.PACKS:
+            pack = pricing.PACKS[pack_id]
+            bal = await add_credits(user.id, pack["points"], "purchase", f"test {pack_id}", amount_twd=0, meta={"test": True})
+            return {"url": None, "test": True, "granted": pack["points"], "balance": bal}
+        raise HTTPException(404, "unknown pack")
     if pack_id in pricing.PACKS and user.subscription:   # member checkout: p500m (專業旅人 rate) / p500m2 (超級玩家 rate)
         key = pack_id + ("m2" if user.subscription == "sub15" else "m")
         if config.CHECKOUT_URLS.get(key):
@@ -602,9 +624,75 @@ async def get_project(project_id: str, user: User = CurrentUser):
         comments = (await s.execute(select(ShareComment).where(ShareComment.project_id == p.id).order_by(ShareComment.id))).scalars()
         client_comments = [{"id": c.id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat()} for c in comments]
     st = await Store(user.id).credit_state(p.id)
+    an = analyze.load(project_dir(p.id))
+    if an:
+        an["estimate"] = analyze.estimate(st["balance"])
     return {"id": p.id, "name": p.name, "messages": [m for m in out_msgs if m],
             "assets": [asset_dict(a) for a in assets], "running": project_id in _turns and not _turns[project_id]["task"].done(),
-            "credits": st, "final_version": p.final_version, "exports": p.exports, "client_comments": client_comments}
+            "credits": st, "final_version": p.final_version, "exports": p.exports, "client_comments": client_comments,
+            "analysis": an}
+
+
+# ---- 先解析素材 ---------------------------------------------------------------------
+class AnalyzeBody(BaseModel):
+    brief: str = ""
+    drive_url: str = ""
+
+
+def _has_footage(root: Path) -> bool:
+    raw = root / "raw"
+    return raw.exists() and any(p.is_file() and p.suffix.lower() in footage.VIDEO_EXT + footage.IMAGE_EXT
+                                and (raw / ".stills") not in p.parents for p in raw.rglob("*"))
+
+
+@app.post("/api/projects/{project_id}/analyze")
+async def analyze_project(project_id: str, body: AnalyzeBody, user: User = CurrentUser):
+    """Before the brief is written: selling points, storyboard, narration draft and the point estimate.
+    Costs the probe fee once; the agent's own probe_footage is then free for this project."""
+    await _own(project_id, user)
+    t = _turns.get(project_id)
+    if t and not t["task"].done():
+        raise HTTPException(409, "剪輯師正在工作中，等這回合結束再解析")
+    root = project_dir(project_id)
+    if body.drive_url.strip():
+        try:
+            items = await asyncio.to_thread(footage.list_drive_folder, body.drive_url.strip(), root)
+            await asyncio.to_thread(footage.download_drive, items, root)
+        except Exception as e:
+            raise HTTPException(400, f"Drive 資料夾讀不到：{str(e)[:200]}")
+    if not _has_footage(root):
+        raise HTTPException(400, "還沒有素材：先上傳影片或照片，或貼 Drive 連結")
+    store = Store(user.id)
+    ok, bal = await store.charge(project_id, analyze.ANALYZE_POINTS, "probe_footage")
+    if not ok:
+        return JSONResponse({"detail": f"點數不足：解析需要 {analyze.ANALYZE_POINTS} 點，目前 {bal} 點", "needed": analyze.ANALYZE_POINTS, "balance": bal}, 402)
+    try:
+        data = await analyze.run(root, body.brief, record_usage=lambda k, u, c, m: store.record_usage(project_id, k, u, c, m))
+    except Exception as e:
+        log.exception("analyze failed")
+        await add_credits(user.id, analyze.ANALYZE_POINTS, "refund", "analyze_failed", project_id=project_id)   # not their fault
+        raise HTTPException(500, f"解析失敗，點數已退回：{type(e).__name__}: {str(e)[:200]}")
+    data["estimate"] = analyze.estimate(await balance(user.id))
+    data["charged"] = analyze.ANALYZE_POINTS
+    return data
+
+
+@app.get("/api/projects/{project_id}/frame/{n}")
+async def frame(project_id: str, n: int, t: float = 0.0, user: User = CurrentUser):
+    """One frame of clip #n at second t (cached), for the storyboard the analysis shows."""
+    await _own(project_id, user)
+    root = project_dir(project_id)
+    try:
+        rel = footage.load_index(root)[n]
+    except (FileNotFoundError, KeyError):
+        raise HTTPException(404, "no such clip")
+    t = max(0.0, min(float(t), 36000.0))
+    dest = root / "sheets" / "frames" / f"{n:02d}_{t:.1f}.jpg"
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(ff.ffmpeg, "-ss", f"{t:.2f}", "-i", str(root / "raw" / rel), "-frames:v", "1",
+                                "-vf", "scale=-2:360", "-q:v", "4", str(dest))
+    return FileResponse(dest, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 def _public_message(m: Message) -> dict | None:
@@ -613,7 +701,7 @@ def _public_message(m: Message) -> dict | None:
     parts = []
     for b in blocks:
         t = b.get("type")
-        if t == "text" and b.get("text", "").strip():
+        if t == "text" and b.get("text", "").strip() and not b["text"].startswith(ANALYSIS_TAG):
             parts.append({"type": "text", "text": b["text"]})
         elif t == "tool_use":
             parts.append({"type": "tool", "name": b["name"]})
@@ -738,6 +826,10 @@ async def upload_complete(project_id: str, upload_id: str, user: User = CurrentU
 # ---- chat ----------------------------------------------------------------------------
 class Turn(BaseModel):
     text: str
+    with_analysis: bool = False   # first message after 「先解析素材」: hand the agent the plan the user saw
+
+
+ANALYSIS_TAG = "[先前解析結果]"
 
 
 @app.post("/api/projects/{project_id}/messages")
@@ -754,6 +846,8 @@ async def send_message(project_id: str, body: Turn, user: User = CurrentUser):
     _turns[project_id] = {"task": None, "subs": set(), "events": []}
     runner = TurnRunner(project_id, project_dir(project_id), Store(user.id), _broadcast(project_id))
     blocks = [{"type": "text", "text": body.text}]
+    if body.with_analysis and (an := analyze.load(project_dir(project_id))):
+        blocks.append({"type": "text", "text": analyze.as_brief(an)})   # hidden from the thread (see _public_message)
 
     async def go():
         try:

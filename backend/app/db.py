@@ -52,6 +52,11 @@ class User(Base):
     voice_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     voice_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     voice_trial_seconds: Mapped[float] = mapped_column(Float, default=0.0)  # speech generated with the clone while on the free tier
+    # Third-party sign-in: "google" / "facebook" and the provider's user id. pw_hash is "" for such accounts
+    # until they set a password.
+    provider: Mapped[str] = mapped_column(String(20), default="")
+    provider_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class Project(Base):
@@ -153,6 +158,7 @@ _MIGRATIONS = [
     ("users", "storage_quota_gb", "INTEGER"), ("assets", "size_bytes", "INTEGER DEFAULT 0"),
     ("users", "subscription", "VARCHAR(20) DEFAULT ''"), ("users", "sub_period_start", "DATETIME"), ("users", "sub_renews_at", "DATETIME"),
     ("users", "voice_id", "VARCHAR(64)"), ("users", "voice_name", "VARCHAR(80)"), ("users", "voice_trial_seconds", "FLOAT DEFAULT 0"),
+    ("users", "provider", "VARCHAR(20) DEFAULT ''"), ("users", "provider_id", "VARCHAR(80)"), ("users", "display_name", "VARCHAR(120)"),
 ]
 
 

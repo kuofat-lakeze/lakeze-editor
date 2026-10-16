@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { api, type Asset, type Me, type Msg, type ProjectDetail, type Voice } from './api'
+import { api, type Analysis, type Asset, type Me, type Msg, type ProjectDetail, type Voice } from './api'
 import { Deliverables } from './Deliverables'
 import { VoiceCloneDialog } from './VoiceClone'
 import { DropZone, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
@@ -26,7 +26,10 @@ const CHIPS: Record<Stage, string[]> = {
   revise: ['價格字幕放大一點', '換一張封面畫面', '旁白慢一點', '配樂小聲一點', '第一句換成游泳池畫面'],
 }
 const NO_VOICE = 'none'
-const OB_STEPS = ['給素材', '選風格與聲音', '寫賣點']
+const OB_STEPS = ['給素材', '解析素材', '風格與賣點']
+const ANALYZE_POINTS = 14
+const ROLE_LABEL: Record<string, string> = { hook: '開場', feature: '賣點', price: '價格', cta: '行動' }
+const AN_PHASES = ['看每個畫面', '找出賣點', '排分鏡', '寫旁白稿', '估算點數']
 const EXAMPLE_BRIEF = '宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑，結尾請大家點連結查空房。'
 const STYLES = [
   { id: 'travel', name: '旅遊短影音', tag: '預設', desc: '節奏快、前 3 秒就是最強賣點，每句旁白對一個畫面，口語活潑。',
@@ -91,6 +94,13 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [style, setStyle] = useState('travel')
   const [obStep, setObStep] = useState(0)
   const [link, setLink] = useState('')
+  // 先解析素材 (wizard step 2): one call that returns selling points, storyboard, script and the estimate
+  const [analyzing, setAnalyzing] = useState(false)
+  const [anStart, setAnStart] = useState(0)
+  const [anErr, setAnErr] = useState('')
+  const [anNeed, setAnNeed] = useState<{ needed: number; balance: number } | null>(null)
+  const [skipAn, setSkipAn] = useState(false)
+  const [picked, setPicked] = useState<string[] | null>(null)   // selling points the user kept (null = all)
   const [voices, setVoices] = useState<Voice[]>([])
   const [voice, setVoice] = useState<string | null>(null)   // voice_id, NO_VOICE, or null = not loaded yet
   const [me, setMe] = useState<Me | null>(null)
@@ -110,11 +120,11 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const turnStart = useRef<number | null>(null)
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
-    if (!running) { turnStart.current = null; return }
-    if (!turnStart.current) turnStart.current = Date.now()
+    if (!running && !analyzing) { turnStart.current = null; return }
+    if (running && !turnStart.current) turnStart.current = Date.now()
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
-  }, [running])
+  }, [running, analyzing])
 
   const reload = () => api.project(projectId).then(p => {
     setProj(p); setRunning(p.running)
@@ -204,30 +214,59 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
 
   const okUploads = uploads.filter(u => u.status === 'ok').length
   const linkOk = /drive\.google\.com\/drive\/folders\//.test(link)
-  const canStart = (linkOk || okUploads > 0) && text.trim().length > 0 && !uploading && voice !== null
-  const obDone = [linkOk || okUploads > 0, voice !== null && obStep >= 1, text.trim().length > 0]
+  const analysis = proj?.analysis ?? null
+  const hasFootage = linkOk || okUploads > 0 || !!analysis
+  const canStart = hasFootage && text.trim().length > 0 && !uploading && voice !== null
+  const obDone = [hasFootage, !!analysis || skipAn, text.trim().length > 0 && voice !== null]
   const start = async () => {
     if (!canStart || running) return
     const st = STYLES.find(x => x.id === style) ?? STYLES[0]
     const v = voices.find(x => x.voice_id === voice)
     const parts = [
-      linkOk ? `素材在 ${link.trim()} 。` : `我上傳了 ${okUploads} 支素材。`,
+      analysis ? `素材已上傳並解析過（${analysis.n_clips} 個）。` : linkOk ? `素材在 ${link.trim()} 。` : `我上傳了 ${okUploads} 支素材。`,
       text.trim(),
       st.brief,
       voice === NO_VOICE ? '不要配音：只要配樂和字幕，賣點用字幕呈現。'
         : v ? `旁白用 ${v.name}（voice_id ${v.voice_id}），直接做到輸出影片和封面，不用再問我選聲音或確認稿子。` : '',
     ]
-    api.clientLog('start_project', { style: st.id, voice, link: linkOk, uploads: okUploads })
-    await submit(parts.filter(Boolean).join('\n'))
+    api.clientLog('start_project', { style: st.id, voice, link: linkOk, uploads: okUploads, analysis: !!analysis })
+    await submit(parts.filter(Boolean).join('\n'), !!analysis)
   }
+  const runAnalyze = async () => {
+    if (analyzing || running) return
+    setAnalyzing(true); setAnErr(''); setAnNeed(null); setAnStart(Date.now())
+    api.clientLog('analyze_start', { link: linkOk && !okUploads, uploads: okUploads })
+    try {
+      const a = await api.analyze(projectId, { brief: text.trim(), drive_url: linkOk && !okUploads ? link.trim() : '' })
+      atBottom.current = false   // land on the selling points, not the bottom of the card
+      setProj(p => p && { ...p, analysis: a }); setPicked(null); setSkipAn(false)
+      onUsage()
+      setTimeout(() => { threadRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); setUnseen(false) }, 60)
+    } catch (e) {
+      const ex = e as Error & { needed?: number; balance?: number }
+      if (ex.needed) setAnNeed({ needed: ex.needed, balance: ex.balance ?? 0 }); else setAnErr(ex.message)
+    } finally { setAnalyzing(false) }
+  }
+  const goStep = (i: number) => { setObStep(i); requestAnimationFrame(() => threadRef.current?.scrollTo({ top: 0 })) }
+  const pickedPoints = analysis ? (picked ?? analysis.selling_points) : []
+  const togglePoint = (s: string) => setPicked(p => { const cur = p ?? analysis?.selling_points ?? []; return cur.includes(s) ? cur.filter(x => x !== s) : [...cur, s] })
+  // Step 2 → 3: the kept selling points become the brief (the user can still edit it).
+  const useAnalysis = () => {
+    if (analysis && !text.trim()) {
+      const miss = analysis.missing.filter(m => /價格|店名|名稱/.test(m)).map(m => `${m.replace(/^補充?/, '')}：`)
+      setText([`賣點：${pickedPoints.join('、')}`, ...miss].join('\n'))
+    }
+    goStep(2)
+  }
+  const copyScript = () => { if (analysis) navigator.clipboard?.writeText(analysis.script.map(l => l.text).join('\n')).catch(() => {}) }
   const send = async () => {
     const t = text.trim(); if (!t || running) return
     await submit(t)
   }
-  const submit = async (t: string) => {
+  const submit = async (t: string, withAnalysis = false) => {
     setErr(''); setText(''); setNeedCredits(null); setNeedStorage(null); atBottom.current = true; turnStart.current = Date.now()
     setProj(p => p && { ...p, messages: [...p.messages, { id: 'tmp', role: 'user', parts: [{ type: 'text', text: t }], created_at: '' }] })
-    try { await api.send(projectId, t); setLive(emptyLive()); listen() } catch (e) { setErr((e as Error).message) }
+    try { await api.send(projectId, t, withAnalysis ? { with_analysis: true } : {}); setLive(emptyLive()); listen() } catch (e) { setErr((e as Error).message) }
   }
 
   const patchUp = (id: string, u: Partial<Up>) => setUploads(us => us.map(x => (x.id === id ? { ...x, ...u } : x)))
@@ -266,7 +305,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
       if (up.status === 'err') { api.clientLog('upload_skipped_too_large', { name: up.name, size: up.size }); continue }
       if (await runUpload(up)) ok++
     }
-    if (ok) setText(t => t || `我上傳了 ${ok} 支素材，請先分析。`)
+    if (ok && proj && proj.messages.length > 0) setText(t => t || `我上傳了 ${ok} 支素材，請先分析。`)
   }
   const retryUpload = (id: string) => setUploads(us => { const u = us.find(x => x.id === id); if (u) queueMicrotask(() => { runUpload(u) }); return us })
   const removeUpload = (id: string) => setUploads(us => us.filter(u => u.id !== id))
@@ -280,6 +319,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
 
   if (!proj) return <div className="center muted">載入中…</div>
   const stage: Stage = running ? 'working' : proj.messages.length === 0 ? 'start' : proj.credits.exports > 0 ? 'revise' : 'progress'
+  const anPhase = analyzing ? Math.min(AN_PHASES.length - 1, Math.floor((now - anStart) / 9000)) : 0
   // Assets are produced by tools during an assistant turn: show each under the assistant
   // message whose time window (previous message → next message) contains it.
   const assetsFor = (m: Msg, i: number) => {
@@ -318,7 +358,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
           <div className="ob-wiz">
             <div className="ob-prog">
               {OB_STEPS.map((t, i) => (
-                <a key={t} className={`ob-pn ${i === obStep ? 'on' : ''} ${obDone[i] ? 'done' : ''}`} onClick={() => i <= obStep || obDone[i - 1] ? setObStep(i) : null}>
+                <a key={t} className={`ob-pn ${i === obStep ? 'on' : ''} ${obDone[i] ? 'done' : ''}`} onClick={() => i <= obStep || obDone[i - 1] ? goStep(i) : null}>
                   <i>{obDone[i] && i !== obStep ? '✓' : i + 1}</i><span>{t}</span>
                 </a>
               ))}
@@ -342,15 +382,122 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                         onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" />
                     </details>
                     <div className="ob-nav">
-                      <span className="muted small">{linkOk ? 'Drive 連結已就緒' : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : uploading ? '上傳中…' : '還沒有素材'}</span>
-                      <button className={`btn primary ${(linkOk || okUploads > 0) && !uploading ? 'glow' : ''}`} disabled={!(linkOk || okUploads > 0) || uploading} onClick={() => setObStep(1)}>下一步：選風格 →</button>
+                      <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : linkOk ? 'Drive 連結已就緒' : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : uploading ? '上傳中…' : '還沒有素材'}</span>
+                      <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading} onClick={() => goStep(1)}>下一步：解析素材 →</button>
                     </div>
                   </>
                 )}
-                {obStep === 1 && (
+                {obStep === 1 && !analysis && (
                   <>
-                    <h3>選一個風格和聲音</h3>
-                    <p className="muted">點一下就選好，右邊會看到這個風格大概長什麼樣。之後想換，跟剪輯師說一聲就好。</p>
+                    <h3>{analyzing ? '剪輯師正在看素材' : '先讓剪輯師看一遍素材'}</h3>
+                    <p className="muted">不確定要主打什麼？按一下，剪輯師會看完每個畫面，列出<b>賣點、分鏡、旁白逐字稿</b>，還有做這支大約<b>要花幾點</b>。之後正式開剪，素材分析這一步不再重複扣點。</p>
+                    {analyzing ? (
+                      <div className="an-run">
+                        <div className="an-run-head"><span className="spinner" /><b>解析中</b><span className="muted">· 已 {fmtDur(now - anStart)} · 通常 1–2 分鐘{linkOk && !okUploads ? '，Drive 素材要先下載會更久' : ''}</span></div>
+                        <ol className="an-phases">
+                          {AN_PHASES.map((p, i) => <li key={p} className={i < anPhase ? 'done' : i === anPhase ? 'on' : ''}><i>{i < anPhase ? '✓' : i + 1}</i>{p}</li>)}
+                        </ol>
+                        <div className="an-skel"><span /><span /><span /><span /><span /></div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="an-cta">
+                          <div className={`spot inline ${!anNeed ? 'on' : ''}`}>
+                            {!anNeed && <span className="coach">按這裡</span>}
+                            <button className="btn primary start glow" onClick={runAnalyze} disabled={running || uploading}>
+                              解析 {analysis ? '' : okUploads > 0 ? `${okUploads} 個` : ''}素材<small>{ANALYZE_POINTS} 點</small>
+                            </button>
+                          </div>
+                          <div className="an-cta-list">
+                            {['有哪些賣點', '分鏡怎麼排', '旁白逐字稿', '預估要花幾點'].map(x => <span key={x}>✓ {x}</span>)}
+                          </div>
+                        </div>
+                        {anNeed && (
+                          <div className="card need">
+                            <div><b>點數不足</b>：解析需要 {anNeed.needed} 點，目前 {anNeed.balance} 點。<div className="muted small">儲值後回來再按一次。</div></div>
+                            <button className="btn primary small" onClick={() => onTopUp(Math.max(0, anNeed.needed - anNeed.balance))}>去儲值</button>
+                          </div>
+                        )}
+                        {anErr && <div className="error">{anErr}</div>}
+                      </>
+                    )}
+                    <div className="ob-nav">
+                      <a className="small" onClick={() => goStep(0)}>← 上一步</a>
+                      {!analyzing && <a className="small muted" onClick={() => { setSkipAn(true); goStep(2) }}>我自己知道賣點，跳過 →</a>}
+                    </div>
+                  </>
+                )}
+                {obStep === 1 && analysis && (
+                  <>
+                    <h3>剪輯師看完了：{analysis.summary || `${analysis.n_clips} 個素材`}</h3>
+                    <p className="muted">點掉不想主打的賣點，其餘會帶進下一步。分鏡和旁白稿是草案，正式剪的時候剪輯師會再微調。</p>
+                    <div className="an-sec">
+                      <div className="an-h"><b>賣點</b><span className="muted small">留 {pickedPoints.length} 個</span></div>
+                      <div className="an-chips">
+                        {analysis.selling_points.map((s, i) => (
+                          <a key={s} className={`an-chip ${pickedPoints.includes(s) ? 'on' : ''} ${i === 0 ? 'top' : ''}`} onClick={() => togglePoint(s)}>{i === 0 && <em>最強</em>}{s}</a>))}
+                      </div>
+                    </div>
+                    <div className="an-sec">
+                      <div className="an-h"><b>分鏡與旁白稿</b><span className="muted small">{analysis.storyboard.length} 個鏡頭 · 約 {Math.round(analysis.total_seconds)} 秒</span><a className="small" onClick={copyScript}>複製逐字稿</a></div>
+                      <ol className="an-sb">
+                        {analysis.storyboard.map(s => {
+                          const line = analysis.script.find(l => l.n === s.n)
+                          return (
+                            <li key={s.n} className={`an-shot ${s.role}`}>
+                              <span className="an-fr"><img src={api.frameUrl(projectId, s.clip, s.t)} alt="" loading="lazy" /><i>#{String(s.clip).padStart(2, '0')} · {s.dur}s</i></span>
+                              <span className="an-shot-main">
+                                <span className="an-shot-top"><b>{s.n}</b><em className={`an-role ${s.role}`}>{ROLE_LABEL[s.role]}</em><span>{s.shot}</span></span>
+                                {line && <span className="an-line">「{line.text}」</span>}
+                              </span>
+                            </li>)
+                        })}
+                      </ol>
+                      {analysis.transcript_notes && <div className="muted small">現場音：{analysis.transcript_notes}</div>}
+                    </div>
+                    {analysis.missing.length > 0 && (
+                      <div className="an-sec an-miss">
+                        <b>還缺</b>{analysis.missing.map(m => <span key={m} className="pill">{m}</span>)}<span className="muted small">下一步可以補在賣點裡，或之後再補拍。</span>
+                      </div>
+                    )}
+                    <div className={`an-est ${analysis.estimate.enough_two ? 'ok' : analysis.estimate.enough_first ? 'warn' : 'short'}`}>
+                      <div className="an-est-rows">
+                        <div><span>第一版影片＋封面</span><b>{analysis.estimate.first_video_points} 點</b></div>
+                        <div><span>每輪修改</span><b>{analysis.estimate.revision_points} 點</b></div>
+                        <div className="tot"><span>含 2 輪修改（平均兩輪就定稿）</span><b>{analysis.estimate.two_revisions_points} 點</b></div>
+                      </div>
+                      <div className="an-est-bal">
+                        <span className="muted small">目前餘額</span><b>{analysis.estimate.balance} 點</b>
+                        {analysis.estimate.enough_two ? <span className="ok">✓ 足夠做完含修改</span>
+                          : analysis.estimate.enough_first ? <span className="warn">夠做第一版，修改差 {analysis.estimate.short_two} 點</span>
+                            : <span className="short">差 {analysis.estimate.short_first} 點才能開始</span>}
+                        {!analysis.estimate.enough_two && <button className="btn small primary" onClick={() => onTopUp(analysis.estimate.short_two)}>去儲值</button>}
+                      </div>
+                    </div>
+                    <div className="ob-nav">
+                      <span><a className="small" onClick={() => goStep(0)}>← 上一步</a><a className="small muted" style={{ marginLeft: 14 }} onClick={runAnalyze}>重新解析（{ANALYZE_POINTS} 點）</a></span>
+                      <div className="spot inline on">
+                        <span className="coach">用這些賣點</span>
+                        <button className="btn primary glow" onClick={useAnalysis}>下一步：選風格 →</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+                {obStep === 2 && (
+                  <>
+                    <h3>最後：賣點、風格、聲音</h3>
+                    <p className="muted">{analysis ? '賣點已經幫你填好，想改就改；加上價格、店名、語氣更好。' : '地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。'}</p>
+                    <div className={`spot ${!text.trim() ? 'on' : ''}`}>
+                      {!text.trim() && <span className="coach">在這裡打字</span>}
+                      <textarea rows={4} value={text} onChange={e => setText(e.target.value)} autoFocus={!text}
+                        placeholder={'例：宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑。'} />
+                    </div>
+                    <div className="chips inline">
+                      {!analysis && <a className="chipbtn on" onClick={() => setText(EXAMPLE_BRIEF)}>給我範例</a>}
+                      {['地點：', '價格：平日每人 NT$', '店名：', '語氣：輕鬆活潑'].map(c => (
+                        <a key={c} className="chipbtn" onClick={() => setText(t => (t ? t.replace(/\s*$/, '\n') : '') + c)}>{c}</a>))}
+                    </div>
+                    <div className="muted small ob-sub">風格</div>
                     <div className="styles">
                       {STYLES.map(st => (
                         <div key={st.id} className={`stylec ${style === st.id ? 'sel' : ''}`} onClick={() => setStyle(st.id)}>
@@ -359,7 +506,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                         </div>
                       ))}
                     </div>
-                    <div className="muted small" style={{ marginTop: 12 }}>旁白聲音</div>
+                    <div className="muted small ob-sub">旁白聲音</div>
                     <div className="voice-row">
                       {voices.map(v => (
                         <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''} ${v.custom ? 'mine' : ''}`} onClick={() => setVoice(v.voice_id)}>
@@ -382,39 +529,22 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                       {voice === null && <span className="muted small">載入聲音中…</span>}
                     </div>
                     <div className="ob-nav">
-                      <a className="small" onClick={() => setObStep(0)}>← 上一步</a>
-                      <button className={`btn primary ${voice !== null ? 'glow' : ''}`} disabled={voice === null} onClick={() => setObStep(2)}>下一步：寫賣點 →</button>
-                    </div>
-                  </>
-                )}
-                {obStep === 2 && (
-                  <>
-                    <h3>最後，用一兩句話講賣點</h3>
-                    <p className="muted">地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。</p>
-                    <div className={`spot ${!text.trim() ? 'on' : ''}`}>
-                      {!text.trim() && <span className="coach">在這裡打字</span>}
-                      <textarea rows={5} value={text} onChange={e => setText(e.target.value)} autoFocus
-                        placeholder={'例：宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑。'} />
-                    </div>
-                    <div className="chips inline">
-                      <a className="chipbtn on" onClick={() => setText(EXAMPLE_BRIEF)}>給我範例</a>
-                      {['地點：', '特色：', '價格：平日每人 NT$', '語氣：輕鬆活潑'].map(c => (
-                        <a key={c} className="chipbtn" onClick={() => setText(t => (t ? t.replace(/\s*$/, '\n') : '') + c)}>{c}</a>))}
-                    </div>
-                    <div className="ob-nav">
-                      <a className="small" onClick={() => setObStep(1)}>← 上一步</a>
+                      <a className="small" onClick={() => goStep(1)}>← 上一步</a>
                       <div className={`spot inline ${canStart ? 'on' : ''}`}>
                         {canStart && <span className="coach">按下去就開始</span>}
                         <button className={`btn primary start ${canStart ? 'glow' : ''}`} disabled={!canStart} onClick={start}>
-                          {!(linkOk || okUploads > 0) ? '先回第 1 步給素材' : !text.trim() ? '寫一點賣點就能開始' : '開始剪輯'}
+                          {!hasFootage ? '先回第 1 步給素材' : !text.trim() ? '寫一點賣點就能開始' : voice === null ? '載入聲音中…' : '開始剪輯'}
                         </button>
                       </div>
                     </div>
-                    <div className="muted small" style={{ textAlign: 'center' }}>送出後剪輯師會一路做到輸出影片與封面，約 15 分鐘，中途不會停下來問。</div>
+                    <div className="muted small" style={{ textAlign: 'center' }}>
+                      送出後剪輯師會一路做到輸出影片與封面，約 15 分鐘，中途不會停下來問。
+                      {analysis && <> 第一版約 {analysis.estimate.first_video_points} 點，餘額 {analysis.estimate.balance} 點。</>}
+                    </div>
                   </>
                 )}
               </section>
-              <ObPreview step={obStep} style={style} voiceName={voice === NO_VOICE ? null : voices.find(v => v.voice_id === voice)?.name ?? null} uploads={uploads.filter(u => u.status === 'ok').length} linkOk={linkOk} text={text} />
+              <ObPreview step={obStep} style={style} voiceName={voice === NO_VOICE ? null : voices.find(v => v.voice_id === voice)?.name ?? null} uploads={uploads.filter(u => u.status === 'ok').length} linkOk={linkOk} text={text} analysis={analysis} analyzing={analyzing} />
             </div>
           </div>
         )}
@@ -585,12 +715,37 @@ export function AssetCard({ a, onOpenFiles }: { a: Asset; onOpenFiles?: () => vo
 
 
 /* Right-hand "this is what you'll get" panel of the onboarding wizard: changes with the step and the choices. */
-function ObPreview({ step, style, voiceName, uploads, linkOk, text }: { step: number; style: string; voiceName: string | null; uploads: number; linkOk: boolean; text: string }) {
+function ObPreview({ step, style, voiceName, uploads, linkOk, text, analysis, analyzing }:
+  { step: number; style: string; voiceName: string | null; uploads: number; linkOk: boolean; text: string; analysis: Analysis | null; analyzing: boolean }) {
   const st = STYLES.find(x => x.id === style) ?? STYLES[0]
-  const place = (text.match(/^(.{2,12}?)(的|，|、|。)/) || [])[1] || '宜蘭海邊包棟'
+  const textPlace = (text.match(/^(.{2,12}?)(的|，|、|。)/) || [])[1]
+  const sumPlace = (analysis?.summary.match(/^(.{2,12}?)(的|，|、|。|$)/) || [])[1]
+  const place = (analysis ? sumPlace : textPlace) || textPlace || '宜蘭海邊包棟'
+  const hook = analysis?.script[0]?.text
   return (
     <aside className="ob-prev">
-      <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? '這個風格長這樣' : '上傳好會是這樣'}</span></div>
+      <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? (analysis ? '開頭 3 秒會是這樣' : analyzing ? '解析完你會看到' : '解析完你會看到') : '上傳好會是這樣'}</span></div>
+      {step === 1 && !analysis && (
+        <div className="ob-prev-an">
+          <div className="pa-chips">{['無邊際泳池看海', '包棟', '龜山島日出', '寵物友善'].map((c, i) => <span key={c} className={i === 0 ? 'top' : ''}>{c}</span>)}</div>
+          {[['開場', '泳池全景', '宜蘭海邊，推開門就是泳池'], ['賣點', '客廳＋KTV', '包棟，唱到半夜也沒人管'], ['價格', '房間窗景', '平日每人（價格）'], ['行動', '海邊日落', '點連結查空房']].map(([r, s, l], i) => (
+            <div key={r} className={`pa-row ${analyzing ? 'wait' : ''}`} style={{ animationDelay: `${i * .25}s` }}>
+              <span className={`pa-fr f${i}`} /><span className="pa-main"><b>{i + 1}</b><em>{r}</em><span>{s}</span><small>「{l}」</small></span>
+            </div>))}
+          <div className="pa-est"><span>第一版＋封面 <b>64 點</b></span><span>含 2 輪修改 <b>100 點</b></span></div>
+          <div className="muted small">示意。你的素材解析完會換成真的畫面與賣點。</div>
+        </div>
+      )}
+      {step === 1 && analysis && (
+        <div className={`ps-video ob-style ${style}`}>
+          <div className="ps-super">{analysis.selling_points.slice(1, 3).join(' · ') || '賣點'}</div>
+          <div className="ps-headline">{place}<br /><em>{analysis.selling_points[0] || ''}</em></div>
+          {hook && <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /></span><small>{hook}</small></div>}
+          <div className="ps-sub">{analysis.script[1]?.text || ''}</div>
+          <div className="ps-play" />
+          <div className="ob-style-note">Hook 用最強賣點 · {analysis.storyboard.length} 個鏡頭約 {Math.round(analysis.total_seconds)} 秒</div>
+        </div>
+      )}
       {step === 0 && (
         <div className="ob-prev-up">
           {[['DJI_0001.MP4', 'a', '影片'], ['IMG_5540.JPG', 'b', '照片'], ['DJI_0007.MP4', 'c', '影片']].map(([n, c, k], i) => (
@@ -601,30 +756,21 @@ function ObPreview({ step, style, voiceName, uploads, linkOk, text }: { step: nu
           <div className="muted small">剪輯師會自己看完每一個，挑最好的畫面。{uploads > 0 && <b> 你已經上傳 {uploads} 個。</b>}</div>
         </div>
       )}
-      {step === 1 && (
-        <div className={`ps-video ob-style ${style}`}>
-          <div className="ps-super">{st.id === 'promo' ? '限時優惠 · 只到月底' : st.id === 'premium' ? place : 'KTV · 電動麻將 · 寵物友善'}</div>
-          <div className="ps-headline">{st.id === 'promo' ? <>平日每人<br /><em>NT$1,500</em></> : st.id === 'premium' ? <>海的旁邊<br /><em>一棟只給你們</em></> : <>{place}<br /><em>25米戲水池</em></>}</div>
-          {voiceName && <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /></span><small>{voiceName} 旁白</small></div>}
-          <div className="ps-sub">{st.id === 'promo' ? '現在訂省 NT$500' : st.id === 'premium' ? '慢下來，聽海' : '推開窗就是龜山島海景'}</div>
-          <div className="ps-play" />
-          <div className="ob-style-note">{st.id === 'promo' ? '價格開頭、節奏強' : st.id === 'premium' ? '慢節奏、長鏡頭、少字' : '前 3 秒放最強賣點、快剪'}{voiceName ? '' : ' · 只有配樂與字幕'}</div>
-        </div>
-      )}
       {step === 2 && (
         <div className="ob-prev-done">
-          <div className="ps-vhead"><b>v1</b><span className="ps-pill">成品</span><small>影片＋封面</small></div>
+          <div className="ps-vhead"><b>v1</b><span className="ps-pill">成品</span><small>影片＋封面 · {st.name}</small></div>
           <div className="ps-result">
             <div className={`ps-video ob-style ${style}`}>
-              <div className="ps-super">{st.name}</div>
-              <div className="ps-headline">{place}<br /><em>{st.id === 'promo' ? 'NT$1,500' : '25米戲水池'}</em></div>
+              <div className="ps-super">{st.id === 'promo' ? '限時優惠 · 只到月底' : st.id === 'premium' ? place : analysis?.selling_points.slice(1, 3).join(' · ') || 'KTV · 電動麻將 · 寵物友善'}</div>
+              <div className="ps-headline">{st.id === 'promo' ? <>平日每人<br /><em>NT$1,500</em></> : st.id === 'premium' ? <>海的旁邊<br /><em>一棟只給你們</em></> : <>{place}<br /><em>{analysis?.selling_points[0] || '25米戲水池'}</em></>}</div>
               {voiceName && <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /></span><small>{voiceName} 旁白</small></div>}
-              <div className="ps-sub">雙層字幕</div>
+              <div className="ps-sub">{st.id === 'promo' ? '現在訂省 NT$500' : st.id === 'premium' ? '慢下來，聽海' : hook || '推開窗就是龜山島海景'}</div>
               <div className="ps-play" />
+              <div className="ob-style-note">{st.id === 'promo' ? '價格開頭、節奏強' : st.id === 'premium' ? '慢節奏、長鏡頭、少字' : '前 3 秒放最強賣點、快剪'}{voiceName ? '' : ' · 只有配樂與字幕'}</div>
             </div>
             <div className="ps-covers">
               <div className="ps-cover a"><span>封面 A</span><b>{place}</b><em>NT$1,500</em></div>
-              <div className="ps-cover b"><span>封面 B</span><b>25 米<br />戲水池</b><em>平日每人 1,500</em></div>
+              <div className="ps-cover b"><span>封面 B</span><b>{analysis?.selling_points[0] || '25 米戲水池'}</b><em>平日每人 1,500</em></div>
             </div>
           </div>
           <div className="muted small">做好會自動歸檔到「成品」頁，可以一鍵分享給客戶。</div>

@@ -41,3 +41,12 @@ LS_VARIANTS = json.loads(_env("LS_VARIANTS", "{}"))
 LS_WEBHOOK_SECRET = _env("LEMONSQUEEZY_WEBHOOK_SECRET")
 # Shown on the top-up page when no checkout URL is configured (bank transfer / LINE Pay instructions).
 TOPUP_NOTE = _env("TOPUP_NOTE", "儲值請聯絡客服，入帳後點數會自動出現在側欄。")
+# Public origin of the app, used to build OAuth redirect URIs (must match what is registered at Google / Meta).
+PUBLIC_URL = _env("PUBLIC_URL", "https://editor.lakeze.com").rstrip("/")
+# Third-party sign-in. A provider's buttons appear only when both values are set.
+GOOGLE_CLIENT_ID = _env("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = _env("GOOGLE_CLIENT_SECRET")
+FACEBOOK_APP_ID = _env("FACEBOOK_APP_ID")
+FACEBOOK_APP_SECRET = _env("FACEBOOK_APP_SECRET")
+# Test accounts: "buying" a pack or a subscription credits the account directly, no payment provider involved.
+TEST_EMAILS = {e.strip().lower() for e in _env("TEST_EMAILS", "kuofat@gmail.com").split(",") if e.strip()}

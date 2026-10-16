@@ -167,6 +167,8 @@ class TurnRunner:
         try:
             inp = tu.input if isinstance(tu.input, dict) else json.loads(tu.input)
             cost = tool_cost(tu.name, inp)
+            if tu.name == "probe_footage" and (self.root / "sheets" / "analysis.json").exists():
+                cost = 0   # the user already paid for the probe in 「先解析素材」
             st = await self.store.storage_state() if tu.name in ("export_video", "make_cover") else None
             if st and st["over"]:
                 await self.emit({"type": "need_storage", **st})

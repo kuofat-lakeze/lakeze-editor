@@ -2,7 +2,8 @@
 
 Everything is derived from a measured cost basis (COST_TWD, per tool, in NT$) and two margin targets:
   • pay-as-you-go (儲值點數)   → MARGIN_PAYG = 220 %   (price ≈ cost × 3.2)
-  • monthly subscription (訂閱) → MARGIN_SUB  = 180 %   (price ≈ cost × 2.8), sized for 5 videos a month
+  • 專業旅人 (5 支/月)          → MARGIN_SUB  = 180 %   (price ≈ cost × 2.8)
+  • 超級玩家 (15 支/月)         → MARGIN_SUB_BIG = 150 % (price ≈ cost × 2.5)
 The subscription is the discount path; top-up packs carry no bonus points so pay-as-you-go stays at 220 %.
 Override any table with the PRICING_JSON env var.
 """
@@ -13,8 +14,8 @@ import os
 POINT_TWD = 7
 SIGNUP_POINTS = 110   # welcome credit: one video with 2 revision rounds, and a little spare
 MARGIN_PAYG = 2.20
-MARGIN_SUB = 1.50     # 專業旅人: the discount path, ~23% cheaper per video than pay-as-you-go
-MARGIN_SUB_BIG = 1.20 # 超級玩家: volume plan, cheaper again per video
+MARGIN_SUB = 1.80     # 專業旅人: the discount path, cheaper per video than pay-as-you-go (220 %)
+MARGIN_SUB_BIG = 1.50 # 超級玩家: volume plan, cheaper again per video
 TWD_PER_USD = 32
 
 # Measured cost basis per tool call (NT$): Claude tokens dominate (frames and checks go through the

@@ -18,7 +18,14 @@ export type CreditsSummary = {
 }
 export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null; custom?: boolean }
 export type CreditState = { balance: number; free_project: boolean; in_free: boolean; free_revisions_left: number | null; exports: number }
-export type ProjectDetail = Project & { messages: Msg[]; assets: Asset[]; running: boolean; credits: CreditState; final_version?: number | null; exports?: number; client_comments?: ClientComment[] }
+export type Shot = { n: number; clip: number; t: number; dur: number; shot: string; role: 'hook' | 'feature' | 'price' | 'cta' }
+export type Estimate = { first_video_points: number; revision_points: number; two_revisions_points: number; balance: number; enough_first: boolean; enough_two: boolean; short_first: number; short_two: number }
+export type Analysis = {
+  summary: string; selling_points: string[]; storyboard: Shot[]; script: { n: number; text: string }[]; transcript_notes: string; missing: string[]
+  total_seconds: number; clips: { n: number; dur: number; photo: boolean; name: string }[]; n_clips: number; seconds: number; created_at: string
+  estimate: Estimate; charged?: number
+}
+export type ProjectDetail = Project & { messages: Msg[]; assets: Asset[]; running: boolean; credits: CreditState; final_version?: number | null; exports?: number; client_comments?: ClientComment[]; analysis?: Analysis | null }
 export type StorageState = { used_bytes: number; quota_bytes: number; plan: string; renews_at: string | null; over: boolean }
 export type StoragePlan = { id: string; gb: number; extra_gb: number; points: number; label: string; twd: number }
 export type StorageInfo = StorageState & {
@@ -26,7 +33,10 @@ export type StorageInfo = StorageState & {
   projects: { id: string; name: string; final_version: number | null; bytes: number; versions: number }[]
 }
 export type Me = { id: string; email: string; is_admin: boolean; balance: number; free_project_id: string | null; storage?: StorageState; subscription?: MySubscription | null
-  can_clone_voice?: boolean; voice?: MyVoice | null; tier?: string; voice_trial?: { used: number; limit: number } | null }
+  can_clone_voice?: boolean; voice?: MyVoice | null; tier?: string; voice_trial?: { used: number; limit: number } | null
+  provider?: 'google' | 'facebook' | null; name?: string | null; test_account?: boolean }
+export type Providers = { google: boolean; facebook: boolean }
+export type CheckoutResult = { url: string | null; test?: boolean; granted?: number; subscription?: string; balance?: number }
 export type Pack = { id: string; twd: number; points: number; label: string; checkout_url: string | null; member_twd: Record<string, number>; member_checkout_url?: Record<string, string | null> }
 export type Subscription = { id: string; label: string; who: string; desc: string; features: string[]; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
   twd: number; payg_twd: number; save_twd: number; save_pct: number; per_video_twd: number; point_twd: number; member_discount_pct: number; checkout_url?: string | null }
@@ -57,10 +67,18 @@ export const api = {
   login: (email: string, password: string) => post('/api/auth/login', { email, password }).then(j<Me>),
   signup: (email: string, password: string) => post('/api/auth/signup', { email, password }).then(j<Me>),
   logout: () => post('/api/auth/logout', {}),
+  authProviders: () => fetch('/api/auth/providers').then(j<Providers>).catch(() => ({ google: false, facebook: false } as Providers)),
+  oauthStart: (p: 'google' | 'facebook', mode: 'login' | 'signup') => `/api/auth/${p}/start?mode=${mode}`,
+  analyze: async (id: string, body: { brief?: string; drive_url?: string }) => {
+    const r = await post(`/api/projects/${id}/analyze`, body)
+    if (r.status === 402) { const d = await r.json(); throw Object.assign(new Error(d.detail), { needed: d.needed as number, balance: d.balance as number }) }
+    return j<Analysis>(r)
+  },
+  frameUrl: (id: string, clip: number, t: number) => `/api/projects/${id}/frame/${clip}?t=${t}`,
   projects: () => fetch('/api/projects').then(j<Project[]>),
   createProject: (name: string) => post('/api/projects', { name }).then(j<Project>),
   project: (id: string) => fetch(`/api/projects/${id}`).then(j<ProjectDetail>),
-  send: (id: string, text: string) => post(`/api/projects/${id}/messages`, { text }).then(j<{ ok: boolean }>),
+  send: (id: string, text: string, extra: { with_analysis?: boolean } = {}) => post(`/api/projects/${id}/messages`, { text, ...extra }).then(j<{ ok: boolean }>),
   cancel: (id: string) => post(`/api/projects/${id}/cancel`, {}),
   pricing: () => fetch('/api/pricing').then(j<Pricing>),
   voices: () => fetch('/api/voices').then(j<Voice[]>),
@@ -79,7 +97,7 @@ export const api = {
   share: (token: string) => fetch(`/api/s/${token}`).then(j<ShareView>),
   shareComment: (token: string, name: string, text: string) => post(`/api/s/${token}/comment`, { name, text }).then(j<{ ok: boolean }>),
   gallery: () => fetch('/api/gallery').then(j<GalleryItem[]>),
-  checkout: (pack: string) => fetch(`/api/checkout/${pack}`).then(j<{ url: string }>),
+  checkout: (pack: string) => fetch(`/api/checkout/${pack}`).then(j<CheckoutResult>),
   admin: {
     stats: () => fetch('/api/admin/stats').then(j<AdminStats>),
     users: (q = '') => fetch(`/api/admin/users?q=${encodeURIComponent(q)}`).then(j<AdminUser[]>),

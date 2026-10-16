@@ -7,7 +7,7 @@ export const PRODUCT = { name: '旅剪', brand: '人客多 Lakeze', tagline: '�
 const MARKET = { days: 3, low: 2000, high: 3000 }      // what a studio charges today
 // One video with cover and 2 revision rounds (the usual path to a final cut); from backend/app/pricing.py.
 const OURS = { minutes: 15, twd: 700 }                 // pay-as-you-go: 100 points × NT$7
-const SUB = { name: '專業旅人', twd: 2800, videos: 5, perVideo: 560 }   // monthly: 5 videos, 2 revisions each, 20 GB
+const SUB = { name: '專業旅人', twd: 3150, videos: 5, perVideo: 630 }   // monthly: 5 videos, 2 revisions each, 20 GB
 const SIGNUP_POINTS = 110
 
 

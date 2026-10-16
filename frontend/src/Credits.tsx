@@ -15,7 +15,8 @@ const dayLabel = (iso: string) => {
   return same(d, t) ? '今天' : same(d, y) ? '昨天' : `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenProject }: { initialTab?: CreditsTab; needPoints?: number; onClose: () => void; onOpenProject?: (id: string) => void }) {
+export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenProject, onBought }:
+  { initialTab?: CreditsTab; needPoints?: number; onClose: () => void; onOpenProject?: (id: string) => void; onBought?: () => void }) {
   const [tab, setTab] = useState<CreditsTab>(initialTab === 'storage' ? 'plans' : initialTab)
   const [sum, setSum] = useState<CreditsSummary | null>(null)
   const [p, setP] = useState<Pricing | null>(null)
@@ -31,7 +32,20 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   useEffect(() => {
     if (initialTab === 'storage' && p) setTimeout(() => document.getElementById('storage-sec')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
   }, [initialTab, p])
-  const buy = async (id: string) => { const { url } = await api.checkout(id); window.open(url, '_blank') }
+  const [toast, setToast] = useState('')
+  const buy = async (id: string) => {
+    try {
+      const r = await api.checkout(id)
+      if (r.test) {   // test account: credited on the spot, no payment page
+        setToast(r.subscription ? `測試帳號：已直接開通 ${r.subscription === 'sub15' ? '超級玩家' : '專業旅人'}，餘額 ${r.balance} 點` : `測試帳號：已直接入帳 ${r.granted} 點，餘額 ${r.balance} 點`)
+        reload(); onBought?.()
+        setTimeout(() => setToast(''), 6000)
+        return
+      }
+      if (r.url) window.open(r.url, '_blank')
+    } catch (e) { setToast((e as Error).message); setTimeout(() => setToast(''), 6000) }
+  }
+  const canBuy = (url: string | null | undefined) => !!url || !!me?.test_account
   const label = (tool: string) => sum?.tool_labels[tool] ?? tool
   const cat = (tool: string) => {
     const m: Record<string, string> = { probe_footage: 'cut', sample_frames: 'cut', build_cut: 'cut', list_drive_folder: 'cut', download_footage: 'cut',
@@ -72,6 +86,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
 
   return (
     <div className="credits">
+      {toast && <div className="buy-toast">{toast}</div>}
       <header>
         <h2>點數與方案</h2>
         <div className="seg">
@@ -267,7 +282,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
             </section>
             <section className="plans-grid subs">
               {p.subscriptions.map((s, i) => (
-                <PlanCard key={s.id} s={s} prev={i === 0 ? p.tiers.payg.label : p.subscriptions[i - 1].label} single={single} singlePts={singlePts} pointTwd={p.point_twd} current={sub?.id === s.id} onBuy={buy} />))}
+                <PlanCard key={s.id} s={s} prev={i === 0 ? p.tiers.payg.label : p.subscriptions[i - 1].label} single={single} singlePts={singlePts} pointTwd={p.point_twd} current={sub?.id === s.id} onBuy={buy} canBuy={canBuy(s.checkout_url)} />))}
             </section>
 
             <section className="card compare">
@@ -328,7 +343,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                     ? <div className="packc-videos">約可剪 <b>{Math.floor(k.points / (FIRST + 2 * REV))}</b> 支<span className="muted small">（含封面與 2 輪修改）</span></div>
                     : <div className="packc-videos">補點用<span className="muted small">：約 {Math.floor(k.points / REV)} 輪修改，或補足第一支</span></div>}
                   <div className="muted small">點數不過期{!member && <> · 包月會員 {twd(k.member_twd.sub5)} 起</>}</div>
-                  {(sub ? (k.member_checkout_url?.[sub.id] || k.checkout_url) : k.checkout_url)
+                  {canBuy(sub ? (k.member_checkout_url?.[sub.id] || k.checkout_url) : k.checkout_url)
                     ? <button className="btn primary block" onClick={() => buy(k.id)}>購買</button>
                     : <button className="btn block" disabled>洽客服開通</button>}
                 </div>
@@ -349,8 +364,8 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   )
 }
 
-function PlanCard({ s, prev, single, singlePts, pointTwd, current, onBuy }:
-  { s: Subscription; prev: string; single: number; singlePts: number; pointTwd: number; current: boolean; onBuy: (id: string) => void }) {
+function PlanCard({ s, prev, single, singlePts, pointTwd, current, onBuy, canBuy }:
+  { s: Subscription; prev: string; single: number; singlePts: number; pointTwd: number; current: boolean; onBuy: (id: string) => void; canBuy: boolean }) {
   const best = s.id === 'sub5'
   return (
     <div className={`plan card sub ${best ? 'best' : ''} ${current ? 'cur' : ''}`}>
@@ -366,7 +381,7 @@ function PlanCard({ s, prev, single, singlePts, pointTwd, current, onBuy }:
       </ul>
       <div className="save-badge">每支省 {twd(single - s.per_video_twd)}，一年省 {twd((single - s.per_video_twd) * s.videos * 12)}</div>
       {current ? <button className="btn block" disabled>使用中</button>
-        : s.checkout_url ? <button className="btn primary block" onClick={() => onBuy(s.id)}>訂閱</button>
+        : canBuy ? <button className="btn primary block" onClick={() => onBuy(s.id)}>訂閱</button>
           : <button className="btn block" disabled>洽客服開通</button>}
     </div>
   )
