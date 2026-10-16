@@ -355,8 +355,8 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                         <div className="muted small">錄 30 秒，旁白就是你的聲音</div>
                       </div>
                     : <div className="voice locked" onClick={onPlans}>
-                        <div className="voice-name">用自己的聲音<span className="lock-tag">漫遊起</span></div>
-                        <div className="muted small">訂閱後錄 30 秒就能用 · 看方案</div>
+                        <div className="voice-name">用自己的聲音<span className="lock-tag">旅行者起</span></div>
+                        <div className="muted small">儲值過就能用，錄 30 秒 · 看方案</div>
                       </div>)}
                   <div className={`voice ${voice === NO_VOICE ? 'sel' : ''}`} onClick={() => setVoice(NO_VOICE)}>
                     <div className="voice-name">不要配音</div>

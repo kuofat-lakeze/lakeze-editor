@@ -6,7 +6,7 @@ import { useEffect } from 'react'
 export const PRODUCT = { name: '旅剪', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
 const MARKET = { days: 3, low: 2000, high: 3000 }      // what a studio charges today
 const OURS = { minutes: 15, twd: 470 }                 // pay-as-you-go first version incl. cover = 47 points (backend/app/pricing.py)
-const SUB = { name: '漫遊', twd: 3150, videos: 5, perVideo: 630 }   // monthly: 5 videos, 2 revisions each, 20 GB, own voice
+const SUB = { name: '專業旅人', twd: 3150, videos: 5, perVideo: 630 }   // monthly: 5 videos, 2 revisions each, 20 GB, own voice
 
 
 function useReveal() {

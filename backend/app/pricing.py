@@ -105,18 +105,22 @@ SUBSCRIPTION_PERIOD_DAYS = 30
 SUBSCRIPTION_GRACE_DAYS = 3   # a renewal payment may land a little late before the plan lapses
 OWN_VOICE = "own_voice"       # feature flag: narrate with a clone of the customer's own voice
 SUBSCRIPTIONS: dict[str, dict] = {
-    "sub5": {"label": "漫遊", "who": "一間民宿、每週固定發片的你", "desc": "每月 5 支影片，每支含 2 輪修改",
+    "sub5": {"label": "專業旅人", "who": "一間民宿、每週固定發片的你", "desc": "每月 5 支影片，每支含 2 輪修改",
              "features": [OWN_VOICE], **_sub(5, 2, 20)},
-    "sub15": {"label": "環島", "who": "多間店、代操團隊，大量出片", "desc": "每月 15 支影片，每支含 2 輪修改",
+    "sub15": {"label": "超級玩家", "who": "多間店、代操團隊，大量出片", "desc": "每月 15 支影片，每支含 2 輪修改",
               "features": [OWN_VOICE], **_sub(15, 2, 100)},
 }
-# The two non-subscription tiers shown beside them on the plans page.
-TIERS_FREE = {"id": "free", "label": "首航", "who": "第一次用，先免費做一支看看"}
-TIERS_PAYG = {"id": "payg", "label": "背包客", "who": "偶爾剪一支，用多少付多少"}
+# The two non-subscription tiers shown beside them on the plans page. 背包客 is the free first project;
+# 旅行者 is anyone who has bought points, and that tier already includes narration in their own voice.
+TIERS_FREE = {"id": "free", "label": "背包客", "who": "第一次用，先免費做一支看看", "features": []}
+TIERS_PAYG = {"id": "payg", "label": "旅行者", "who": "偶爾剪一支，用多少付多少", "features": [OWN_VOICE]}
 
 
-def has_feature(subscription: str, feature: str) -> bool:
-    return feature in SUBSCRIPTIONS.get(subscription or "", {}).get("features", [])
+def has_feature(subscription: str, feature: str, *, paying: bool = False) -> bool:
+    """Subscription features, plus everything the pay-as-you-go tier includes once the user has paid."""
+    if feature in SUBSCRIPTIONS.get(subscription or "", {}).get("features", []):
+        return True
+    return paying and feature in TIERS_PAYG["features"]
 
 # What the user sees on the pricing page (bundles of the tool prices above).
 MENU = [

@@ -26,7 +26,7 @@ export type StorageInfo = StorageState & {
   projects: { id: string; name: string; final_version: number | null; bytes: number; versions: number }[]
 }
 export type Me = { id: string; email: string; is_admin: boolean; balance: number; free_project_id: string | null; storage?: StorageState; subscription?: MySubscription | null
-  can_clone_voice?: boolean; voice?: MyVoice | null }
+  can_clone_voice?: boolean; voice?: MyVoice | null; tier?: string }
 export type Pack = { id: string; twd: number; points: number; label: string; checkout_url: string | null }
 export type Subscription = { id: string; label: string; who: string; desc: string; features: string[]; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
   twd: number; payg_twd: number; save_twd: number; save_pct: number; per_video_twd: number; checkout_url?: string | null }

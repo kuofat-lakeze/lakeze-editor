@@ -97,7 +97,7 @@ export function Credits({ initialTab = 'overview', onClose, onOpenProject }: { i
               )}
               {sum.free_project && sum.free_project.in_free && (
                 <div className="hero-free">
-                  首航方案進行中：「{sum.free_project.name}」{sum.free_project.free_revisions_left === null ? '第一版與封面免費' : `還有 ${sum.free_project.free_revisions_left} 輪免費修改`}，不會動到上面的餘額。
+                  背包客方案進行中：「{sum.free_project.name}」{sum.free_project.free_revisions_left === null ? '第一版與封面免費' : `還有 ${sum.free_project.free_revisions_left} 輪免費修改`}，不會動到上面的餘額。
                 </div>
               )}
               <div className="hero-foot">
@@ -157,7 +157,7 @@ export function Credits({ initialTab = 'overview', onClose, onOpenProject }: { i
                 <section key={pr.id} className={`card proj ${isOpen ? 'open' : ''}`} onClick={() => setOpen(isOpen ? null : pr.id)}>
                   <div className="proj-head">
                     <div className="proj-title">
-                      <b>{pr.name}</b>{pr.free && <span className="pill">首航 · 免費</span>}
+                      <b>{pr.name}</b>{pr.free && <span className="pill">背包客 · 免費</span>}
                       <div className="muted small">輸出 {pr.exports} 次 · 修改 {pr.revision_turns} 輪 · {pr.updated_at.slice(5, 10).replace('-', '/')}</div>
                     </div>
                     <div className="proj-total">
@@ -232,7 +232,7 @@ export function Credits({ initialTab = 'overview', onClose, onOpenProject }: { i
           <>
             <section className="plans-head">
               <b>四個方案，看你一個月剪幾支</b>
-              <span className="muted small">第一支免費試；偶爾剪就按次付；一個月 {sub5.videos} 支以上，訂閱每支便宜 {twd(p.first_video_twd + 2 * p.revision_twd - sub5.per_video_twd)}，多送成品空間，還能用自己的聲音配音。</span>
+              <span className="muted small">第一支免費試；儲值就能按次剪、用自己的聲音配音；一個月 {sub5.videos} 支以上，訂閱每支便宜 {twd(p.first_video_twd + 2 * p.revision_twd - sub5.per_video_twd)}，還多送成品空間。</span>
             </section>
             <section className="tiers-grid">
               <div className={`plan card tier ${inFree && !sub ? 'cur' : ''}`}>
@@ -258,7 +258,7 @@ export function Credits({ initialTab = 'overview', onClose, onOpenProject }: { i
                   <li>修改一輪 {twd(p.revision_twd)}</li>
                   <li>點數不過期</li>
                   <li>{p.free_storage_gb} GB 成品空間，可加購</li>
-                  <li className="no">用自己的聲音配音</li>
+                  <li className="star">用<b>自己的聲音</b>配音</li>
                 </ul>
                 <button className="btn block" onClick={() => setTab('buy')}>儲值點數</button>
               </div>
@@ -273,7 +273,7 @@ export function Credits({ initialTab = 'overview', onClose, onOpenProject }: { i
                   <tr><td>{sub5.videos} 支第一版（含封面）</td><td className="r">{twd(sub5.videos * p.first_video_twd)}</td><td className="r muted">含</td></tr>
                   <tr><td>{sub5.revisions} 輪修改（每支 2 輪）</td><td className="r">{twd(sub5.revisions * p.revision_twd)}</td><td className="r muted">含</td></tr>
                   <tr><td>{sub5.storage_gb} GB 成品空間</td><td className="r">{twd(sub5.payg_twd - sub5.videos * p.first_video_twd - sub5.revisions * p.revision_twd)}</td><td className="r muted">含</td></tr>
-                  <tr><td>用自己的聲音配音</td><td className="r muted">—</td><td className="r muted">含</td></tr>
+                  <tr><td>用自己的聲音配音</td><td className="r muted">含</td><td className="r muted">含</td></tr>
                   <tr className="total"><td>每月合計</td><td className="r">{twd(sub5.payg_twd)}</td><td className="r"><b>{twd(sub5.twd)}</b></td></tr>
                   <tr><td>平均每支（含 2 輪修改）</td><td className="r">{twd(Math.round(sub5.payg_twd / sub5.videos))}</td><td className="r"><b>{twd(sub5.per_video_twd)}</b></td></tr>
                 </tbody>

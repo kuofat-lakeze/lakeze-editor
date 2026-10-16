@@ -248,6 +248,13 @@ async def storage_state(user_id: str) -> dict:
             "renews_at": u.storage_renews_at.isoformat() if u and u.storage_renews_at else None, "over": used >= quota}
 
 
+async def has_paid(user_id: str) -> bool:
+    """True once the user has ever bought points or a subscription (the 旅行者 tier and up)."""
+    async with Session() as s:
+        n = (await s.execute(select(func.count(CreditTx.id)).where(CreditTx.user_id == user_id, CreditTx.kind.in_(("purchase", "subscription"))))).scalar()
+    return bool(n)
+
+
 async def balance(user_id: str) -> int:
     async with Session() as s:
         return int((await s.execute(select(func.coalesce(func.sum(CreditTx.delta), 0)).where(CreditTx.user_id == user_id))).scalar() or 0)

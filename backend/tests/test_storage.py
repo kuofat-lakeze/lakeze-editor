@@ -154,8 +154,12 @@ def test_own_voice_is_a_subscription_feature(client, monkeypatch, tmp_path: Path
     u = asyncio.run(_mk_user())
     holder["u"] = u
     assert P.has_feature("sub5", P.OWN_VOICE) and P.has_feature("sub15", P.OWN_VOICE) and not P.has_feature("", P.OWN_VOICE)
+    assert P.has_feature("", P.OWN_VOICE, paying=True)   # 旅行者: anyone who has bought points
     r = c.post("/api/voice/clone", files={"file": ("s.webm", b"xx", "audio/webm")}, data={"name": "老闆"})
-    assert r.status_code == 403
+    assert r.status_code == 403 and c.get("/api/me").json()["tier"] == "free"
+    asyncio.run(D.add_credits(u.id, 50, "purchase", "p500", amount_twd=500))
+    me = c.get("/api/me").json()
+    assert me["tier"] == "payg" and me["can_clone_voice"]
     asyncio.run(M.activate_subscription(u.id, "sub5"))
     async def fresh():
         async with D.Session() as s:

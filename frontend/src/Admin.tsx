@@ -80,7 +80,7 @@ export function Admin() {
               await api.admin.subscription(sel.id, plan, Number(f.get('subtwd') || 0)); open(sel.id); load()
             }}>
               <select name="plan" defaultValue={sel.subscription || 'sub5'} style={{ width: 120 }}>
-                <option value="sub5">旅剪 5</option><option value="sub15">旅剪 15</option><option value="">結束訂閱</option>
+                <option value="sub5">專業旅人（5 支／月）</option><option value="sub15">超級玩家（15 支／月）</option><option value="">結束訂閱</option>
               </select>
               <input name="subtwd" type="number" placeholder="實收 NT$" style={{ width: 120 }} />
               <button className="btn small">{sel.subscription ? `訂閱中 ${sel.subscription} · 續約／變更` : '開通訂閱'}</button>
