@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PayFlow } from './Pay'
-import { api, type CreditsSummary, type Ledger, type Me, type Pricing, type Subscription } from './api'
+import { api, type CreditsSummary, type Ledger, type Me, type Pricing } from './api'
 import { StorageInline } from './Storage'
 
 // Fixed categorical order, validated for colour-vision separation on the light surface.
@@ -283,75 +283,76 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
 
         {tab === 'plans' && (
           <>
-            {me?.tier === 'free' ? (
-              <section className="card free-now">
-                <div className="fn-head"><span className="fn-badge">目前方案</span><b>你現在是免費方案</b><span className="muted small">{p.tiers.free.label}</span></div>
-                <ul className="fn-list">
-                  <li><i>🎁</i><span>註冊送的 <b>{p.signup_points} 點</b>已入帳，夠做一支影片含封面與 2 輪修改</span></li>
-                  <li><i>📦</i><span>成品空間 <b>{fmtGB(p.free_storage_gb)}</b></span></li>
-                  <li><i>⏳</i><span>成品保留 <b>{p.free_retention_days} 天</b>，之後自動移除，記得先下載</span></li>
-                </ul>
-                <div className="fn-cta">
-                  <button className="btn primary" onClick={() => document.getElementById('storage-sec')?.scrollIntoView({ behavior: 'smooth' })}>加購空間，成品一直保存</button>
-                  <span className="muted small">不用訂閱，單純用點數買空間就行</span>
-                </div>
-              </section>
-            ) : (
-              <div className="free-line">
-                <span className="free-dot">免費</span>
-                <span><b>註冊就送 {p.signup_points} 點</b>，成品空間 {fmtGB(p.free_storage_gb)}、保留 {p.free_retention_days} 天。</span>
+            {/* 第一層：三個方案並排，只放每支價格、折扣、兩個重點、按鈕 */}
+            <section className="pl-head">
+              <h3>選一個方案</h3>
+              <span className="muted small">一支影片（含封面、2 輪修改）＝ {singlePts} 點</span>
+            </section>
+            <section className="pl-grid">
+              <div className={`pl card ${!sub && !inFree && me?.tier !== 'free' ? 'cur' : ''}`}>
+                <div className="pl-top"><b className="pl-name">{p.tiers.payg.label}</b><span className="pl-tag">單次購買</span></div>
+                <div className="pl-who">{p.tiers.payg.who}</div>
+                <div className="pl-price">{twd(single)}<small> / 支</small></div>
+                <div className="pl-sub">買點數，用多少扣多少</div>
+                <div className="pl-off none">原價</div>
+                <ul className="pl-list"><li>點數永久有效</li><li>全部功能都能用</li></ul>
+                <button className="btn block" onClick={() => setTab('buy')}>{!sub && !inFree && me?.tier !== 'free' ? '再儲值' : '儲值點數'}</button>
               </div>
-            )}
-
-            <section className="plans-head">
-              <b>單次購買</b>
-              <span className="muted small">以點數計價，用多少扣多少，不過期。1 點 = {twd(p.point_twd)}。</span>
-            </section>
-            <section className="plans-grid single">
-              <div className={`plan card tier payg ${!sub && !inFree ? 'cur' : ''}`}>
-                {!sub && !inFree && <div className="ribbon cur">目前</div>}
-                <div className="plan-name">{p.tiers.payg.label}</div>
-                <div className="plan-who">{p.tiers.payg.who}</div>
-                <div className="plan-price">{singlePts}<small>點 / 支，含 2 輪修改</small></div>
-                <div className="plan-sub">約 {twd(single)} 一支<span className="muted"> · 第一版 {FIRST} 點，修改一輪 {REV} 點</span></div>
-                <ul className="plan-list">
-                  <li>免費版的全部功能，自己的聲音不限秒數</li>
-                  <li>成品空間 {fmtGB(p.free_storage_gb)}（保留 {p.free_retention_days} 天），加購空間就一直保存</li>
-                </ul>
-                <button className="btn block" onClick={() => setTab('buy')}>儲值點數</button>
-              </div>
-            </section>
-
-            <section className="plans-head">
-              <b>包月更便宜</b>
-              <span className="muted small">同樣的點數，包月 1 點只要約 {twd(p.member_point_twd)} 起。一支含 2 輪修改：單次約 {twd(single)}，包月約 <b>{twd(sub5.per_video_twd)}</b> 起。</span>
-            </section>
-            <section className="plans-grid subs">
-              {p.subscriptions.map((s, i) => (
-                <PlanCard key={s.id} s={s} prev={i === 0 ? p.tiers.payg.label : p.subscriptions[i - 1].label} single={single} singlePts={singlePts} pointTwd={p.point_twd} current={sub?.id === s.id} onBuy={buy} canBuy={canBuy(s.checkout_url)} />))}
+              {p.subscriptions.map(s => {
+                const off = Math.round((1 - s.per_video_twd / single) * 100)
+                const isCur = sub?.id === s.id
+                const best = s.id === 'sub5'
+                return (
+                  <div key={s.id} className={`pl card ${best ? 'best' : ''} ${isCur ? 'cur' : ''}`}>
+                    {best && !isCur && <div className="pl-ribbon">最多人選</div>}
+                    <div className="pl-top"><b className="pl-name">{s.label}</b><span className="pl-tag">包月</span></div>
+                    <div className="pl-who">{s.who}</div>
+                    <div className="pl-price">{twd(s.per_video_twd)}<small> / 支</small></div>
+                    <div className="pl-sub">每月 {twd(s.twd)} · {s.videos} 支</div>
+                    <div className="pl-off">比單次省 {off}%</div>
+                    <ul className="pl-list"><li>每支含 2 輪修改</li><li>{s.storage_gb} GB 成品空間，一直保存</li></ul>
+                    {isCur ? <button className="btn block" disabled>使用中</button>
+                      : canBuy(s.checkout_url) ? <button className={`btn block ${best ? 'primary' : ''}`} onClick={() => buy(s.id)}>訂閱{s.label}</button>
+                        : <button className="btn block" disabled>洽客服開通</button>}
+                  </div>)
+              })}
             </section>
 
-            <section className="card compare">
-              <b>一個月 {sub5.videos} 支、每支改 2 輪</b>
-              <table className="price cmp">
-                <thead><tr><th></th><th className="r">點數</th><th className="r">單次購買</th><th className="r">{sub5.label}</th></tr></thead>
-                <tbody>
-                  <tr><td>{sub5.videos} 支第一版（含封面）</td><td className="r">{sub5.videos * FIRST} 點</td><td className="r">{twd(sub5.videos * p.first_video_twd)}</td><td className="r muted">含</td></tr>
-                  <tr><td>{sub5.revisions} 輪修改</td><td className="r">{sub5.revisions * REV} 點</td><td className="r">{twd(sub5.revisions * p.revision_twd)}</td><td className="r muted">含</td></tr>
-                  <tr><td>{sub5.storage_gb} GB 成品空間</td><td className="r">{(p.storage_plans.find(x => x.id === sub5.storage_plan)?.points ?? 0)} 點 / 月</td><td className="r">{twd(sub5.payg_twd - sub5.videos * p.first_video_twd - sub5.revisions * p.revision_twd)}</td><td className="r muted">含</td></tr>
-                  <tr className="total"><td>每月</td><td className="r">{sub5.points} 點</td><td className="r">{twd(sub5.payg_twd)}</td><td className="r"><b>{twd(sub5.twd)}</b></td></tr>
-                  <tr><td>平均一支（含 2 輪修改）</td><td className="r">{singlePts} 點</td><td className="r">{twd(Math.round(sub5.payg_twd / sub5.videos))}</td><td className="r"><b>{twd(sub5.per_video_twd)}</b></td></tr>
-                </tbody>
-              </table>
-              <div className="save-line">包月每支省 <b>{twd(single - sub5.per_video_twd)}</b>，一年省 {twd((single - sub5.per_video_twd) * sub5.videos * 12)}。</div>
+            {/* 第二層：目前方案一行、成品空間 */}
+            <section className={`pl-now ${me?.tier === 'free' ? 'free' : ''}`}>
+              {me?.tier === 'free' ? <>
+                <span className="pl-now-tag">目前：免費方案</span>
+                <span>註冊送 {p.signup_points} 點 · 成品空間 {fmtGB(p.free_storage_gb)} · 保留 {p.free_retention_days} 天</span>
+                <a onClick={() => document.getElementById('storage-sec')?.scrollIntoView({ behavior: 'smooth' })}>加購空間，成品一直保存 →</a>
+              </> : <>
+                <span className="pl-now-tag">目前：{sub ? sub.label : p.tiers.payg.label}</span>
+                <span>新用戶註冊送 {p.signup_points} 點，第一支免費</span>
+              </>}
             </section>
-
             <section id="storage-sec" className="card">
               <StorageInline subscribed={!!sub} onChanged={reload} onOpenProject={onOpenProject} />
             </section>
-            <section className="howto muted small">
-              訂閱立即生效，每 30 天續約；訂閱附的點數當期有效，不夠再儲值（儲值點數不過期）。免費空間 {fmtGB(p.free_storage_gb)}，成品保留 {p.free_retention_days} 天後自動移除；加購空間（從點數扣，每 30 天續扣）就一直保存。點數不夠續扣時降回免費空間，從那天起再保留 {p.free_retention_days} 天。
-            </section>
+
+            {/* 第三層：細節收起來 */}
+            <details className="pl-more card">
+              <summary>看計算方式與細節</summary>
+              <div className="pl-more-body">
+                <div className="muted small">1 點 = {twd(p.point_twd)}。第一版（含封面）{FIRST} 點，修改一輪 {REV} 點。</div>
+                <table className="price cmp">
+                  <thead><tr><th>一個月 {sub5.videos} 支、每支改 2 輪</th><th className="r">單次購買</th><th className="r">{sub5.label}</th></tr></thead>
+                  <tbody>
+                    <tr><td>{sub5.videos} 支第一版 ＋ {sub5.revisions} 輪修改（{sub5.points} 點）</td><td className="r">{twd(sub5.videos * p.first_video_twd + sub5.revisions * p.revision_twd)}</td><td className="r muted">含</td></tr>
+                    <tr><td>{sub5.storage_gb} GB 成品空間</td><td className="r">{twd(sub5.payg_twd - sub5.videos * p.first_video_twd - sub5.revisions * p.revision_twd)}</td><td className="r muted">含</td></tr>
+                    <tr className="total"><td>每月合計</td><td className="r">{twd(sub5.payg_twd)}</td><td className="r"><b>{twd(sub5.twd)}</b></td></tr>
+                  </tbody>
+                </table>
+                <ul className="muted small pl-rules">
+                  <li>訂閱立即生效，每 30 天續約；訂閱附的點數當期有效，不夠再儲值（儲值點數不過期）。</li>
+                  <li>訂閱會員儲值也享會員價：每點約 {twd(sub5.point_twd)} 起。</li>
+                  <li>免費空間的成品保留 {p.free_retention_days} 天後自動移除；加購空間（從點數扣，每 30 天續扣）就一直保存。點數不夠續扣時降回免費空間，從那天起再保留 {p.free_retention_days} 天。</li>
+                </ul>
+              </div>
+            </details>
           </>
         )}
 
@@ -406,29 +407,6 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
           </>
         )}
       </div>
-    </div>
-  )
-}
-
-function PlanCard({ s, prev, single, singlePts, pointTwd, current, onBuy, canBuy }:
-  { s: Subscription; prev: string; single: number; singlePts: number; pointTwd: number; current: boolean; onBuy: (id: string) => void; canBuy: boolean }) {
-  const best = s.id === 'sub5'
-  return (
-    <div className={`plan card sub ${best ? 'best' : ''} ${current ? 'cur' : ''}`}>
-      {current ? <div className="ribbon cur">目前方案</div> : best ? <div className="ribbon">最划算</div> : <div className="ribbon alt">大量出片</div>}
-      <div className="plan-name">{s.label}</div>
-      <div className="plan-who">{s.who}</div>
-      <div className="plan-price">{s.points.toLocaleString()}<small>點 / 月</small></div>
-      <div className="plan-sub">{twd(s.twd)} / 月<span className="muted"> · 1 點約 {twd(s.point_twd)}（單次 {twd(pointTwd)}）</span></div>
-      <ul className="plan-list">
-        <li>約 <b>{s.videos} 支</b>，每支含 2 輪修改（{singlePts} 點）</li>
-        <li>每支約 <b>{twd(s.per_video_twd)}</b><s className="muted">單次 {twd(single)}</s></li>
-        <li><b>{s.storage_gb} GB</b> 成品空間，含 {prev} 全部功能</li>
-      </ul>
-      <div className="save-badge">每支省 {twd(single - s.per_video_twd)}，一年省 {twd((single - s.per_video_twd) * s.videos * 12)}</div>
-      {current ? <button className="btn block" disabled>使用中</button>
-        : canBuy ? <button className="btn primary block" onClick={() => onBuy(s.id)}>訂閱</button>
-          : <button className="btn block" disabled>洽客服開通</button>}
     </div>
   )
 }

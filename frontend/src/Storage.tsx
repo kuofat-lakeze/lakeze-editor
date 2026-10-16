@@ -11,7 +11,7 @@ const gb = (b: number) => b < 2 ** 30 ? `${Math.round(b / 2 ** 20)} MB` : `${Mat
 const PER_VIDEO = 110 * 2 ** 20   // a 60 s 1080p vertical export with its master and preview ≈ 110 MB
 
 /* Thin usage bar: used in the 成品 tab header, the sidebar and the plans page. */
-export function StorageMeter({ s, onManage, compact = false }: { s: StorageState; onManage?: () => void; compact?: boolean }) {
+export function StorageMeter({ s, onManage, compact = false, hideRetention = false }: { s: StorageState; onManage?: () => void; compact?: boolean; hideRetention?: boolean }) {
   const pct = s.quota_bytes ? Math.min(100, (s.used_bytes / s.quota_bytes) * 100) : 0
   const tone = s.over ? 'over' : pct > 85 ? 'warn' : ''
   return (
@@ -22,7 +22,7 @@ export function StorageMeter({ s, onManage, compact = false }: { s: StorageState
         {onManage && <a className="small" onClick={onManage}>{s.over ? '空間已滿，管理' : '管理'}</a>}
       </div>
       <div className="smeter-bar"><div style={{ width: `${pct}%` }} /></div>
-      {s.retention_days ? <div className="smeter-ret">⏳ 免費空間的成品保留 {s.retention_days} 天後自動移除，加購空間就一直保存</div> : null}
+      {s.retention_days && !hideRetention ? <div className="smeter-ret">⏳ 免費空間的成品保留 {s.retention_days} 天後自動移除，加購空間就一直保存</div> : null}
       {!compact && s.over && <div className="smeter-note">已滿：新的影片與封面輸出會先暫停。刪掉舊版本或升級方案就能繼續，已有的成品照常可看可下載。</div>}
     </div>
   )
@@ -49,10 +49,10 @@ export function StorageInline({ subscribed, onChanged, onOpenProject }: { subscr
   return (
     <div className="sinline">
       <div className="sinline-head">
-        <div><b>成品空間</b><div className="muted small">只算成品頁裡的影片與封面（每一版都算）；原始素材不計，閒置 {s.raw_retention_days} 天後自動清除。</div></div>
+        <div><b>成品空間</b><div className="muted small">放輸出好的影片與封面</div></div>
         <span className="muted small">{s.over ? '已滿' : `還可放約 ${videosLeft} 支`}</span>
       </div>
-      <StorageMeter s={s} />
+      <StorageMeter s={s} hideRetention />
       <div className="sinline-plans">
         {s.plans.map(p => {
           const cur = p.id === s.plan
