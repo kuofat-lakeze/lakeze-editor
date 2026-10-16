@@ -5,6 +5,10 @@ import { api, type Asset, type Msg, type ProjectDetail } from './api'
 
 type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string }[] }
 const emptyLive = (): Live => ({ text: '', thinking: '', tools: [] })
+type Up = { name: string; size: number; loaded: number; status: 'wait' | 'up' | 'ok' | 'err'; error?: string }
+const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent)
+const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
+const fmtMB = (b: number) => `${(b / 2 ** 20).toFixed(b > 100 * 2 ** 20 ? 0 : 1)} MB`
 
 const TOOL_LABEL: Record<string, string> = {
   list_drive_folder: '讀取 Drive 資料夾', download_footage: '下載素材', probe_footage: '分析素材',
@@ -20,7 +24,9 @@ export function Chat({ projectId, onUsage, onTopUp }: { projectId: string; onUsa
   const [text, setText] = useState('')
   const [err, setErr] = useState('')
   const [needCredits, setNeedCredits] = useState<{ needed: number; balance: number } | null>(null)
-  const [upload, setUpload] = useState<number | null>(null)
+  const [uploads, setUploads] = useState<Up[]>([])
+  const [picking, setPicking] = useState(false)
+  const uploading = uploads.some(u => u.status === 'wait' || u.status === 'up')
   const bottom = useRef<HTMLDivElement>(null)
   const liveAssets = useRef<Asset[]>([])
 
@@ -61,11 +67,32 @@ export function Chat({ projectId, onUsage, onTopUp }: { projectId: string; onUsa
   }
 
   const onFiles = async (files: FileList | null) => {
-    if (!files?.length) return
-    setUpload(0)
-    try { await api.upload(projectId, files, setUpload); setText(t => t || `我上傳了 ${files.length} 支素材，請先分析。`) }
-    catch (e) { setErr((e as Error).message) } finally { setUpload(null) }
+    setPicking(false)
+    const list = Array.from(files ?? [])
+    api.clientLog('files_selected', { n: list.length, files: list.map(f => ({ name: f.name, size: f.size, type: f.type })) })
+    if (!list.length) return
+    setErr('')
+    setUploads(list.map(f => ({ name: f.name || 'clip', size: f.size, loaded: 0, status: 'wait' })))
+    let ok = 0
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i]
+      const patch = (u: Partial<Up>) => setUploads(us => us.map((x, k) => (k === i ? { ...x, ...u } : x)))
+      patch({ status: 'up' })
+      const t0 = Date.now()
+      try {
+        await api.uploadOne(projectId, f, (loaded, total) => patch({ loaded, size: total || f.size }))
+        patch({ status: 'ok', loaded: f.size }); ok++
+        api.clientLog('upload_ok', { name: f.name, size: f.size, seconds: (Date.now() - t0) / 1000 })
+      } catch (e) {
+        const msg = (e as Error).message
+        patch({ status: 'err', error: msg })
+        api.clientLog('upload_err', { name: f.name, size: f.size, seconds: (Date.now() - t0) / 1000, error: msg })
+      }
+    }
+    if (ok) setText(t => t || `我上傳了 ${ok} 支素材，請先分析。`)
   }
+  const pick = () => { setPicking(true); api.clientLog('picker_open') }
+  useEffect(() => { if (!picking) return; const t = setTimeout(() => setPicking(false), 120000); return () => clearTimeout(t) }, [picking])
 
   if (!proj) return <div className="center muted">載入中…</div>
   // Assets are produced by tools during an assistant turn: show each under the assistant
@@ -89,6 +116,12 @@ export function Chat({ projectId, onUsage, onTopUp }: { projectId: string; onUsa
         {running && <button className="btn small" onClick={() => api.cancel(projectId)}>停止</button>}
       </header>
       <div className="thread">
+        {IN_APP && (
+          <div className="card need">
+            你現在是在 LINE / FB 等 App 的內建瀏覽器，這類瀏覽器通常不能選影片上傳。
+            請點右上角「⋯」選「用 Safari / Chrome 開啟」，或改貼 Google Drive 連結。
+          </div>
+        )}
         {proj.messages.length === 0 && !running && (
           <div className="hint card">
             <b>怎麼開始</b>
@@ -122,16 +155,47 @@ export function Chat({ projectId, onUsage, onTopUp }: { projectId: string; onUsa
             <span className="muted small">儲值後輸入「繼續」即可接著做。</span>
           </div>
         )}
+        {picking && !uploads.length && (
+          <div className="card uploads muted small">
+            等待選取檔案…{IOS && '（iPhone 選大影片後會先壓縮處理，可能要等 1–2 分鐘才會開始上傳，請不要離開這個畫面）'}
+          </div>
+        )}
+        {uploads.length > 0 && (
+          <div className="card uploads">
+            <div className="uploads-head">
+              <b>{uploading ? '上傳中…' : '上傳完成'}</b>
+              <span className="muted small">{uploads.filter(u => u.status === 'ok').length}/{uploads.length} 個檔案
+                {uploading && IOS && '，請保持在這個畫面'}</span>
+              {!uploading && <a className="small" onClick={() => setUploads([])}>關閉</a>}
+            </div>
+            {uploads.map((u, i) => (
+              <div key={i} className={`up ${u.status}`}>
+                <div className="up-row">
+                  <span className="up-name">{u.name}</span>
+                  <span className="muted small">
+                    {u.status === 'wait' && '等待中'}
+                    {u.status === 'up' && `${fmtMB(u.loaded)} / ${fmtMB(u.size)} · ${u.size ? Math.round(u.loaded / u.size * 100) : 0}%`}
+                    {u.status === 'ok' && `完成 · ${fmtMB(u.size)}`}
+                    {u.status === 'err' && '失敗'}
+                  </span>
+                </div>
+                <div className="bar"><div style={{ width: `${u.size ? Math.min(100, u.loaded / u.size * 100) : 0}%` }} /></div>
+                {u.error && <div className="error">{u.error}</div>}
+              </div>
+            ))}
+          </div>
+        )}
         {err && <div className="error">{err}</div>}
         <div ref={bottom} />
       </div>
       <footer>
-        <label className="btn icon" title="上傳影片">📎<input type="file" multiple accept="video/*" hidden onChange={e => onFiles(e.target.files)} /></label>
+        <label className="btn icon" title="上傳影片" onClick={pick}>📎
+          <input type="file" multiple accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading}
+            onChange={e => { onFiles(e.target.files); e.target.value = '' }} /></label>
         <textarea value={text} onChange={e => setText(e.target.value)} rows={2}
-          placeholder={upload !== null ? `上傳中 ${upload}%` : '貼 Drive 連結＋賣點，或直接說要改什麼… (Enter 送出，Shift+Enter 換行)'}
-          disabled={upload !== null}
+          placeholder={uploading ? '上傳中，完成後再送出…' : '貼 Drive 連結＋賣點，或直接說要改什麼… (Enter 送出，Shift+Enter 換行)'}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
-        <button className="btn primary" onClick={send} disabled={running || !text.trim()}>送出</button>
+        <button className="btn primary" onClick={send} disabled={running || uploading || !text.trim()}>送出</button>
       </footer>
     </div>
   )

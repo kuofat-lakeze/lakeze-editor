@@ -45,15 +45,25 @@ export const api = {
     patch: (id: string, body: Record<string, unknown>) => post(`/api/admin/users/${id}`, body).then(j<{ ok: boolean }>),
     messages: (pid: string) => fetch(`/api/admin/projects/${pid}/messages`).then(j<{ role: string; text?: string; tool?: string; at: string }[]>),
   },
-  upload: (id: string, files: FileList, onProgress: (pct: number) => void) =>
+  // One file per request: a phone on mobile data can't hold a single multi-GB request open for
+  // 20 minutes, and per-file progress/errors are what the user needs to see.
+  uploadOne: (id: string, file: File, onProgress: (loaded: number, total: number) => void) =>
     new Promise<void>((resolve, reject) => {
       const fd = new FormData()
-      Array.from(files).forEach(f => fd.append('files', f))
+      fd.append('files', file, file.name || 'clip.mp4')
       const x = new XMLHttpRequest()
       x.open('POST', `/api/projects/${id}/upload`)
-      x.upload.onprogress = e => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100))
-      x.onload = () => (x.status < 300 ? resolve() : reject(new Error(x.responseText)))
-      x.onerror = () => reject(new Error('upload failed'))
+      x.upload.onprogress = e => onProgress(e.loaded, e.lengthComputable ? e.total : file.size)
+      x.onload = () => (x.status < 300 ? resolve() : reject(new Error(`HTTP ${x.status} ${x.responseText.slice(0, 200)}`)))
+      x.onerror = () => reject(new Error(`連線中斷（status ${x.status || 0}，readyState ${x.readyState}）`))
+      x.onabort = () => reject(new Error('上傳被中止'))
+      x.ontimeout = () => reject(new Error('上傳逾時'))
       x.send(fd)
     }),
+  // Fire-and-forget diagnostics from the browser (shows up in the backend log as "client ...").
+  clientLog: (event: string, detail: Record<string, unknown> = {}) => {
+    const body = JSON.stringify({ event, detail: { ...detail, ua: navigator.userAgent, url: location.pathname } })
+    try { if (!navigator.sendBeacon?.('/api/client-log', new Blob([body], { type: 'application/json' }))) throw 0 }
+    catch { fetch('/api/client-log', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {}) }
+  },
 }

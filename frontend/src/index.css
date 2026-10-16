@@ -74,6 +74,12 @@ table.price { width: 100%; border-collapse: collapse; font-size: 13px; } table.p
 .row { display: flex; gap: 6px; align-items: center; }
 .log { background: var(--panel2); border-radius: 8px; padding: 8px; font-size: 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
 .log .user { color: var(--accent2); margin-top: 6px; } .log .assistant { color: var(--text); }
+.uploads { margin: 8px 0; padding: 10px 12px; }
+.uploads-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 6px; } .uploads-head a { margin-left: auto; cursor: pointer; }
+.up { padding: 6px 0; } .up-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.up-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.bar div { height: 100%; background: var(--accent); transition: width .2s; } .up.ok .bar div { background: var(--ok); } .up.err .bar div { background: var(--err); }
 @media (max-width: 720px) {
   .admin-body { grid-template-columns: 1fr; }
   .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }

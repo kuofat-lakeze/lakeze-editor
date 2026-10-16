@@ -383,6 +383,18 @@ async def asset_file(project_id: str, asset_id: str, user: User = CurrentUser):
     return FileResponse(p, filename=p.name)
 
 
+class ClientLog(BaseModel):
+    event: str
+    detail: dict = {}
+
+
+@app.post("/api/client-log")
+async def client_log(body: ClientLog, user: User = CurrentUser):
+    """Browser-side diagnostics (upload picker/progress/errors) so phone problems show up in the server log."""
+    log.info("client %s %s %s", user.email, body.event[:40], json.dumps(body.detail, ensure_ascii=False)[:1500])
+    return {"ok": True}
+
+
 @app.get("/api/health")
 async def health():
     return {"ok": True, "model": config.ANTHROPIC_MODEL, "elevenlabs": bool(config.ELEVENLABS_API_KEY)}
