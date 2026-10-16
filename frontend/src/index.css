@@ -1177,3 +1177,5 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 /* voice clone script: easier to read aloud */
 .vc-script.tpish p { font-size: 18px; line-height: 1.75; font-weight: 600; transition: opacity .3s, color .3s; }
 .vc-script.tpish.live p { opacity: .35; } .vc-script.tpish.live p.on { opacity: 1; color: var(--text); } .vc-script.tpish.live p.past { opacity: .2; }
+.gal-meta a + a { margin-left: 10px; } .gal-meta span { margin-right: auto; }
+.modal-bg:has(.share-dlg) { z-index: 70; }

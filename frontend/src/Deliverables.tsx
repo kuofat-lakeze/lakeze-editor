@@ -130,7 +130,7 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
   )
 }
 
-function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, projectName }:
+export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, projectName }:
   { projectId: string; version: number | null; hasFinal: boolean; onClose: () => void; onCreated: () => void; projectName: string }) {
   const [promo, setPromo] = useState('')
   const [copied, setCopied] = useState<'link' | 'promo' | null>(null)
