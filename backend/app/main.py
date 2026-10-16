@@ -26,6 +26,33 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("api")
 
 
+async def _cleanup_loop():
+    """Free disk: drop raw footage + work files of projects idle longer than RAW_RETENTION_DAYS."""
+    import shutil
+    from datetime import datetime, timedelta, timezone
+    while True:
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=config.RAW_RETENTION_DAYS)
+            async with Session() as s:
+                stale = (await s.execute(select(Project).where(Project.updated_at < cutoff))).scalars().all()
+            for p in stale:
+                if p.id in _turns and not _turns[p.id]["task"].done():
+                    continue
+                root = project_dir(p.id)
+                freed = 0
+                for sub in ("raw", "work"):
+                    d = root / sub
+                    if d.exists() and any(d.iterdir()):
+                        freed += sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+                        shutil.rmtree(d)
+                        d.mkdir()
+                if freed:
+                    log.info("cleanup: project %s freed %d MB", p.id, freed >> 20)
+        except Exception:
+            log.exception("cleanup failed")
+        await asyncio.sleep(6 * 3600)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -33,7 +60,10 @@ async def lifespan(app: FastAPI):
         await asyncio.to_thread(ensure_fonts)
     except Exception as e:  # fonts can be fetched later; don't block startup
         log.warning("font download failed: %s", e)
+    task = asyncio.create_task(_cleanup_loop()) if config.RAW_RETENTION_DAYS > 0 else None
     yield
+    if task:
+        task.cancel()
 
 
 app = FastAPI(title="Lakeze Editor", lifespan=lifespan)

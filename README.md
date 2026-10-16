@@ -30,13 +30,22 @@ cd ../frontend && npm install && npm run dev   # http://localhost:5173（/api �
 
 Railway 沒有 Claude 連接器，但它自己有 GitHub 整合：連上 repo 後每次推 main 自動建置部署，並提供 HTTPS 網址。
 
-1. railway.com → New Project → Deploy from GitHub repo → 選 `lakeze-editor`。
-2. 建兩個 service，都指向同一個 repo：
-   - **backend**：Settings → Root Directory `backend`；Variables：`ANTHROPIC_API_KEY`、`ELEVENLABS_API_KEY`、`SECRET_KEY`；Volumes → 掛載 `/data`（至少 50 GB）。
-   - **frontend**：Root Directory `frontend`；Variables：`API_UPSTREAM=backend.railway.internal:8000`；Settings → Networking → Generate Domain（這就是對外網址，可再綁自己的網域）。
-3. backend service 名稱必須是 `backend`（private network 的主機名）。
+**方案：Pro（$20/月，含 $20 用量額度）。** Hobby 的磁碟上限 5 GB，裝不下一個專案的素材；Pro 磁碟 50 GB 起、可加到 1 TB、按實際用量計。
 
-費用：依 CPU/RAM/磁碟用量計，長度 37 秒的影片一支約跑 5–10 分鐘 CPU。
+1. railway.com → 升級 workspace 到 Pro → New Project → Deploy from GitHub repo → 選 `lakeze-editor`。
+2. 第一個 service 改名 **`backend`**（名稱就是內網主機名）：
+   - Settings → Source → Root Directory：`backend`
+   - Variables：`ANTHROPIC_API_KEY`、`ELEVENLABS_API_KEY`、`SECRET_KEY`（`openssl rand -hex 32`）、`ADMIN_EMAILS`（你的 email）、**`PORT=8000`**
+   - Settings → Volumes → Add Volume → Mount path `/data`
+   - Settings → Networking → 不要產生公開網域（只走內網）
+3. 再 New → GitHub Repo 加第二個 service，改名 **`frontend`**：
+   - Root Directory：`frontend`
+   - Variables：`API_UPSTREAM=backend.railway.internal:8000`
+   - Settings → Networking → Generate Domain → 這就是網址；要綁自己的網域就在同一頁 Custom Domain 加 CNAME。
+4. 兩個 service 都 Deploy。打開網址 → 註冊（用 `ADMIN_EMAILS` 裡的 email）→ 側欄會有管理後台。
+5. 之後推 main 自動重新部署。成本看 Railway 的 Usage 頁；app 內的成本看管理後台。
+
+磁碟控制：`RAW_RETENTION_DAYS`（預設 7）天沒動的專案會自動刪掉原始素材與中間檔，只留成品、封面與對話；用量大時再把成品搬到 Storage Buckets。
 
 ## 上線 B：自己的 Linux 主機 + 網域（成本固定、磁碟便宜）
 
