@@ -351,11 +351,11 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                   ))}
                   {me && !voices.some(v => v.custom) && (me.can_clone_voice
                     ? <div className="voice add" onClick={() => setCloning(true)}>
-                        <div className="voice-name">＋ 用自己的聲音</div>
+                        <div className="voice-name">＋ 用自己的聲音生成配音語音</div>
                         <div className="muted small">錄 30 秒，旁白就是你的聲音</div>
                       </div>
                     : <div className="voice locked" onClick={onPlans}>
-                        <div className="voice-name">用自己的聲音<span className="lock-tag">旅行者起</span></div>
+                        <div className="voice-name">用自己的聲音生成配音語音<span className="lock-tag">旅行者起</span></div>
                         <div className="muted small">儲值過就能用，錄 30 秒 · 看方案</div>
                       </div>)}
                   <div className={`voice ${voice === NO_VOICE ? 'sel' : ''}`} onClick={() => setVoice(NO_VOICE)}>

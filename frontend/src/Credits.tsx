@@ -6,7 +6,7 @@ import { StorageInline } from './Storage'
 const CAT_COLOR: Record<string, string> = { cut: '#E8571C', audio: '#1B7AC3', subs: '#2E9E8F', export: '#7B61C4', cover: '#B8860B', storage: '#5B6B7A' }
 export type CreditsTab = 'overview' | 'projects' | 'ledger' | 'plans' | 'buy' | 'storage'
 const TABS: { id: CreditsTab; label: string }[] = [
-  { id: 'overview', label: '總覽' }, { id: 'projects', label: '依專案' }, { id: 'ledger', label: '明細' }, { id: 'plans', label: '方案' }, { id: 'buy', label: '儲值' }]
+  { id: 'plans', label: '方案' }, { id: 'buy', label: '儲值' }, { id: 'overview', label: '總覽' }, { id: 'projects', label: '依專案' }, { id: 'ledger', label: '明細' }]
 const twd = (n: number) => `NT$${n.toLocaleString()}`
 
 const dayLabel = (iso: string) => {
@@ -15,7 +15,7 @@ const dayLabel = (iso: string) => {
   return same(d, t) ? '今天' : same(d, y) ? '昨天' : `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-export function Credits({ initialTab = 'overview', onClose, onOpenProject }: { initialTab?: CreditsTab; onClose: () => void; onOpenProject?: (id: string) => void }) {
+export function Credits({ initialTab = 'plans', onClose, onOpenProject }: { initialTab?: CreditsTab; onClose: () => void; onOpenProject?: (id: string) => void }) {
   const [tab, setTab] = useState<CreditsTab>(initialTab === 'storage' ? 'plans' : initialTab)
   const [sum, setSum] = useState<CreditsSummary | null>(null)
   const [p, setP] = useState<Pricing | null>(null)
@@ -231,38 +231,43 @@ export function Credits({ initialTab = 'overview', onClose, onOpenProject }: { i
         {tab === 'plans' && (
           <>
             <section className="plans-head">
-              <b>四個方案，看你一個月剪幾支</b>
-              <span className="muted small">第一支免費試；儲值就能按次剪、用自己的聲音配音；一個月 {sub5.videos} 支以上，訂閱每支便宜 {twd(p.first_video_twd + 2 * p.revision_twd - sub5.per_video_twd)}，還多送成品空間。</span>
+              <b>包月最划算：每支含 2 輪修改，成品空間一起送</b>
+              <span className="muted small">{sub5.label} 每支 {twd(sub5.per_video_twd)}，比按次省 {sub5.save_pct}%。偶爾才剪一支的，往下看「{p.tiers.payg.label}」。</span>
             </section>
-            <section className="tiers-grid">
+            <section className="plans-grid subs">
+              {p.subscriptions.map((s, i) => (
+                <PlanCard key={s.id} s={s} prev={i === 0 ? p.tiers.payg.label : p.subscriptions[i - 1].label} current={sub?.id === s.id} onBuy={buy} />))}
+            </section>
+
+            <section className="plans-head small">
+              <b>不包月的話</b>
+              <span className="muted small">用多少付多少；第一支先免費試。</span>
+            </section>
+            <section className="tiers-row">
+              <div className={`plan card tier payg ${!sub && !inFree ? 'cur' : ''}`}>
+                {!sub && !inFree && <div className="ribbon cur">目前</div>}
+                <div className="plan-name">{p.tiers.payg.label}</div>
+                <div className="plan-who">{p.tiers.payg.who}</div>
+                <div className="plan-price">{twd(p.first_video_twd)}<small>/ 支</small></div>
+                <div className="plan-incl">包含 {p.tiers.free.label} 的全部，加上</div>
+                <ul className="plan-list">
+                  <li>按次扣點：第一版含封面 {FIRST} 點，修改一輪 {twd(p.revision_twd)}</li>
+                  <li className="star">用自己的聲音生成配音語音</li>
+                  <li>成品空間可加購</li>
+                </ul>
+                <button className="btn block" onClick={() => setTab('buy')}>儲值點數</button>
+              </div>
               <div className={`plan card tier ${inFree && !sub ? 'cur' : ''}`}>
                 {inFree && !sub && <div className="ribbon cur">進行中</div>}
                 <div className="plan-name">{p.tiers.free.label}</div>
                 <div className="plan-who">{p.tiers.free.who}</div>
                 <div className="plan-price">免費<small>第一個專案</small></div>
                 <ul className="plan-list">
-                  <li>第一版影片＋封面免費</li>
-                  <li>{p.free_revision_turns} 輪免費修改</li>
+                  <li>第一支影片＋封面免費，含 {p.free_revision_turns} 輪修改</li>
                   <li>{p.free_storage_gb} GB 成品空間</li>
-                  <li className="no">用自己的聲音配音</li>
                 </ul>
-                <div className="plan-note muted small">用完之後自動照按次計費，不用綁卡。</div>
+                <div className="plan-note muted small">用完後自動照按次計費，不用綁卡。</div>
               </div>
-              <div className={`plan card tier payg ${!sub && !inFree ? 'cur' : ''}`}>
-                {!sub && !inFree && <div className="ribbon cur">目前</div>}
-                <div className="plan-name">{p.tiers.payg.label}</div>
-                <div className="plan-who">{p.tiers.payg.who}</div>
-                <div className="plan-price">{twd(p.first_video_twd)}<small>/ 支</small></div>
-                <ul className="plan-list">
-                  <li>第一版含封面 {FIRST} 點</li>
-                  <li>修改一輪 {twd(p.revision_twd)}</li>
-                  <li>點數不過期</li>
-                  <li>{p.free_storage_gb} GB 成品空間，可加購</li>
-                  <li className="star">用<b>自己的聲音</b>配音</li>
-                </ul>
-                <button className="btn block" onClick={() => setTab('buy')}>儲值點數</button>
-              </div>
-              {p.subscriptions.map(s => <PlanCard key={s.id} s={s} current={sub?.id === s.id} onBuy={buy} />)}
             </section>
 
             <section className="card compare">
@@ -273,7 +278,7 @@ export function Credits({ initialTab = 'overview', onClose, onOpenProject }: { i
                   <tr><td>{sub5.videos} 支第一版（含封面）</td><td className="r">{twd(sub5.videos * p.first_video_twd)}</td><td className="r muted">含</td></tr>
                   <tr><td>{sub5.revisions} 輪修改（每支 2 輪）</td><td className="r">{twd(sub5.revisions * p.revision_twd)}</td><td className="r muted">含</td></tr>
                   <tr><td>{sub5.storage_gb} GB 成品空間</td><td className="r">{twd(sub5.payg_twd - sub5.videos * p.first_video_twd - sub5.revisions * p.revision_twd)}</td><td className="r muted">含</td></tr>
-                  <tr><td>用自己的聲音配音</td><td className="r muted">含</td><td className="r muted">含</td></tr>
+                  <tr><td>用自己的聲音生成配音語音</td><td className="r muted">含</td><td className="r muted">含</td></tr>
                   <tr className="total"><td>每月合計</td><td className="r">{twd(sub5.payg_twd)}</td><td className="r"><b>{twd(sub5.twd)}</b></td></tr>
                   <tr><td>平均每支（含 2 輪修改）</td><td className="r">{twd(Math.round(sub5.payg_twd / sub5.videos))}</td><td className="r"><b>{twd(sub5.per_video_twd)}</b></td></tr>
                 </tbody>
@@ -336,7 +341,7 @@ export function Credits({ initialTab = 'overview', onClose, onOpenProject }: { i
   )
 }
 
-function PlanCard({ s, current, onBuy }: { s: Subscription; current: boolean; onBuy: (id: string) => void }) {
+function PlanCard({ s, prev, current, onBuy }: { s: Subscription; prev: string; current: boolean; onBuy: (id: string) => void }) {
   const best = s.id === 'sub5'
   return (
     <div className={`plan card sub ${best ? 'best' : ''} ${current ? 'cur' : ''}`}>
@@ -345,12 +350,11 @@ function PlanCard({ s, current, onBuy }: { s: Subscription; current: boolean; on
       <div className="plan-who">{s.who}</div>
       <div className="plan-price">{twd(s.twd)}<small>/ 月</small></div>
       <div className="plan-sub muted small">每支 {twd(s.per_video_twd)}，含 2 輪修改</div>
+      <div className="plan-incl">包含 {prev} 的全部，加上</div>
       <ul className="plan-list">
-        <li>每月 <b>{s.videos} 支</b>影片（{s.points} 點）</li>
-        <li>每支含 <b>2 輪</b>修改，共 {s.revisions} 輪</li>
+        <li>每月 <b>{s.videos} 支</b>影片，每支含 <b>2 輪</b>修改</li>
         <li><b>{s.storage_gb} GB</b> 成品空間</li>
-        <li className={s.features.includes('own_voice') ? 'star' : 'no'}>用<b>自己的聲音</b>配音</li>
-        <li>點數當期有效，不夠再儲值</li>
+        {s.id === 'sub5' && <li>點數當期有效，不夠再儲值</li>}
       </ul>
       <div className="save-badge">比按次省 {twd(s.save_twd)}（{s.save_pct}%）/ 月</div>
       {current ? <button className="btn block" disabled>使用中</button>

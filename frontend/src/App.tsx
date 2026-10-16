@@ -23,7 +23,7 @@ function Workspace() {
   const [current, setCurrent] = useState<string | null>(null)
   const [view, setView] = useState<'chat' | 'admin' | 'credits' | 'gallery'>('chat')
   const [creditsTab, setCreditsTab] = useState<CreditsTab>('overview')
-  const showCredits = (t: CreditsTab = 'overview') => { setCreditsTab(t); setView('credits'); setMenu(false) }
+  const showCredits = (t: CreditsTab = 'plans') => { setCreditsTab(t); setView('credits'); setMenu(false) }
   const [menu, setMenu] = useState(false)
   const [auth, setAuth] = useState<'login' | 'signup' | null>(location.pathname === '/login' ? 'login' : location.pathname === '/signup' ? 'signup' : null)
 

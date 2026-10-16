@@ -54,7 +54,7 @@ export function VoiceCloneDialog({ current, onClose, onDone }: { current?: Voice
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal card vc" onClick={e => e.stopPropagation()}>
-        <div className="modal-head"><h3>{current ? '重新錄製我的聲音' : '用自己的聲音配音'}</h3><a onClick={onClose}>✕</a></div>
+        <div className="modal-head"><h3>{current ? '重新錄製我的聲音' : '用自己的聲音生成配音語音'}</h3><a onClick={onClose}>✕</a></div>
         <p className="muted small">錄 30 到 60 秒，找安靜的地方、用平常講話的語氣念下面這段。之後旁白就會是你的聲音，風格可以在對話裡調整。</p>
         <div className="tabs vc-tabs">
           <a className={mode === 'rec' ? 'active' : ''} onClick={() => setMode('rec')}>直接錄</a>
