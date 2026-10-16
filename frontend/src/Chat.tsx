@@ -110,6 +110,12 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
     const a = new Audio(v.preview_url); audioRef.current = a; setPlaying(v.voice_id)
     a.onended = () => setPlaying(null); a.play().catch(() => setPlaying(null))
   }
+  // Coming back from the 成品 tab remounts the thread at the top: jump to the latest message.
+  useEffect(() => {
+    if (tab !== 'chat') return
+    const id = requestAnimationFrame(() => { bottom.current?.scrollIntoView(); atBottom.current = true; setUnseen(false) })
+    return () => cancelAnimationFrame(id)
+  }, [tab])
   const onScroll = () => {
     const el = threadRef.current; if (!el) return
     atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
