@@ -11,7 +11,6 @@ import { SCRIPT_BLOCK, ScriptCard, Teleprompter, parseScript, type Line } from '
 type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string; charged?: number; balance?: number; startedAt?: number }[] }
 const fmtDur = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${String(s % 60).padStart(2, '0')} 秒` }
 const emptyLive = (): Live => ({ text: '', thinking: '', tools: [] })
-const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent)
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
 const IS_TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
 /* Voice input: record with MediaRecorder (works in Chrome, Safari, iOS, LINE's browser), send the clip to
@@ -401,7 +400,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
     }
   }
   const onFiles = async (files: FileList | File[] | null) => {
-    setPicking(false); setPickFail(false)
+    setPicking(false); setPickFail(false); setPickBack(false)
     const list = Array.from(files ?? [])
     api.clientLog('files_selected', { n: list.length, files: list.map(f => ({ name: f.name, size: f.size, type: f.type })) })
     if (!list.length) return
@@ -419,11 +418,22 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   }
   const retryUpload = (id: string) => setUploads(us => { const u = us.find(x => x.id === id); if (u) queueMicrotask(() => { runUpload(u) }); return us })
   const removeUpload = (id: string) => setUploads(us => us.filter(u => u.id !== id))
-  const pick = () => { setPicking(true); setPickFail(false); api.clientLog('picker_open') }
+  const [pickAt, setPickAt] = useState(0)
+  const [pickBack, setPickBack] = useState(false)   // the picker closed and the browser is still preparing the files
+  const pick = () => { setPicking(true); setPickFail(false); setPickBack(false); setPickAt(Date.now()); api.clientLog('picker_open') }
+  // iOS hides the page while the photo picker is open and, after 「加入」, can take a while to hand
+  // the (converted) videos to the page. Once the page is visible again, show that we're receiving.
+  useEffect(() => {
+    if (!picking) return
+    const back = () => { if (document.visibilityState === 'visible' && Date.now() - pickAt > 800) setPickBack(true) }
+    window.addEventListener('focus', back); document.addEventListener('visibilitychange', back)
+    const tick = setInterval(() => setNow(Date.now()), 1000)
+    return () => { window.removeEventListener('focus', back); document.removeEventListener('visibilitychange', back); clearInterval(tick) }
+  }, [picking, pickAt])
   // iOS never tells the page that the picker was dismissed. If no change event arrives, show the workarounds.
   useEffect(() => {
     if (!picking) return
-    const t = setTimeout(() => { setPicking(false); setPickFail(true); api.clientLog('picker_no_file_60s') }, 60000)
+    const t = setTimeout(() => { setPicking(false); setPickBack(false); setPickFail(true); api.clientLog('picker_no_file_180s') }, 180000)
     return () => clearTimeout(t)
   }, [picking])
 
@@ -486,12 +496,6 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
       {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} />}
       {tab === 'chat' && <>
       <div className="thread" ref={threadRef} onScroll={onScroll}>
-        {IN_APP && (
-          <div className="card need">
-            你現在是在 LINE / FB 等 App 的內建瀏覽器，這類瀏覽器通常不能選影片上傳。
-            請點右上角「⋯」選「用 Safari / Chrome 開啟」，或改貼 Google Drive 連結。
-          </div>
-        )}
         {stage === 'start' && (
           <div className="ob-wiz">
             <div className="ob-prog">
@@ -733,11 +737,6 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
             <button className="btn primary small" onClick={() => onTopUp(Math.max(0, needCredits.needed - needCredits.balance))}>去儲值</button>
           </div>
         )}
-        {picking && !uploads.length && (
-          <div className="card uploads muted small">
-            等待選取檔案…{IOS && '（iPhone 選大影片後會先壓縮處理，可能要等 1–2 分鐘才會開始上傳，請不要離開這個畫面）'}
-          </div>
-        )}
         {pickFail && !uploads.length && (
           <div className="card need">
             <b>沒有收到檔案。</b>{IOS ? '這是 iPhone 把影片交給瀏覽器這一步失敗，不是上傳失敗。請依序試：' : '請再試一次，或改貼 Google Drive 連結。'}
@@ -771,6 +770,18 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
       </div>
       {prompter && <Teleprompter lines={prompter} projectId={projectId} onClose={() => setPrompter(null)}
         onUploaded={(key, secs) => { setPrompter(null); submit(`我上傳了自己唸的旁白（key ${key}，${secs} 秒），請用它當旁白，不要再生成 AI 配音；從 0 秒開始放，字幕照我的聲音對齊，然後重新輸出。`) }} />}
+      {picking && pickBack && (
+        <div className="pick-wait" role="status">
+          <div className="pw-card">
+            <div className="pw-anim" aria-hidden="true"><i /><i /><i /></div>
+            <b>正在接收你選的影片…</b>
+            <span className="pw-time">{Math.max(0, Math.round((now - pickAt) / 1000))} 秒</span>
+            <p>{IOS ? 'iPhone 會先把影片整理好才交給我們，選越多、影片越長要等越久，最多可能 1～2 分鐘。這不是當機，請停在這個畫面。' : '正在讀取檔案，請稍候。'}</p>
+            <ol className="pw-steps"><li className="done">選好影片</li><li className="on">手機整理影片</li><li>開始上傳</li></ol>
+            <a className="small" onClick={() => { setPicking(false); setPickBack(false) }}>其實我沒有選，關閉</a>
+          </div>
+        </div>
+      )}
       {cloning && <VoiceCloneDialog current={voices.find(v => v.custom)} onClose={() => setCloning(false)} onDone={onCloned} />}
       {unseen && <a className="jump" onClick={jump}>↓ 有新內容</a>}
       {stage !== 'start' && CHIPS[stage].length > 0 && !uploading && (

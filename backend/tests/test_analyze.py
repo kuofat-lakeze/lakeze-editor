@@ -164,6 +164,10 @@ def test_oauth_creates_then_links(monkeypatch):
     assert "oauth_error" in c4.get(f"/api/auth/google/callback?code=abc&state={state}", follow_redirects=False).headers["location"]
 
 
+def test_default_test_accounts():
+    assert {"kuofat@gmail.com", "lodestar0115@gmail.com"} <= C.TEST_EMAILS
+
+
 def test_test_account_buys_without_payment(client):
     c, holder = client
     u = asyncio.run(_user(email="kuofat@gmail.com")); holder["u"] = u

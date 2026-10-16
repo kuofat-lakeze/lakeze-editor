@@ -7,6 +7,7 @@ export type Up = {
   status: 'wait' | 'up' | 'ok' | 'err'; error?: string; rate?: number   // rate: bytes/s (smoothed)
 }
 export const MAX_FILES = 30
+const IOS_DZ = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent)
 export const SUGGESTED_FILES = 6
 export const MAX_FILE_BYTES = 1024 * 2 ** 20  // 1 GB per file (backend MAX_UPLOAD_MB defaults to the same)
 export const fmtMB = (b: number) => b >= 2 ** 30 ? `${(b / 2 ** 30).toFixed(2)} GB` : `${(b / 2 ** 20).toFixed(b > 100 * 2 ** 20 ? 0 : 1)} MB`
@@ -35,6 +36,7 @@ export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false
       <span className="dz-text">
         <b>{disabled ? '上傳中…' : count ? `再加素材（已 ${count} 個）` : drag ? '放開就開始上傳' : '從手機選影片或照片'}</b>
         <span className="muted small">影片、照片都可以 · 可以多選，也可以只給一支長影片 · 每個 1 GB 內、最多 {MAX_FILES} 個</span>
+        {IOS_DZ && !disabled && !count && <span className="dz-ios">選完按「加入」後，iPhone 要先整理影片，畫面會停一下，這是正常的</span>}
       </span>
       <span className="dz-cta">選擇</span>
       <input type="file" multiple accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp,.heic" hidden disabled={disabled} onClick={onPick}

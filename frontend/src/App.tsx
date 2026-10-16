@@ -11,6 +11,7 @@ import logo from './assets/logo.png'
 import { StorageMeter } from './Storage'
 import { MiaoLogo } from './Logo'
 import { PayResult } from './Pay'
+import { InAppGuide } from './InApp'
 
 const SHARE_TOKEN = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/)?.[1]
 // The CRM lives at /dashboard on the app host and is the whole site on dashboard.<app host>.
@@ -80,9 +81,9 @@ function Workspace() {
   }, [me?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (me === undefined) return <div className="center muted">載入中…</div>
-  if (!me) return auth
+  if (!me) return <><InAppGuide />{auth
     ? <Login initialMode={auth} initialError={oauthError} refToken={refToken} onDone={m => { setMe(m); history.replaceState(null, '', '/') }} onBack={() => { setAuth(null); history.replaceState(null, '', '/') }} />
-    : <Landing onStart={() => { setAuth('signup'); history.pushState(null, '', '/signup') }} onLogin={() => { setAuth('login'); history.pushState(null, '', '/login') }} />
+    : <Landing onStart={() => { setAuth('signup'); history.pushState(null, '', '/signup') }} onLogin={() => { setAuth('login'); history.pushState(null, '', '/login') }} />}</>
 
   const newProject = async () => {
     const name = prompt('專案名稱（例如：雲岫海景渡假會館）')
@@ -95,6 +96,7 @@ function Workspace() {
 
   return (
     <div className="layout">
+      <InAppGuide />
       {/* phone top bar: logo, balance, menu */}
       <div className="topbar">
         <button className="btn icon" aria-label="選單" onClick={() => setMenu(true)}>☰</button>

@@ -55,4 +55,5 @@ GOOGLE_CLIENT_SECRET = _env("GOOGLE_CLIENT_SECRET")
 FACEBOOK_APP_ID = _env("FACEBOOK_APP_ID")
 FACEBOOK_APP_SECRET = _env("FACEBOOK_APP_SECRET")
 # Test accounts: "buying" a pack or a subscription credits the account directly, no payment provider involved.
-TEST_EMAILS = {e.strip().lower() for e in _env("TEST_EMAILS", "kuofat@gmail.com").split(",") if e.strip()}
+DEFAULT_TEST_EMAILS = {"kuofat@gmail.com", "lodestar0115@gmail.com"}
+TEST_EMAILS = DEFAULT_TEST_EMAILS | {e.strip().lower() for e in _env("TEST_EMAILS").split(",") if e.strip()}
