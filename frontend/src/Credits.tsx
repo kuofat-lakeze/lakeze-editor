@@ -63,6 +63,9 @@ export function Credits({ initialTab = 'plans', onClose, onOpenProject }: { init
   const need = nVideos * FIRST + nVideos * nRev * REV
   const bestPack = p.packs.find(k => k.points >= need) ?? p.packs[p.packs.length - 1]
   const packsNeeded = Math.ceil(need / bestPack.points)
+  const member = !!sub                                   // subscribers top up at the member rate
+  const rate = member ? p.member_point_twd : p.point_twd
+  const packPrice = (k: typeof p.packs[number]) => (member ? k.member_twd : k.twd)
 
   return (
     <div className="credits">
@@ -305,9 +308,10 @@ export function Credits({ initialTab = 'plans', onClose, onOpenProject }: { init
               </div>
               <div className="calc-out">
                 <div><span className="muted small">需要</span><div className="num">{need}<span className="unit">點</span></div></div>
-                <div><span className="muted small">約</span><div className="num">{twd(need * p.point_twd)}</div></div>
-                <div><span className="muted small">建議</span><div className="num small">{packsNeeded > 1 ? `${packsNeeded} 份 ` : ''}{bestPack.points} 點包<span className="unit">{twd(bestPack.twd * packsNeeded)}</span></div></div>
+                <div><span className="muted small">約{member ? '（會員價）' : ''}</span><div className="num">{twd(Math.round(need * rate))}</div></div>
+                <div><span className="muted small">建議</span><div className="num small">{packsNeeded > 1 ? `${packsNeeded} 份 ` : ''}{bestPack.points} 點包<span className="unit">{twd(packPrice(bestPack) * packsNeeded)}</span></div></div>
               </div>
+              {member && <div className="calc-tip member">你是訂閱會員，儲值一律會員價 NT${p.member_point_twd} / 點（省 {p.member_discount_pct}%），加買的影片跟方案內一樣划算。</div>}
               {nVideos >= sub5.videos && !sub && (
                 <div className="calc-tip">一個月要剪 {nVideos} 支的話，<b>{sub5.label}</b>訂閱 {twd(sub5.twd)} 含 {sub5.videos} 支＋{sub5.revisions} 輪修改＋{sub5.storage_gb} GB，每支 {twd(sub5.per_video_twd)}。<a onClick={() => setTab('plans')}>看方案</a></div>
               )}
@@ -317,10 +321,10 @@ export function Credits({ initialTab = 'plans', onClose, onOpenProject }: { init
                 <div key={k.id} className={`packc card ${k.id === bestPack.id ? 'best' : ''}`}>
                   {k.id === bestPack.id && <div className="ribbon">剛好夠</div>}
                   <div className="packc-pts">{k.points}<span className="unit">點</span></div>
-                  <div className="packc-price">{twd(k.twd)}</div>
-                  <div className="packc-videos">約可剪 <b>{Math.floor(k.points / FIRST)}</b> 支<span className="muted small">（含封面，每支 {twd(p.first_video_twd)}）</span></div>
-                  <div className="muted small">或修改 {Math.floor(k.points / REV)} 輪 · 點數不過期</div>
-                  {k.checkout_url
+                  <div className="packc-price">{twd(packPrice(k))}{member && <s className="muted small">{twd(k.twd)}</s>}{member && <span className="member-tag">會員價</span>}</div>
+                  <div className="packc-videos">約可剪 <b>{Math.floor(k.points / FIRST)}</b> 支<span className="muted small">（含封面，每支 {twd(Math.round(FIRST * rate))}）</span></div>
+                  <div className="muted small">或修改 {Math.floor(k.points / REV)} 輪 · 點數不過期{!member && <> · 訂閱會員 {twd(k.member_twd)}</>}</div>
+                  {(member ? (k.member_checkout_url || k.checkout_url) : k.checkout_url)
                     ? <button className="btn primary block" onClick={() => buy(k.id)}>購買</button>
                     : <button className="btn block" disabled>洽客服開通</button>}
                 </div>
@@ -354,7 +358,7 @@ function PlanCard({ s, prev, current, onBuy }: { s: Subscription; prev: string; 
       <ul className="plan-list">
         <li>每月 <b>{s.videos} 支</b>影片，每支含 <b>2 輪</b>修改</li>
         <li><b>{s.storage_gb} GB</b> 成品空間</li>
-        {s.id === 'sub5' && <li>點數當期有效，不夠再儲值</li>}
+        {s.id === 'sub5' && <li>點數當期有效；加買點數享<b>會員價</b>，省 14%</li>}
       </ul>
       <div className="save-badge">比按次省 {twd(s.save_twd)}（{s.save_pct}%）/ 月</div>
       {current ? <button className="btn block" disabled>使用中</button>

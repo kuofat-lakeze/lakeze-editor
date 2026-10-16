@@ -65,12 +65,19 @@ CATEGORIES = [("cut", "素材與剪輯"), ("audio", "旁白與配樂"), ("subs",
 # Free trial: the user's first project is free through the first export plus this many revision turns.
 FREE_REVISION_TURNS = 4
 
-# Top-up packs (儲值): straight NT$10 a point, no bonus, so pay-as-you-go keeps its margin. Points never expire.
+# Top-up packs (儲值): straight NT$10 a point for pay-as-you-go, so that tier keeps its margin. Points never
+# expire. Subscribers top up at the member rate: the price per point at which a first video clears the
+# subscription margin (NT$8.6), so extra videos cost a subscriber the same as the ones in the plan.
+MEMBER_POINT_TWD = round(FIRST_VIDEO_COST * (1 + MARGIN_SUB) / FIRST_VIDEO_POINTS, 1)
+MEMBER_DISCOUNT_PCT = round((1 - MEMBER_POINT_TWD / POINT_TWD) * 100)
+
+
+def _pack(points: int, label: str) -> dict:
+    return {"twd": points * POINT_TWD, "points": points, "label": label, "member_twd": int(round(points * MEMBER_POINT_TWD / 10.0) * 10)}
+
+
 PACKS: dict[str, dict] = {
-    "p500": {"twd": 500, "points": 50, "label": "NT$500 → 50 點"},
-    "p1000": {"twd": 1000, "points": 100, "label": "NT$1,000 → 100 點"},
-    "p3000": {"twd": 3000, "points": 300, "label": "NT$3,000 → 300 點"},
-    "p10000": {"twd": 10000, "points": 1000, "label": "NT$10,000 → 1,000 點"},
+    "p500": _pack(50, "50 點"), "p1000": _pack(100, "100 點"), "p3000": _pack(300, "300 點"), "p10000": _pack(1000, "1,000 點"),
 }
 
 # Deliverable storage (成品: exported videos + covers, every version). Raw footage and work files are
@@ -155,7 +162,8 @@ def tool_cost(name: str, inp: dict) -> int:
 def public_pricing() -> dict:
     """The numbers the UI shows: list prices plus the subscription savings story."""
     return {
-        "point_twd": POINT_TWD, "margin_payg_pct": round(MARGIN_PAYG * 100), "margin_sub_pct": round(MARGIN_SUB * 100),
+        "point_twd": POINT_TWD, "member_point_twd": MEMBER_POINT_TWD, "member_discount_pct": MEMBER_DISCOUNT_PCT,
+        "margin_payg_pct": round(MARGIN_PAYG * 100), "margin_sub_pct": round(MARGIN_SUB * 100),
         "first_video_points": FIRST_VIDEO_POINTS, "revision_points": REVISION_POINTS,
         "first_video_twd": FIRST_VIDEO_POINTS * POINT_TWD, "revision_twd": REVISION_POINTS * POINT_TWD,
         "subscriptions": [{"id": k, **v} for k, v in SUBSCRIPTIONS.items()],
