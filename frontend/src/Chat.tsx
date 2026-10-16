@@ -135,9 +135,15 @@ const TOOL_LABEL: Record<string, string> = {
   render_captions: '燒字幕', export_video: '輸出成品', make_cover: '做封面', revision_turn: '修改回合',
 }
 
-export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, onProjectsChanged }:
-  { projectId: string; name?: string; onUsage: () => void; onTopUp: (needPoints?: number) => void; onCredits?: () => void; onStorage?: () => void; onProjectsChanged?: () => void }) {
+export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, onProjectsChanged, feedbackUnread = 0, onFeedbackRead }:
+  { projectId: string; name?: string; onUsage: () => void; onTopUp: (needPoints?: number) => void; onCredits?: () => void; onStorage?: () => void; onProjectsChanged?: () => void; feedbackUnread?: number; onFeedbackRead?: () => void }) {
   const [tab, setTab] = useState<'chat' | 'files'>('chat')
+  const [fbOpen, setFbOpen] = useState(false)
+  const openFeedback = async () => {
+    setFbOpen(true)
+    const p = await api.project(projectId); setProj(p)   // fresh list, then mark as seen
+    if (p.client_comments?.some(c => !c.read)) { await api.markCommentsRead(projectId); onFeedbackRead?.(); setProj(x => x && { ...x, client_comments: x.client_comments?.map(c => ({ ...c, read: true })) }) }
+  }
   const [proj, setProj] = useState<ProjectDetail | null>(null)
   const [live, setLive] = useState<Live>(emptyLive())
   const [running, setRunning] = useState(false)
@@ -401,7 +407,30 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         </span>}
         {running && <span className="working-chip"><span className="spinner" />工作中 {turnStart.current ? fmtDur(now - turnStart.current) : ''}</span>}
         {running && <button className="btn small" onClick={() => api.cancel(projectId)}>停止</button>}
+        {((proj.client_comments?.length ?? 0) > 0 || feedbackUnread > 0) && (
+          <button className={`fb-bell ${feedbackUnread > 0 ? 'new' : ''}`} onClick={openFeedback} title="朋友的反饋" aria-label="朋友的反饋">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.4A8 8 0 1 1 21 12z" /></svg>
+            <span>反饋</span>{feedbackUnread > 0 && <i>{feedbackUnread}</i>}
+          </button>)}
       </header>
+      {fbOpen && (
+        <>
+          <div className="scrim fb-scrim" onClick={() => setFbOpen(false)} />
+          <aside className="drawer fb-drawer">
+            <div className="dr-head"><div><div className="dr-email">朋友的反饋</div><div className="muted small">看完分享連結後留的話。不會打斷剪輯師，想改再按「照這個改」。</div></div><a className="dr-close" onClick={() => setFbOpen(false)}>✕</a></div>
+            {(proj.client_comments?.length ?? 0) === 0 && <div className="muted small">還沒有人留言。到「成品」頁把影片分享給朋友，他們看完可以直接留話。</div>}
+            {[...(proj.client_comments ?? [])].reverse().map(c => (
+              <div key={c.id} className={`fb-item ${c.read ? '' : 'new'}`}>
+                <div className="fb-item-head"><b>{c.name || '朋友'}</b>{!c.read && <em>新</em>}<span className="muted small">{new Date(c.created_at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}{c.version ? ` · 看的是 v${c.version}` : ''}</span></div>
+                <div className="fb-text">{c.text}</div>
+                <div className="fb-act">
+                  <a className="small" onClick={() => { setText(t => (t ? t + '\n' : '') + `朋友說：${c.text}。請照這個改。`); setFbOpen(false); setTab('chat') }}>照這個改</a>
+                  <a className="small muted" onClick={() => { navigator.clipboard?.writeText(c.text).catch(() => {}) }}>複製</a>
+                </div>
+              </div>))}
+          </aside>
+        </>
+      )}
       {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} />}
       {tab === 'chat' && <>
       <div className="thread" ref={threadRef} onScroll={onScroll}>
@@ -636,18 +665,6 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
             {!live.text && live.tools.every(t => t.status !== 'run') && <span className="muted">…</span>}
           </div>
         )}
-        {(proj.client_comments?.length ?? 0) > 0 && stage !== 'working' && (
-          <div className="card client-comments">
-            <b>客戶留言</b>
-            {proj.client_comments!.slice(-3).map(c => (
-              <div key={c.id} className="cc-row">
-                <div><span className="cc-name">{c.name || '客戶'}</span><span className="muted small"> {new Date(c.created_at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</span>
-                  <div>{c.text}</div></div>
-                <a className="small" onClick={() => setText(t => (t ? t + '\n' : '') + `客戶說：${c.text}。請照這個改。`)}>照這個改</a>
-              </div>
-            ))}
-          </div>
-        )}
         {needCredits && (
           <div className="card need">
             <div><b>點數不足</b>：這一步需要 {needCredits.needed} 點，目前 {needCredits.balance} 點，差 {Math.max(0, needCredits.needed - needCredits.balance)} 點。
@@ -841,7 +858,7 @@ function ObPreview({ step, style, voiceName, uploads, linkOk, text, analysis, an
               <div className="ps-cover b"><span>封面 B</span><b>{analysis?.selling_points[0] || '25 米戲水池'}</b><em>平日每人 1,500</em></div>
             </div>
           </div>
-          <div className="muted small">做好會自動歸檔到「成品」頁，可以一鍵分享給客戶。</div>
+          <div className="muted small">做好會自動歸檔到「成品」頁，可以一鍵分享給朋友。</div>
         </div>
       )}
     </aside>

@@ -6,7 +6,7 @@ import { MiaoLogo } from './Logo'
 const STEPS = [
   { n: '1', t: '給素材', d: '上傳手機拍的影片、照片，或貼 Google Drive 連結' },
   { n: '2', t: '先解析，看賣點', d: '剪輯師看完素材，列出賣點、分鏡、旁白稿和要花的點數' },
-  { n: '3', t: '選風格、開始剪', d: '一路做到輸出影片與封面，再分享給客戶' },
+  { n: '3', t: '選風格、開始剪', d: '一路做到輸出影片與封面，再分享給朋友' },
 ]
 
 const GoogleIcon = () => (
@@ -24,8 +24,8 @@ const FacebookIcon = () => (
   </svg>
 )
 
-export function Login({ onDone, initialMode = 'login', onBack, initialError = '', next }:
-  { onDone: (m: Me) => void; initialMode?: 'login' | 'signup'; onBack?: () => void; initialError?: string; next?: string }) {
+export function Login({ onDone, initialMode = 'login', onBack, initialError = '', next, refToken = '' }:
+  { onDone: (m: Me) => void; initialMode?: 'login' | 'signup'; onBack?: () => void; initialError?: string; next?: string; refToken?: string }) {
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode)
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
@@ -37,7 +37,7 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
 
   const go = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('')
-    try { onDone(await (mode === 'login' ? api.login(email, pw) : api.signup(email, pw))) }
+    try { onDone(await (mode === 'login' ? api.login(email, pw) : api.signup(email, pw, refToken))) }
     catch (ex) { setErr((ex as Error).message) }
     finally { setBusy(false) }
   }
@@ -60,12 +60,12 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
         <form className="auth-card" onSubmit={go}>
           <img className="logo auth-logo-m" src={logo} alt="Lakeze 人客多" />
           <h2>{mode === 'login' ? '歡迎回來' : '建立帳號'}</h2>
-          <p className="muted">{mode === 'login' ? '登入後繼續你的專案。' : '註冊就送 110 點，第一支影片含封面與 2 輪修改。'}</p>
+          <p className="muted">{mode === 'login' ? '登入後繼續你的專案。' : refToken ? '朋友分享的影片就是這樣做出來的。註冊送 110 點，第一支免費。' : '註冊就送 110 點，第一支影片含封面與 2 輪修改。'}</p>
           {social && (
             <>
               <div className="social">
-                {prov.google && <a className="btn social-btn google" href={api.oauthStart('google', mode, next)}><GoogleIcon />用 Google {verb}</a>}
-                {prov.facebook && <a className="btn social-btn facebook" href={api.oauthStart('facebook', mode, next)}><FacebookIcon />用 Facebook {verb}</a>}
+                {prov.google && <a className="btn social-btn google" href={api.oauthStart('google', mode, next, refToken)}><GoogleIcon />用 Google {verb}</a>}
+                {prov.facebook && <a className="btn social-btn facebook" href={api.oauthStart('facebook', mode, next, refToken)}><FacebookIcon />用 Facebook {verb}</a>}
               </div>
               <div className="or"><span>或用 Email</span></div>
             </>

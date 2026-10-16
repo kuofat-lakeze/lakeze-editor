@@ -131,3 +131,42 @@ def test_cookie_domain_and_next(monkeypatch):
     assert c.get("/api/me").status_code == 200
     r = c.post("/api/auth/logout")
     assert "Domain=.editor.lakeze.com" in r.headers["set-cookie"]
+
+
+def test_feedback_inbox_and_referral(client):
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = a
+
+    async def seed_share():
+        async with D.Session() as s:
+            p = (await s.execute(D.select(D.Project).where(D.Project.user_id == a.id))).scalar_one()
+            sh = D.Share(token="tok123", project_id=p.id, note="看價格"); s.add(sh); await s.commit()
+            return p.id
+    pid = asyncio.run(seed_share())
+    # a friend watches and leaves feedback (no login)
+    v = c.get("/api/s/tok123").json()
+    assert v["signup_url"] == "/signup?ref=tok123" and v["signup_points"] == P.SIGNUP_POINTS
+    assert c.post("/api/s/tok123/comment", json={"name": "老闆", "text": "價格再大一點"}).status_code == 200
+    assert c.post("/api/s/tok123/comment", json={"name": "", "text": "第二段換泳池"}).status_code == 200
+    n = c.get("/api/notifications").json()
+    assert n["unread"] == 2 and n["by_project"] == {pid: 2} and n["items"][0]["text"] == "第二段換泳池" and n["items"][0]["project_name"] == "A1"
+    assert n["items"][0]["read"] is False and n["items"][0]["share_note"] == ""   # share_note only on the project payload
+    d = c.get(f"/api/projects/{pid}").json()
+    assert [x["read"] for x in d["client_comments"]] == [False, False] and d["client_comments"][0]["share_note"] == "看價格"
+    assert c.post(f"/api/projects/{pid}/comments/read").json()["marked"] == 2
+    assert c.get("/api/notifications").json()["unread"] == 0 and c.get("/api/notifications").json()["total"] == 2
+    assert all(x["read"] for x in c.get(f"/api/projects/{pid}").json()["client_comments"])
+    # someone else's project is not readable
+    holder["u"] = b
+    assert c.post(f"/api/projects/{pid}/comments/read").status_code == 404
+    # the friend signs up from the share page: referral recorded, visible in the CRM
+    M.app.dependency_overrides.clear()
+    r = TestClient(M.app).post("/api/auth/signup", json={"email": "friend@x.y", "password": "password123", "ref": "tok123"})
+    assert r.status_code == 200
+    M.app.dependency_overrides[current_user] = lambda: holder["u"]
+    holder["u"] = admin
+    us = {u["email"]: u for u in c.get("/api/admin/users").json()}
+    assert us["friend@x.y"]["referred_by"] == "paying@x.y"
+    assert c.get(f"/api/admin/users/{a.id}").json()["referred"] == ["friend@x.y"]
+    assert TestClient(M.app).post("/api/auth/signup", json={"email": "f2@x.y", "password": "password123", "ref": "nope"}).status_code == 200

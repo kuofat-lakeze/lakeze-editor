@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { api, type Me, type Project } from './api'
+import { useEffect, useRef, useState } from 'react'
+import { api, type Me, type Notifications, type Project } from './api'
 import { Login } from './Login'
 import { Chat } from './Chat'
 import { Credits, type CreditsTab } from './Credits'
@@ -45,6 +45,29 @@ function Workspace() {
   const [menu, setMenu] = useState(false)
   const [auth, setAuth] = useState<'login' | 'signup' | null>(location.pathname === '/login' ? 'login' : location.pathname === '/signup' ? 'signup' : null)
   const oauthError = new URLSearchParams(location.search).get('oauth_error') ?? ''   // the OAuth callback lands on /login?oauth_error=…
+  const refToken = new URLSearchParams(location.search).get('ref') ?? ''              // arrived from a friend's share page
+  // 朋友的反饋: polled quietly; a badge per project, a toast when something new arrives. Never interrupts a running turn.
+  const [notes, setNotes] = useState<Notifications | null>(null)
+  const [toast, setToast] = useState<{ text: string; project_id: string } | null>(null)
+  const seen = useRef<number | null>(null)
+  const pollNotes = () => api.notifications().then(n => {
+    setNotes(n)
+    if (seen.current !== null && n.unread > seen.current && n.items[0]) {
+      const it = n.items[0]
+      setToast({ text: `${it.name || '朋友'} 對「${it.project_name}」留了反饋：${it.text.slice(0, 40)}`, project_id: it.project_id! })
+      setTimeout(() => setToast(null), 8000)
+    }
+    seen.current = n.unread
+  }).catch(() => {})
+  useEffect(() => {
+    if (!me) return
+    pollNotes()
+    const t = setInterval(pollNotes, 45000)
+    const onVis = () => { if (document.visibilityState === 'visible') pollNotes() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis) }
+  }, [me?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { document.title = (notes?.unread ? `(${notes.unread}) ` : '') + '旅剪 · 人客多 Lakeze' }, [notes?.unread])
 
   const refreshMe = () => api.me().then(setMe)
   useEffect(() => { refreshMe() }, [])
@@ -55,7 +78,7 @@ function Workspace() {
 
   if (me === undefined) return <div className="center muted">載入中…</div>
   if (!me) return auth
-    ? <Login initialMode={auth} initialError={oauthError} onDone={m => { setMe(m); history.replaceState(null, '', '/') }} onBack={() => { setAuth(null); history.replaceState(null, '', '/') }} />
+    ? <Login initialMode={auth} initialError={oauthError} refToken={refToken} onDone={m => { setMe(m); history.replaceState(null, '', '/') }} onBack={() => { setAuth(null); history.replaceState(null, '', '/') }} />
     : <Landing onStart={() => { setAuth('signup'); history.pushState(null, '', '/signup') }} onLogin={() => { setAuth('login'); history.pushState(null, '', '/login') }} />
 
   const newProject = async () => {
@@ -74,8 +97,10 @@ function Workspace() {
         <button className="btn icon" aria-label="選單" onClick={() => setMenu(true)}>☰</button>
         <img className="logo" src={logo} alt="Lakeze 人客多" />
         <span className="spacer" />
+        {(notes?.unread ?? 0) > 0 && <a className="fb-top" onClick={() => { const it = notes!.items[0]; if (it?.project_id) openProject(it.project_id) }}>💬 {notes!.unread}</a>}
         <a className="pts" onClick={() => showCredits()}>{me.balance} <small>點</small></a>
       </div>
+      {toast && <a className="fb-toast" onClick={() => { openProject(toast.project_id); setToast(null) }}><b>朋友的反饋</b>{toast.text}<small>點一下查看</small></a>}
       {menu && <div className="scrim" onClick={() => setMenu(false)} />}
 
       <aside className={`sidebar ${menu ? 'open' : ''}`}>
@@ -93,6 +118,7 @@ function Workspace() {
           {projects.map(p => (
             <a key={p.id} className={p.id === current && view === 'chat' ? 'active' : ''} onClick={() => openProject(p.id)}>
               {p.final_version != null && <span className="done-mark" title="已交付">✓</span>}{p.name}{p.id === me.free_project_id && <span className="tag">免費</span>}
+              {(notes?.by_project[p.id] ?? 0) > 0 && <span className="fb-badge" title="朋友的新反饋">{notes!.by_project[p.id]}</span>}
             </a>
           ))}
         </nav>
@@ -107,7 +133,7 @@ function Workspace() {
         {view === 'gallery' ? <Gallery onOpen={openProject} />
           : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} needPoints={needPoints} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} onBought={refreshMe} />
           : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits('buy', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
-              onProjectsChanged={() => api.projects().then(setProjects)} />
+              onProjectsChanged={() => api.projects().then(setProjects)} feedbackUnread={notes?.by_project[current] ?? 0} onFeedbackRead={pollNotes} />
             : <div className="center muted">建立一個專案開始剪片。第一個專案免費。</div>}
       </main>
     </div>

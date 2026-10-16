@@ -21,6 +21,8 @@ export function SharePage({ token }: { token: string }) {
       <header className="share-head">
         <img className="logo" src={logo} alt="Lakeze 人客多" />
         <span className="share-tag">專業旅遊剪輯 AI</span>
+        <span className="spacer" />
+        <a className="btn small primary" href={data?.signup_url ?? '/signup'}>我也要試做</a>
       </header>
       <main className="share-main">
         {err && <div className="card"><b>打不開這個連結</b><div className="muted small">{err}。請向提供連結的人索取新的連結。</div></div>}
@@ -59,14 +61,22 @@ export function SharePage({ token }: { token: string }) {
               </section>
             ))}
             <section className="card share-comment">
-              <b>想改哪裡？留言給剪輯師</b>
-              {sent ? <div className="ok">已送出，謝謝！剪輯師會收到你的留言。</div> : (
+              <b>看完有想法？留話給他</b>
+              <span className="muted small">你的留言會直接送到影片主人的「朋友的反饋」。</span>
+              {sent ? <div className="ok">已送出，謝謝！對方會收到通知。</div> : (
                 <>
                   <input placeholder="你的名字（選填）" value={name} onChange={e => setName(e.target.value)} />
                   <textarea rows={3} placeholder="例如：價格字幕再大一點、第二段換成泳池畫面…" value={text} onChange={e => setText(e.target.value)} />
-                  <button className="btn primary" disabled={!text.trim()} onClick={send}>送出留言</button>
+                  <button className="btn primary" disabled={!text.trim()} onClick={send}>送出</button>
                 </>
               )}
+            </section>
+            <section className="share-cta">
+              <div className="share-cta-k">這支影片是用旅剪做的</div>
+              <h2>你也想做一支？</h2>
+              <p>丟影片、說賣點，15 分鐘拿到有旁白、字幕、封面的短影音。註冊送 {data.signup_points ?? 110} 點，第一支免費，不用綁卡。</p>
+              <a className="btn primary lg" href={data.signup_url ?? '/signup'}>免費試做第一支</a>
+              <a className="small" href="/">先看看怎麼用 →</a>
             </section>
           </>
         )}

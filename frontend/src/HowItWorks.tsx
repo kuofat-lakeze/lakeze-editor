@@ -10,7 +10,7 @@ import { MiaoMark } from './Logo'
 const STEPS = [
   { k: 'upload', n: '01', t: '丟素材', m: '相簿選影片、照片，自動上傳。', d: '影片、照片混著給都行：手機相簿直接上傳，或貼 Google Drive 連結。每個檔案都看得到進度，大檔案也不怕斷線。', tag: '約 1 分鐘' },
   { k: 'chat', n: '02', t: '說賣點', m: '挑風格和聲音，賣點用說的就好。', d: '挑一個風格和聲音，像傳訊息一樣把賣點講給剪輯師。他一步一步回報進度，你不用盯著。', tag: '約 2 分鐘' },
-  { k: 'done', n: '03', t: '收影片', m: '15 分鐘：旁白、字幕、封面全都好。', d: '15 分鐘後拿到有旁白口播、配樂、雙層字幕的直式影片，封面一起做好，全部歸檔在成品頁，一鍵給客戶看。', tag: '約 15 分鐘' },
+  { k: 'done', n: '03', t: '收影片', m: '15 分鐘：旁白、字幕、封面全都好。', d: '15 分鐘後拿到有旁白口播、配樂、雙層字幕的直式影片，封面一起做好，全部歸檔在成品頁，一鍵分享給朋友。', tag: '約 15 分鐘' },
 ]
 
 function useIsMobile() {
@@ -141,7 +141,7 @@ function Phone({ step }: { step: number }) {
               <div className="ps-cover b"><span>封面 B</span><b>25 米<br />戲水池</b><em>平日每人 1,500</em></div>
             </div>
           </div>
-          <div className="ps-actions"><span>下載</span><span className="pri">分享給客戶</span></div>
+          <div className="ps-actions"><span>下載</span><span className="pri">分享給朋友</span></div>
         </div>
       </div>
     </div>

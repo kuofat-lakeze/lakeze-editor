@@ -60,6 +60,8 @@ class User(Base):
     # CRM: free-form tags ("vip,民宿,宜蘭") and the last authenticated request (refreshed every few minutes).
     tags: Mapped[str] = mapped_column(String(200), default="")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Signed up from a friend's share page: the owner of that share (for the CRM's referral view).
+    referrer_id: Mapped[str | None] = mapped_column(String(12), nullable=True)
 
 
 class Project(Base):
@@ -137,6 +139,7 @@ class ShareComment(Base):
     name: Mapped[str] = mapped_column(String(80), default="")
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # when the owner opened it
 
 
 class Usage(Base):
@@ -163,6 +166,7 @@ _MIGRATIONS = [
     ("users", "voice_id", "VARCHAR(64)"), ("users", "voice_name", "VARCHAR(80)"), ("users", "voice_trial_seconds", "FLOAT DEFAULT 0"),
     ("users", "provider", "VARCHAR(20) DEFAULT ''"), ("users", "provider_id", "VARCHAR(80)"), ("users", "display_name", "VARCHAR(120)"),
     ("users", "tags", "VARCHAR(200) DEFAULT ''"), ("users", "last_seen_at", "DATETIME"),
+    ("share_comments", "read_at", "DATETIME"), ("users", "referrer_id", "VARCHAR(12)"),
 ]
 
 

@@ -206,6 +206,7 @@ async def _user_rows(q: str = ""):
             ql = q.lower()
             stmt = stmt.where((User.email.contains(ql)) | (User.tags.contains(ql)) | (User.note.contains(q)) | (User.display_name.contains(q)))
         rows = (await s.execute(stmt.limit(2000))).all()
+    emails = {u.id: u.email for u, *_ in rows}
     out = []
     for u, b, w, pn, ptwd, ppts, plast, gpts, cpts, c, n, e, rv, last, sb in rows:
         seen = max([d for d in (last, u.last_seen_at) if d], key=_utc, default=None)
@@ -219,6 +220,7 @@ async def _user_rows(q: str = ""):
                     "last_active": _iso(seen), "storage_plan": u.storage_plan or "free", "storage_bytes": int(sb or 0),
                     "storage_quota_bytes": storage_quota_bytes(u), "subscription": u.subscription or "",
                     "sub_renews_at": _iso(u.sub_renews_at), "voice": bool(u.voice_id),
+                    "referred_by": emails.get(u.referrer_id or "", u.referrer_id) if u.referrer_id else None,
                     "stage": _stage(u, purchases=int(pn or 0), exports=int(e or 0), projects=int(n or 0), last=seen, ref=ref)})
     return out
 
@@ -290,8 +292,12 @@ async def user_detail(user_id: str, _: User = Admin):
     paid = int(ptwd or 0)
     cost_twd = round((cost_all or 0) * TWD_PER_USD)
     last = max([d for d in ([p.updated_at for p in ps] + [u.last_seen_at]) if d], key=_utc, default=None)
+    async with Session() as s:
+        ref_user = await s.get(User, u.referrer_id) if u.referrer_id else None
+        referred = (await s.execute(select(User.email).where(User.referrer_id == u.id))).scalars().all()
     return {"id": u.id, "email": u.email, "name": u.display_name, "provider": u.provider or "", "is_admin": u.is_admin, "disabled": u.disabled,
             "note": u.note, "tags": [t for t in (u.tags or "").split(",") if t], "created_at": _iso(u.created_at), "last_active": _iso(last),
+            "referred_by": ref_user.email if ref_user else None, "referred": list(referred),
             "subscription": u.subscription or "", "sub_period_start": _iso(u.sub_period_start), "sub_renews_at": _iso(u.sub_renews_at),
             "storage_plan": u.storage_plan or "free", "storage_quota_gb": u.storage_quota_gb, "storage_bytes": int(sto or 0),
             "storage_quota_bytes": storage_quota_bytes(u), "voice": {"voice_id": u.voice_id, "name": u.voice_name} if u.voice_id else None,

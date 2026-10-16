@@ -74,7 +74,7 @@ def _safe_next(url: str) -> str:
 
 
 @router.get("/api/auth/{name}/start")
-async def start(name: str, request: Request, mode: str = "login", next: str = "/"):
+async def start(name: str, request: Request, mode: str = "login", next: str = "/", ref: str = ""):
     if not configured(name):
         raise HTTPException(404, "此登入方式未開放")
     p = PROVIDERS[name]
@@ -83,7 +83,7 @@ async def start(name: str, request: Request, mode: str = "login", next: str = "/
     if name == "google":
         q.update(access_type="online", prompt="select_account")
     resp = RedirectResponse(f"{p['auth']}?{urlencode(q)}", status_code=302)
-    resp.set_cookie(STATE_COOKIE, _state.sign(f"{nonce}:{name}:{mode}:{_safe_next(next)}").decode(), max_age=600, httponly=True,
+    resp.set_cookie(STATE_COOKIE, _state.sign(f"{nonce}:{name}:{mode}:{ref.strip()[:64].replace(chr(58), '')}:{_safe_next(next)}").decode(), max_age=600, httponly=True,
                     samesite="lax", secure=request.url.scheme == "https")
     return resp
 
@@ -122,7 +122,7 @@ async def callback(name: str, request: Request, code: str = "", state: str = "",
         return _fail("你取消了登入" if error in ("access_denied", "user_denied") else "登入沒有完成，請再試一次")
     try:
         raw = _state.unsign(request.cookies.get(STATE_COOKIE, ""), max_age=600).decode()
-        nonce, pname, _mode, nxt = raw.split(":", 3)
+        nonce, pname, _mode, ref, nxt = raw.split(":", 4)
     except (BadSignature, ValueError):
         return _fail("登入逾時，請再試一次")
     if nonce != state or pname != name:
@@ -142,8 +142,10 @@ async def callback(name: str, request: Request, code: str = "", state: str = "",
         if created:
             if not config.ALLOW_SIGNUP:
                 return _fail("目前暫停註冊")
+            from .main import referrer_from_share
             u = User(email=email, pw_hash="", is_admin=email in config.ADMIN_EMAILS, provider=name,
-                     provider_id=str(prof.get("id") or ""), display_name=(prof.get("name") or "")[:120] or None)
+                     provider_id=str(prof.get("id") or ""), display_name=(prof.get("name") or "")[:120] or None,
+                     referrer_id=await referrer_from_share(ref))
             s.add(u)
         else:
             if u.disabled:

@@ -149,6 +149,20 @@ def _broadcast(project_id: str):
 class Creds(BaseModel):
     email: EmailStr
     password: str
+    ref: str = ""   # share-page token the person came from (朋友推薦)
+
+
+async def referrer_from_share(token: str) -> str | None:
+    """Owner of the share link a new user arrived through, or None."""
+    token = (token or "").strip()[:64]
+    if not token:
+        return None
+    async with Session() as s:
+        sh = (await s.execute(select(Share).where(Share.token == token))).scalar_one_or_none()
+        if not sh:
+            return None
+        p = await s.get(Project, sh.project_id)
+        return p.user_id if p else None
 
 
 @app.post("/api/auth/signup")
@@ -160,7 +174,8 @@ async def signup(c: Creds, request: Request):
     async with Session() as s:
         if (await s.execute(select(User).where(User.email == c.email.lower()))).scalar_one_or_none():
             raise HTTPException(409, "email 已註冊")
-        u = User(email=c.email.lower(), pw_hash=hash_pw(c.password), is_admin=c.email.lower() in config.ADMIN_EMAILS)
+        u = User(email=c.email.lower(), pw_hash=hash_pw(c.password), is_admin=c.email.lower() in config.ADMIN_EMAILS,
+                 referrer_id=await referrer_from_share(c.ref))
         s.add(u)
         await s.commit()
     await add_credits(u.id, pricing.SIGNUP_POINTS, "grant", "signup", meta={"welcome": True})   # 註冊送點
@@ -621,8 +636,9 @@ async def get_project(project_id: str, user: User = CurrentUser):
         msgs = (await s.execute(select(Message).where(Message.project_id == p.id).order_by(Message.id))).scalars()
         assets = (await s.execute(select(Asset).where(Asset.project_id == p.id).order_by(Asset.created_at))).scalars()
         out_msgs = [_public_message(m) for m in msgs]
-        comments = (await s.execute(select(ShareComment).where(ShareComment.project_id == p.id).order_by(ShareComment.id))).scalars()
-        client_comments = [{"id": c.id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat()} for c in comments]
+        comments = (await s.execute(select(ShareComment).where(ShareComment.project_id == p.id).order_by(ShareComment.id))).scalars().all()
+        shares = {sh.id: sh for sh in (await s.execute(select(Share).where(Share.project_id == p.id))).scalars()}
+        client_comments = [_comment_dict(c, shares.get(c.share_id)) for c in comments]
     st = await Store(user.id).credit_state(p.id)
     an = analyze.load(project_dir(p.id))
     if an:
@@ -693,6 +709,43 @@ async def frame(project_id: str, n: int, t: float = 0.0, user: User = CurrentUse
         await asyncio.to_thread(ff.ffmpeg, "-ss", f"{t:.2f}", "-i", str(root / "raw" / rel), "-frames:v", "1",
                                 "-vf", "scale=-2:360", "-q:v", "4", str(dest))
     return FileResponse(dest, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+def _comment_dict(c: ShareComment, sh: Share | None = None, project_name: str | None = None) -> dict:
+    d = {"id": c.id, "project_id": c.project_id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat(),
+         "read": c.read_at is not None, "version": sh.version if sh else None, "share_note": sh.note if sh else ""}
+    if project_name is not None:
+        d["project_name"] = project_name
+    return d
+
+
+# ---- 朋友的反饋 (feedback inbox) ---------------------------------------------------------------------
+@app.get("/api/notifications")
+async def notifications(user: User = CurrentUser):
+    """Unread feedback across the user's projects, newest first. Polled by the app; nothing here
+    interrupts a running turn."""
+    async with Session() as s:
+        rows = (await s.execute(select(ShareComment, Project.name).join(Project, Project.id == ShareComment.project_id)
+                                .where(Project.user_id == user.id, ShareComment.read_at.is_(None))
+                                .order_by(ShareComment.id.desc()).limit(50))).all()
+        total = (await s.execute(select(func.count(ShareComment.id)).join(Project, Project.id == ShareComment.project_id)
+                                 .where(Project.user_id == user.id))).scalar()
+    items = [_comment_dict(c, None, name) for c, name in rows]
+    by_project: dict[str, int] = {}
+    for it in items:
+        by_project[it["project_id"]] = by_project.get(it["project_id"], 0) + 1
+    return {"unread": len(items), "items": items, "by_project": by_project, "total": int(total or 0)}
+
+
+@app.post("/api/projects/{project_id}/comments/read")
+async def mark_comments_read(project_id: str, user: User = CurrentUser):
+    await _own(project_id, user)
+    async with Session() as s:
+        rows = (await s.execute(select(ShareComment).where(ShareComment.project_id == project_id, ShareComment.read_at.is_(None)))).scalars().all()
+        for c in rows:
+            c.read_at = datetime.now(timezone.utc)
+        await s.commit()
+    return {"ok": True, "marked": len(rows)}
 
 
 def _public_message(m: Message) -> dict | None:
@@ -1027,7 +1080,8 @@ async def share_view(token: str):
         row.views = (row.views or 0) + 1
         await s.commit()
     return {"project_name": p.name, "note": sh.note, "allow_download": sh.allow_download,
-            "brand": {"name": "人客多", "tagline": "專業旅遊剪輯 AI"}, "versions": _share_versions(sh, p, assets)}
+            "brand": {"name": "人客多", "tagline": "專業旅遊剪輯 AI"}, "versions": _share_versions(sh, p, assets),
+            "signup_url": f"/signup?ref={sh.token}", "signup_points": pricing.SIGNUP_POINTS}
 
 
 @app.get("/api/s/{token}/file/{asset_id}")

@@ -5,9 +5,10 @@ export type Project = { id: string; name: string; updated_at?: string; exports?:
 export type DeliverableVersion = { version: number; created_at: string; videos: Asset[]; covers: Asset[]; main: Asset | null }
 export type ShareLink = { id: string; token: string; url: string; version: number | null; allow_download: boolean; note: string; expires_at: string | null; revoked: boolean; views: number; created_at: string }
 export type DeliverablesData = { project: { id: string; name: string; final_version: number | null; exports: number }; versions: DeliverableVersion[]; shares: ShareLink[] }
-export type ShareView = { project_name: string; note: string; allow_download: boolean; brand: { name: string; tagline: string }; versions: DeliverableVersion[] }
+export type ShareView = { project_name: string; note: string; allow_download: boolean; brand: { name: string; tagline: string }; versions: DeliverableVersion[]; signup_url?: string; signup_points?: number }
 export type GalleryItem = { project_id: string; name: string; version: number; final: boolean; cover: Asset | null; video: Asset | null; updated_at: string }
-export type ClientComment = { id: number; name: string; text: string; created_at: string }
+export type ClientComment = { id: number; project_id?: string; project_name?: string; name: string; text: string; created_at: string; read?: boolean; version?: number | null; share_note?: string }
+export type Notifications = { unread: number; items: ClientComment[]; by_project: Record<string, number>; total: number }
 export type CreditsSummary = {
   balance: number; purchased: number; refunded: number; used: number; waived: number; revision_points: number; first_video_points: number
   free_project?: { id: string; name: string; exports: number; in_free: boolean; free_revisions_left: number | null } | null
@@ -50,7 +51,7 @@ export type Stage = 'disabled' | 'sub' | 'paid' | 'churn' | 'trial_done' | 'tria
 export type AdminUser = { id: string; email: string; name?: string | null; provider: string; created_at: string; is_admin: boolean; disabled: boolean; note: string; tags: string[]
   balance: number; waived: number; paid_twd: number; purchases: number; purchased_points: number; granted_points: number; used_points: number; last_purchase_at: string | null
   cost_usd: number; cost_twd: number; projects: number; exports: number; revision_turns: number; last_active: string | null
-  storage_plan: string; storage_bytes: number; storage_quota_bytes: number; subscription: string; sub_renews_at: string | null; voice: boolean; stage: Stage }
+  storage_plan: string; storage_bytes: number; storage_quota_bytes: number; subscription: string; sub_renews_at: string | null; voice: boolean; stage: Stage; referred_by?: string | null }
 export type DashRow = { id: string; email: string; name?: string | null; balance: number; paid_twd: number; exports: number; projects: number; subscription: string; last_active: string | null; stage: Stage; points_used?: number }
 export type DashPeriod = { revenue_twd: number; points_used: number; points_waived: number; points_sold: number; points_granted: number; exports: number; cost_usd: number; cost_twd: number; signups: number; buyers: number; active_users?: number; margin_pct?: number | null }
 export type Dashboard = {
@@ -66,7 +67,7 @@ export type AdminStats = { users: number; new_users_7d: number; projects: number
 export type Ledger = { id?: number; delta: number; waived: number; kind: string; reason: string; amount_twd?: number; project_id: string | null; created_at: string }
 export type AdminUserDetail = { id: string; email: string; name?: string | null; provider: string; is_admin: boolean; disabled: boolean; note: string; tags: string[]; created_at: string; last_active: string | null
   subscription: string; sub_period_start: string | null; sub_renews_at: string | null; storage_plan: string; storage_quota_gb: number | null; storage_bytes: number; storage_quota_bytes: number
-  voice: { voice_id: string; name: string | null } | null; voice_trial_seconds: number; stage: Stage
+  voice: { voice_id: string; name: string | null } | null; voice_trial_seconds: number; stage: Stage; referred_by?: string | null; referred?: string[]
   summary: { balance: number; paid_twd: number; purchases: number; purchased_points: number; granted_points: number; used_points: number; expired_points: number; waived_points: number; cost_usd: number; cost_twd: number; profit_twd: number; margin_pct: number | null; exports: number; revision_turns: number }
   by_category: { id: string; label: string; points: number }[]; daily: { date: string; points: number; cost_twd: number }[]
   ledger: (Ledger & { meta?: Record<string, unknown> })[]
@@ -86,10 +87,12 @@ const post = (url: string, body: unknown) =>
 export const api = {
   me: () => fetch('/api/me').then(r => (r.ok ? r.json() : null)) as Promise<Me | null>,
   login: (email: string, password: string) => post('/api/auth/login', { email, password }).then(j<Me>),
-  signup: (email: string, password: string) => post('/api/auth/signup', { email, password }).then(j<Me>),
+  signup: (email: string, password: string, ref = '') => post('/api/auth/signup', { email, password, ref }).then(j<Me>),
+  notifications: () => fetch('/api/notifications').then(j<Notifications>),
+  markCommentsRead: (id: string) => post(`/api/projects/${id}/comments/read`, {}).then(j<{ ok: boolean; marked: number }>),
   logout: () => post('/api/auth/logout', {}),
   authProviders: () => fetch('/api/auth/providers').then(j<Providers>).catch(() => ({ google: false, facebook: false } as Providers)),
-  oauthStart: (p: 'google' | 'facebook', mode: 'login' | 'signup', next?: string) => `/api/auth/${p}/start?mode=${mode}${next ? `&next=${encodeURIComponent(next)}` : ''}`,
+  oauthStart: (p: 'google' | 'facebook', mode: 'login' | 'signup', next?: string, ref = '') => `/api/auth/${p}/start?mode=${mode}${next ? `&next=${encodeURIComponent(next)}` : ''}${ref ? `&ref=${encodeURIComponent(ref)}` : ''}`,
   analyze: async (id: string, body: { brief?: string; drive_url?: string }) => {
     const r = await post(`/api/projects/${id}/analyze`, body)
     if (r.status === 402) { const d = await r.json(); throw Object.assign(new Error(d.detail), { needed: d.needed as number, balance: d.balance as number }) }

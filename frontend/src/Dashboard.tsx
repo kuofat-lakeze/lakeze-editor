@@ -212,7 +212,7 @@ function Users({ users, stages, onOpen }: { users: AdminUser[]; stages?: Record<
                   <div className="u-cell">
                     <span className={`avatar ${u.provider || 'email'}`}>{PROVIDER[u.provider] ?? '@'}</span>
                     <span className="u-main">
-                      <span className="u-email">{u.email}{u.is_admin && <span className="tag">admin</span>}{u.subscription && <span className="tag sub">{u.subscription === 'sub15' ? '超級玩家' : '專業旅人'}</span>}{u.voice && <span className="tag">自己的聲音</span>}</span>
+                      <span className="u-email">{u.email}{u.is_admin && <span className="tag">admin</span>}{u.subscription && <span className="tag sub">{u.subscription === 'sub15' ? '超級玩家' : '專業旅人'}</span>}{u.voice && <span className="tag">自己的聲音</span>}{u.referred_by && <span className="tag ref" title={`經 ${u.referred_by} 的分享頁註冊`}>朋友推薦</span>}</span>
                       <span className="muted small">{u.name ? `${u.name} · ` : ''}{u.tags.map(t => <em key={t} className="utag">{t}</em>)}{u.note && <span className="u-note">{u.note}</span>}</span>
                     </span>
                   </div>
@@ -260,7 +260,7 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
             <div className="dr-head">
               <div>
                 <div className="dr-email">{u.email}{u.is_admin && <span className="tag">admin</span>}</div>
-                <div className="muted small">{u.name ? `${u.name} · ` : ''}{u.provider ? `${u.provider === 'google' ? 'Google' : 'Facebook'} 登入` : 'Email 登入'} · 註冊 {day(u.created_at)} · 最近活動 {ago(u.last_active)}</div>
+                <div className="muted small">{u.name ? `${u.name} · ` : ''}{u.provider ? `${u.provider === 'google' ? 'Google' : 'Facebook'} 登入` : 'Email 登入'} · 註冊 {day(u.created_at)} · 最近活動 {ago(u.last_active)}{u.referred_by ? ` · 經 ${u.referred_by} 推薦` : ''}{u.referred?.length ? ` · 推薦了 ${u.referred.length} 人` : ''}</div>
               </div>
               <span className={`stage ${STAGE_CLS[u.stage]}`}>{stages[u.stage]}</span>
               <a className="dr-close" onClick={onClose}>✕</a>

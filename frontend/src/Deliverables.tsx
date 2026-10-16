@@ -22,7 +22,7 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
   const setFinal = async (v: number | null) => { await api.setFinal(projectId, v); await load(); onChanged?.() }
   const del = async (v: number) => {
     const mb = sizeOf(versions.find(x => x.version === v)!)
-    if (!confirm(`刪除 v${v}（影片與封面，約 ${fmtBytes(mb)}）？刪了就拿不回來，指向這一版的客戶連結也會失效。`)) return
+    if (!confirm(`刪除 v${v}（影片與封面，約 ${fmtBytes(mb)}）？刪了就拿不回來，指向這一版的朋友連結也會失效。`)) return
     setBusy(v)
     try { await api.deleteVersion(projectId, v); await load(); onChanged?.() } catch (e) { alert((e as Error).message) } finally { setBusy(null) }
   }
@@ -58,7 +58,7 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
                 {isFinal
                   ? <button className="btn small" onClick={() => setFinal(null)}>取消最終版</button>
                   : <button className="btn small" onClick={() => setFinal(v.version)}>標成最終版</button>}
-                <button className="btn primary small" onClick={() => setSharing(v.version)}>分享給客戶</button>
+                <button className="btn primary small" onClick={() => setSharing(v.version)}>分享給朋友</button>
                 <button className="btn small ghost danger" disabled={isFinal || busy === v.version} title={isFinal ? '先取消最終版才能刪' : '刪除這一版，釋放空間'}
                   onClick={() => del(v.version)}>{busy === v.version ? '刪除中…' : '刪除'}</button>
               </div>
@@ -94,7 +94,7 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
 
       {live.length > 0 && (
         <section className="card links">
-          <b>客戶連結</b>
+          <b>分享連結</b>
           {live.map(s => (
             <div key={s.id} className="link-row">
               <div className="link-main">
@@ -106,7 +106,7 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
               </div>
               <button className="btn small" onClick={() => copy(s)}>{copied === s.id ? '已複製' : '複製'}</button>
               <a className="btn small" href={s.url} target="_blank" rel="noreferrer">開啟</a>
-              <button className="btn small ghost" onClick={async () => { if (confirm('停用這條連結？客戶將無法再打開。')) { await api.revokeShare(projectId, s.id); load() } }}>停用</button>
+              <button className="btn small ghost" onClick={async () => { if (confirm('停用這條連結？朋友將無法再打開。')) { await api.revokeShare(projectId, s.id); load() } }}>停用</button>
             </div>
           ))}
         </section>
@@ -137,10 +137,10 @@ function ShareDialog({ projectId, version, hasFinal, onClose, onCreated }:
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal card share-dlg" onClick={e => e.stopPropagation()}>
-        <div className="modal-head"><h3>分享給客戶</h3><a onClick={onClose}>✕</a></div>
+        <div className="modal-head"><h3>分享給朋友</h3><a onClick={onClose}>✕</a></div>
         {!made ? (
           <>
-            <p className="muted small">客戶不用登入，用連結就能在手機上看影片、下載封面。頁面會帶 Lakeze 人客多 標示。</p>
+            <p className="muted small">朋友不用登入，用連結就能在手機上看影片、下載封面、留反饋給你。頁面最後會邀請他也來免費試做一支。</p>
             <label className="opt"><input type="checkbox" checked={download} onChange={e => setDownload(e.target.checked)} /> 允許下載</label>
             {hasFinal && <label className="opt"><input type="checkbox" checked={follow} onChange={e => setFollow(e.target.checked)} /> 跟著最終版（之後改最終版，同一條連結會自動更新）</label>}
             <label className="opt">連結有效期
@@ -148,7 +148,7 @@ function ShareDialog({ projectId, version, hasFinal, onClose, onCreated }:
                 <option value="0">永久</option><option value="7">7 天</option><option value="30">30 天</option><option value="90">90 天</option>
               </select>
             </label>
-            <textarea rows={2} placeholder="給客戶的一句話（選填），例如：這是第一版，請看價格和旁白語氣。" value={note} onChange={e => setNote(e.target.value)} />
+            <textarea rows={2} placeholder="給朋友的一句話（選填），例如：這是第一版，幫我看價格和旁白語氣。" value={note} onChange={e => setNote(e.target.value)} />
             <button className="btn primary block" disabled={busy} onClick={create}>產生連結</button>
           </>
         ) : (
