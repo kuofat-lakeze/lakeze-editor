@@ -39,6 +39,25 @@ def video_info(path: Path) -> dict:
             "rotation": rot, "duration": float(j["format"]["duration"])}
 
 
+def image_size(path: Path) -> tuple[int, int]:
+    out = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+               "-of", "csv=p=0", str(path)])
+    w, h = out.strip().split(",")[:2]
+    return int(w), int(h)
+
+
+def fit_image(path: Path, max_px: int = 7800) -> Path:
+    """Shrink an image in place so neither side exceeds max_px (the Claude API rejects images > 8000 px)."""
+    w, h = image_size(path)
+    if max(w, h) <= max_px:
+        return path
+    tmp = path.with_name(path.stem + "_fit" + path.suffix)
+    ffmpeg("-i", str(path), "-vf", f"scale='min(iw,{max_px})':'min(ih,{max_px})':force_original_aspect_ratio=decrease",
+           "-frames:v", "1", str(tmp))
+    tmp.replace(path)
+    return path
+
+
 def silences(path: Path, noise_db: float = -40, min_dur: float = 0.12) -> list[tuple[float, float]]:
     """Return (start, end) silence spans detected by silencedetect."""
     p = subprocess.run(["ffmpeg", "-i", str(path), "-af", f"silencedetect=n={noise_db}dB:d={min_dur}",

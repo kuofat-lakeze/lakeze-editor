@@ -27,6 +27,7 @@ def _text(s: str) -> dict:
 
 
 def _image(p: Path) -> dict:
+    ff.fit_image(p)  # the API rejects images wider/taller than 8000 px; a bad image would poison the whole history
     data = base64.standard_b64encode(p.read_bytes()).decode()
     media = "image/png" if p.suffix.lower() == ".png" else "image/jpeg"
     return {"type": "image", "source": {"type": "base64", "media_type": media, "data": data}}

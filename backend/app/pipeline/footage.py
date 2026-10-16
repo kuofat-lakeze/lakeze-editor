@@ -118,6 +118,8 @@ def contact_sheets(root: Path, per_sheet: int = 16) -> list[Path]:
 def sample_frames(root: Path, samples: list[dict], dest: Path, height: int = 400) -> Path:
     """Stitch frames [{clip, t}] side by side, each labelled, for close inspection."""
     idx = load_index(root)
+    if len(samples) > 6:  # keep the strip under the API's 8000 px limit (12 landscape frames @400px ≈ 8500 px)
+        height = 240
     ins, fc = [], ""
     for i, s in enumerate(samples):
         p = root / "raw" / idx[int(s["clip"])]
