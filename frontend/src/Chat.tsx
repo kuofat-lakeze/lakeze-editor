@@ -236,7 +236,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
         {running && <span className="working-chip"><span className="spinner" />工作中 {turnStart.current ? fmtDur(now - turnStart.current) : ''}</span>}
         {running && <button className="btn small" onClick={() => api.cancel(projectId)}>停止</button>}
       </header>
-      {tab === 'files' && <Deliverables projectId={projectId} onChanged={() => { reload(); onProjectsChanged?.() }} />}
+      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onChanged={() => { reload(); onProjectsChanged?.() }} />}
       {tab === 'chat' && <>
       <div className="thread" ref={threadRef} onScroll={onScroll}>
         {IN_APP && (

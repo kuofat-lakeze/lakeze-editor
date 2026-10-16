@@ -149,6 +149,44 @@ async def init_db() -> None:
                 pass  # column exists
 
 
+EXPORT_NAMES = {"母帶": "master", "上傳用 1080p": "upload", "預覽 720p": "preview"}
+
+
+async def backfill_versions() -> int:
+    """Assets created before versioning have version NULL. Replay each project's asset history: every
+    母帶 (the first file of an export) starts a new version; covers belong to the current version."""
+    n = 0
+    async with Session() as s:
+        rows = (await s.execute(select(Asset).order_by(Asset.project_id, Asset.created_at, Asset.id))).scalars().all()
+        by_proj: dict[str, list[Asset]] = {}
+        for a in rows:
+            by_proj.setdefault(a.project_id, []).append(a)
+        for pid, assets in by_proj.items():
+            if not any(a.version is None and (a.name in EXPORT_NAMES or a.name.startswith("封面")) for a in assets):
+                continue
+            v = 0
+            for a in assets:
+                meta = json.loads(a.meta or "{}")
+                if a.name in EXPORT_NAMES:
+                    if a.name == "母帶":
+                        v += 1
+                    if a.version is None:
+                        a.version = max(v, 1)
+                        meta.update(role=EXPORT_NAMES[a.name], deliverable=True)
+                        a.meta = json.dumps(meta, ensure_ascii=False); n += 1
+                    else:
+                        v = max(v, a.version)
+                elif a.name.startswith("封面") and a.version is None:
+                    a.version = max(v, 1)
+                    meta.update(role="cover", cover=True)
+                    a.meta = json.dumps(meta, ensure_ascii=False); n += 1
+            p = await s.get(Project, pid)
+            if p and (p.exports or 0) < v:
+                p.exports = v
+        await s.commit()
+    return n
+
+
 async def balance(user_id: str) -> int:
     async with Session() as s:
         return int((await s.execute(select(func.coalesce(func.sum(CreditTx.delta), 0)).where(CreditTx.user_id == user_id))).scalar() or 0)

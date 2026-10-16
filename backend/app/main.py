@@ -20,7 +20,7 @@ from . import config, pricing
 from .admin import router as admin_router
 from .agent.runner import TurnRunner
 from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
-from .db import Asset, CreditTx, Message, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict, balance, init_db
+from .db import Asset, CreditTx, Message, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict, backfill_versions, balance, init_db
 from .pipeline import eleven
 from .pipeline.fonts import ensure_fonts
 from .storage import project_dir, safe_join
@@ -59,6 +59,12 @@ async def _cleanup_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    try:
+        n = await backfill_versions()
+        if n:
+            log.info("backfilled version on %d legacy deliverable assets", n)
+    except Exception:
+        log.exception("deliverable backfill failed")
     try:
         await asyncio.to_thread(ensure_fonts)
     except Exception as e:  # fonts can be fetched later; don't block startup
