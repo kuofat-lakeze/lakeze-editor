@@ -187,17 +187,13 @@ textarea { resize: none; flex: 1; min-height: 44px; max-height: 160px; }
   .hiw-pills a.on { color: #fff; background: linear-gradient(135deg, var(--brand), var(--brand-2)); border-color: transparent; transform: scale(1.06); box-shadow: 0 6px 16px rgba(236,90,30,.3); } .hiw-pills a.on i { background: rgba(255,255,255,.25); color: #fff; }
   .hiw-pills a.done { color: var(--text); } .hiw-pills a.done i { background: var(--teal); color: #fff; }
   /* same 300×620 mockup as desktop, scaled down as a whole; it remounts per step and bumps in */
-  .phone { transform: scale(.6); transform-origin: top center; margin-bottom: -248px; animation: phonein .55s cubic-bezier(.2,.7,.2,1); }
   .phone[data-step="1"], .phone[data-step="2"] { transform: scale(.6); }
   @keyframes phonein { from { transform: scale(.54) translateY(18px); opacity: .3; } to { transform: scale(.6); opacity: 1; } }
-  .ps.on { animation: psin .6s cubic-bezier(.2,.7,.2,1) both; } @keyframes psin { from { opacity: 0; transform: translateX(90px); } to { opacity: 1; transform: none; } }
-  .hiw-caption { display: block; width: 100%; max-width: 420px; padding: 0 12px; text-align: center; animation: capin .45s cubic-bezier(.2,.7,.2,1); }
   .hiw-caption h3 { margin: 0 0 4px; font-size: 22px; display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }
   .hiw-caption p { margin: 0; color: var(--text); font-size: 15px; line-height: 1.6; min-height: 1.6em; }
   .hiw-hint { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--brand); display: inline-flex; align-items: center; gap: 4px; } .hiw-hint i { font-style: normal; display: inline-block; animation: nudge 1.1s ease-in-out infinite; }
   .hiw-hint.done { color: #1F8A8E; } @keyframes nudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(5px); } }
   @keyframes capin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  .hiw-steps { padding: 0 0 10vh; gap: 0; } .hiw-step { visibility: hidden; height: 50vh; grid-template-columns: 44px 1fr; } .hiw-step h3 { font-size: 22px; }
   .hiw-head { margin-bottom: 10px; } .hiw-head p { display: none; }
   .ld-long { display: none; } .ld-short { display: inline; }
   .ld-save-num { font-size: 28px; } .ld-cmp-head b { font-size: 18px; } .ld-foot-cta b { font-size: 20px; }
@@ -1198,3 +1194,38 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .cd-col i:last-child { border-radius: 2px 2px 0 0; }
 .cost-mini { display: flex; height: 8px; width: 120px; border-radius: 4px; overflow: hidden; background: var(--panel2); }
 @media (max-width: 760px) { .cost-drawer .dr-kpis { grid-template-columns: 1fr 1fr; } .cost-drawer .dr-head { flex-wrap: wrap; } .cost-mini { width: 60px; } }
+
+/* ---- no sideways wobble ---- */
+.landing { overflow-x: hidden; overscroll-behavior-x: none; } .ld-hero { overflow-x: clip; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.hiw-captions, .hiw-prog { display: none; }
+@media (min-width: 761px) { .hiw-captions { display: none; } }
+/* ---- phones: three screens on a track that follows the scroll ---- */
+@media (max-width: 760px) {
+  .hiw-pills { position: relative; padding-bottom: 8px; }
+  .hiw-prog { display: block; position: absolute; left: 18px; right: 18px; bottom: 0; height: 3px; border-radius: 2px; background: rgba(0,0,0,.08); overflow: hidden; }
+  .hiw-prog i { display: block; height: 100%; width: calc(var(--pe, 0) / 2 * 100%); background: linear-gradient(90deg, var(--brand), var(--brand-2)); border-radius: 2px; }
+  .phone { transform: scale(.6); transform-origin: top center; margin-bottom: -248px; animation: none; }
+  .phone[data-step="1"], .phone[data-step="2"] { transform: scale(.6); }
+  .phone .ps { opacity: 1; transform: translateX(calc((var(--i) - var(--pe, 0)) * 100%)); transition: none; will-change: transform; pointer-events: none; }
+  .hiw-captions { display: block; width: 100%; overflow: hidden; text-align: center; }
+  .hiw-cap-track { display: flex; transform: translateX(calc(var(--pe, 0) * -100%)); will-change: transform; }
+  .hiw-caption { display: block; flex: 0 0 100%; padding: 0 16px; opacity: .25; transition: opacity .35s; animation: none; }
+  .hiw-caption.on { opacity: 1; }
+  .hiw-steps { padding: 0 0 6vh; gap: 0; } .hiw-step { visibility: hidden; height: 62vh; grid-template-columns: 44px 1fr; } .hiw-step h3 { font-size: 22px; }
+  .hiw-sticky, .hiw-sticky[data-step="1"], .hiw-sticky[data-step="2"] { transition: background .5s; }
+}
+@media (prefers-reduced-motion: reduce) { .phone .ps, .hiw-cap-track { transition: none; } }
+/* phones: the slide itself is the transition, so every screen is fully drawn while it slides in */
+@media (max-width: 760px) {
+  .hiw .phone .ps:is(.on, :not(.on)) *, .hiw .phone .ps:is(.on, :not(.on)) *::before, .hiw .phone .ps:is(.on, :not(.on)) *::after { animation: none !important; opacity: 1 !important; }
+  .hiw .phone .ps:is(.on, :not(.on)) .ps-wave b { animation: wave 1s ease-in-out infinite !important; }
+  .hiw .phone .ps:is(.on, :not(.on)) .ps-spin { animation: spin .8s linear infinite !important; }
+  .hiw .phone .ps:is(.on, :not(.on)) .caret { animation: blink 1s steps(2) infinite !important; }
+  .hiw .phone .ps:is(.on, :not(.on)) .ps-tools li.run::before { animation: pulse 1s infinite !important; }
+  .hiw .phone .ps:is(.on, :not(.on)) .ps-video.rich .ps-scene { animation: kenburns 6s ease-in-out infinite alternate !important; }
+  .hiw .phone .ps:is(.on, :not(.on)) .ps-pick span.sel { animation: selglow 1.8s ease-in-out infinite !important; }
+  .hiw .phone .ps:is(.on, :not(.on)) .ps-actions .pri.glow { animation: btnglow 1.6s ease-in-out infinite !important; }
+  .hiw .phone .ps-confetti { display: none !important; }
+  .phone .ps .ps-say span { max-width: none; white-space: normal; }
+}

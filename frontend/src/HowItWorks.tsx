@@ -22,19 +22,56 @@ function useIsMobile() {
   return m
 }
 
+const smooth = (t: number) => t * t * (3 - 2 * t)
+/* scroll fraction inside one step → slide amount: hold the screen, glide across the middle, hold again */
+const ease = (p: number) => { const i = Math.floor(p), f = p - i; const t = Math.min(1, Math.max(0, (f - 0.3) / 0.4)); return Math.min(2, i + smooth(t)) }
+
 export function HowItWorks() {
   const [active, setActive] = useState(0)
   const mobile = useIsMobile()
   const refs = useRef<(HTMLLIElement | null)[]>([])
+  const listRef = useRef<HTMLOListElement>(null)
+  const stickyRef = useRef<HTMLDivElement>(null)
+  // Phones: the screens and captions sit side by side and slide with the scroll position itself
+  // (no jumps, no timers), so scrolling feels like swiping through three cards. Desktop: the step
+  // nearest the middle of the viewport lights up.
   useEffect(() => {
-    const io = new IntersectionObserver(es => {
-      for (const e of es) if (e.isIntersecting) setActive(Number((e.target as HTMLElement).dataset.i))
-    }, { rootMargin: '-45% 0px -45% 0px', threshold: 0 })
-    refs.current.forEach(el => el && io.observe(el))
-    return () => io.disconnect()
-  }, [])
+    const scroller = (listRef.current?.closest('.landing') as HTMLElement | null) ?? window
+    let raf = 0, last = -1
+    const update = () => {
+      raf = 0
+      const list = listRef.current, sticky = stickyRef.current
+      if (!list || !sticky) return
+      const vh = window.innerHeight
+      let e: number
+      if (mobile) {
+        const r = list.getBoundingClientRect()
+        const H = r.height / STEPS.length
+        const p = Math.min(2, Math.max(0, (vh * 0.3 - r.top) / H))
+        e = ease(p)
+      } else {
+        const mids = refs.current.map(el => { const b = el!.getBoundingClientRect(); return Math.abs(b.top + b.height / 2 - vh / 2) })
+        e = mids.indexOf(Math.min(...mids))
+      }
+      sticky.style.setProperty('--pe', e.toFixed(4))
+      const a = Math.round(e)
+      if (a !== last) { last = a; setActive(a) }
+    }
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update) }
+    update()
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => { scroller.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); cancelAnimationFrame(raf) }
+  }, [mobile])
+  const go = (i: number) => {
+    const list = listRef.current; const scroller = list?.closest('.landing') as HTMLElement | null
+    if (!list || !scroller) return
+    if (!mobile) { refs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
+    const H = list.getBoundingClientRect().height / STEPS.length
+    const target = scroller.scrollTop + list.getBoundingClientRect().top - window.innerHeight * 0.3 + i * H + H * 0.05
+    scroller.scrollTo({ top: target, behavior: 'smooth' })
+  }
   const cur = STEPS[active]
-  const go = (i: number) => refs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   return (
     <section className="hiw" id="how">
       <div className="hiw-head reveal">
@@ -43,18 +80,25 @@ export function HowItWorks() {
         <p className="muted">不用學剪接軟體，像傳訊息給一位剪輯師一樣。</p>
       </div>
       <div className="hiw-grid">
-        <div className="hiw-sticky" data-step={active}>
+        <div className="hiw-sticky" data-step={active} ref={stickyRef}>
           <div className="hiw-pills" aria-hidden="true">
             {STEPS.map((s, i) => <a key={s.k} className={active === i ? 'on' : active > i ? 'done' : ''} onClick={() => go(i)}><i>{active > i ? '✓' : i + 1}</i>{s.t}</a>)}
+            <span className="hiw-prog"><i /></span>
           </div>
-          <Phone key={mobile ? active : 'phone'} step={active} />
-          <div className="hiw-caption" key={`c${active}`}>
-            <h3>{cur.t}<span className="hiw-tag">{cur.tag}</span></h3>
-            <p>{mobile ? cur.m : cur.d}</p>
+          <Phone step={active} />
+          <div className="hiw-captions">
+            <div className="hiw-cap-track">
+              {STEPS.map((s, i) => (
+                <div key={s.k} className={`hiw-caption ${i === active ? 'on' : ''}`}>
+                  <h3>{s.t}<span className="hiw-tag">{s.tag}</span></h3>
+                  <p>{mobile ? s.m : s.d}</p>
+                </div>))}
+            </div>
             {active < 2 ? <div className="hiw-hint" onClick={() => go(active + 1)}>往下滑，看第 {active + 2} 步 <i>↓</i></div> : <div className="hiw-hint done">就這樣，影片好了 ✓</div>}
           </div>
+          {!mobile && <span className="sr-only">{cur.t}</span>}
         </div>
-        <ol className="hiw-steps">
+        <ol className="hiw-steps" ref={listRef}>
           {STEPS.map((s, i) => (
             <li key={s.k} ref={el => { refs.current[i] = el }} data-i={i} className={`hiw-step ${active === i ? 'on' : ''}`}>
               <div className="hiw-no">{s.n}</div>
@@ -129,7 +173,7 @@ function Phone({ step }: { step: number }) {
         <div className="ps-bar"><MiaoMark size={18} radius={.28} /><span>旅剪</span><i /></div>
 
         {/* screen 1: upload queue with videos and photos mixed, exactly like the app */}
-        <div className={`ps ps-upload ${step === 0 ? 'on' : ''}`}>
+        <div className={`ps ps-upload ${step === 0 ? 'on' : ''}`} style={{ ['--i' as string]: 0 }}>
           <div className="ps-title">1 · 給素材</div>
           <div className="ps-dz">
             <span className="ps-dz-ic an-bounce"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M7 5v14M17 5v14M3 10h4M3 14h4M17 10h4M17 14h4" /></svg></span>
@@ -151,7 +195,7 @@ function Phone({ step }: { step: number }) {
         </div>
 
         {/* screen 2: the conversation while the editor works */}
-        <div className={`ps ps-chat ${step === 1 ? 'on' : ''}`}>
+        <div className={`ps ps-chat ${step === 1 ? 'on' : ''}`} style={{ ['--i' as string]: 1 }}>
           <div className="ps-pick"><span className="sel">旅遊短影音</span><span>質感形象</span><span>促銷活動</span><span className="sel v">Vivian 女聲</span></div>
           <div className="ps-msg user">宜蘭海邊包棟民宿，25 米戲水池、龜山島海景、KTV、寵物友善。平日每人 NT$1,500。</div>
           <div className="ps-msg ai">
@@ -169,7 +213,7 @@ function Phone({ step }: { step: number }) {
         </div>
 
         {/* screen 3: video + covers + narration, as in the 成品 tab */}
-        <div className={`ps ps-done ${step === 2 ? 'on' : ''}`}>
+        <div className={`ps ps-done ${step === 2 ? 'on' : ''}`} style={{ ['--i' as string]: 2 }}>
           <div className="ps-vhead"><b>v1</b><span className="ps-pill">最終版</span><small>36 秒 · 影片＋2 張封面</small></div>
           <div className="ps-result">
             <div className="ps-video rich">
