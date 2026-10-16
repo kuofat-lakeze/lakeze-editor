@@ -1416,3 +1416,25 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .pl-rate { display: flex; align-items: baseline; gap: 8px; font-size: 14px; color: var(--text); margin-top: 2px; }
 .pl-rate b { font-size: 18px; font-weight: 800; }
 .pl-rate span { font-size: 12px; font-weight: 700; color: #1E7A4C; }
+/* ---- 明細：每個專案加總 ---- */
+.lsum { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.lsum-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.lsum-t { width: 100%; border-collapse: collapse; font-size: 14px; }
+.lsum-t th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.lsum-t td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
+.lsum-t .r { text-align: right; white-space: nowrap; }
+.lsum-t tbody tr { cursor: pointer; } .lsum-t tbody tr:hover { background: var(--panel2); } .lsum-t tbody tr.on { background: var(--brand-soft); }
+.lsum-t td .pill { margin-left: 6px; }
+.lsum-t tfoot td { font-weight: 700; border-bottom: 0; border-top: 2px solid var(--line); }
+.lsum-foot b { color: var(--text); }
+/* ---- 試算比較：單次 vs 專業旅人 vs 超級玩家 ---- */
+.cmp2 { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.cmp2-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.cmp2-row { display: grid; grid-template-columns: 1fr auto 76px; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.cmp2-row.best { border: 1.5px solid #46B9BD; background: #EFF9F8; }
+.cmp2-name { display: flex; flex-direction: column; gap: 3px; min-width: 0; } .cmp2-name small, .cmp2-num small { color: var(--muted); font-size: 12px; }
+.cmp2-tag { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 800; color: #fff; background: #1F8A8E; padding: 2px 8px; border-radius: 999px; vertical-align: 2px; }
+.cmp2-num { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; } .cmp2-num b { font-size: 17px; }
+.cmp2-save { text-align: right; font-size: 13px; font-weight: 700; color: var(--muted); } .cmp2-save.pos { color: #1E7A4C; }
+@media (max-width: 520px) { .cmp2-row { grid-template-columns: 1fr auto; } .cmp2-save { grid-column: 2; } }
+.cmp2-name > b { display: inline; } .cmp2-tag { align-self: flex-start; margin-left: 0; }

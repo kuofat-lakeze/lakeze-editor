@@ -575,7 +575,7 @@ def _item(item: str, user: User) -> dict:
         pk = pricing.PACKS[item]
         member = user.subscription if user.subscription in pk.get("member_bonus", {}) else ""
         extra = pk["member_bonus"][member] if member else 0
-        return {"kind": "pack", "label": pk["label"] + (f" + 會員送 {extra}" if extra else ""), "points": pricing.pack_points(pk, member),
+        return {"kind": "pack", "label": pk["label"] + (f" + {pricing.SUBSCRIPTIONS[member]['label']}價多 {extra}" if extra else ""), "points": pricing.pack_points(pk, member),
                 "amount_twd": pk["twd"], "list_twd": pk["twd"], "member": member}
     if item in pricing.SUBSCRIPTIONS:
         sb = pricing.SUBSCRIPTIONS[item]

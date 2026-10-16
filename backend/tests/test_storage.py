@@ -326,7 +326,7 @@ def test_members_get_extra_points_not_a_lower_price():
     free, pro, big = (M._item("p1000", NS(subscription=x)) for x in ("", "sub5", "sub15"))
     assert free["amount_twd"] == pro["amount_twd"] == big["amount_twd"] == pk["twd"] == 3500
     assert (free["points"], pro["points"], big["points"]) == (1100, round(3500 / 3.1), round(3500 / 2.9)) == (1100, 1129, 1207)
-    assert pro["label"] == "1,000 點 + 送 100 + 會員送 29"
+    assert pro["label"] == "1,000 點 + 送 100 + 專業旅人價多 29"
     for k, v in P.PACKS.items():   # any pack, any size: the member's price per point is the plan's rate
         for plan in ("sub5", "sub15"):
             got = P.pack_points(v, plan)
