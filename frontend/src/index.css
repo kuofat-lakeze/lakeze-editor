@@ -1330,3 +1330,25 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .qrb { flex-direction: row !important; white-space: nowrap; line-height: 1; }
 .qrb > em, .qrb > span { display: inline-block !important; position: static !important; margin: 0 !important; }
 .qrb svg { flex: none; }
+
+/* ---- 後台：定價（1 點值多少錢） ---- */
+.pp-chip { font-size: 12.5px; font-weight: 700; color: var(--brand); background: var(--brand-soft); padding: 4px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.pp { display: flex; flex-direction: column; gap: 14px; max-width: 920px; }
+.pp-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.pp-head b { font-size: 17px; } .pp-head .muted { margin-top: 4px; }
+.pp-now { font-size: 13px; color: var(--muted); } .pp-now b { color: var(--text); font-size: 16px; }
+.pp-input { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; font-weight: 700; }
+.pp-input input { width: 110px; font-size: 22px; font-weight: 800; padding: 8px 12px; border-radius: 12px; border: 1.5px solid var(--line); text-align: right; }
+.pp-input input:focus { outline: none; border-color: var(--brand); }
+.pp-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.pp-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+.pp-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.pp-table td { padding: 10px 8px; border-bottom: 1px solid var(--line); }
+.pp-table .r { text-align: right; white-space: nowrap; }
+.pp-table s { margin-right: 4px; font-size: 12px; }
+.pp-m { padding: 2px 8px; border-radius: 999px; }
+.pp-m.good { background: #E4F5EC; color: #1E7A4C; } .pp-m.warn { background: #FFF4E5; color: #8A5300; } .pp-m.bad { background: #FDE8E8; color: var(--err); }
+.pp-packs { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.pp-pack { display: inline-flex; gap: 6px; align-items: baseline; background: var(--panel2); border-radius: 10px; padding: 5px 10px; font-size: 13px; }
+.pp-note { margin-top: 10px; line-height: 1.7; }
+.pp-actions { display: flex; justify-content: flex-end; align-items: center; gap: 14px; }

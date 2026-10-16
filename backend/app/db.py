@@ -201,10 +201,35 @@ class AppFlag(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
-# 2026-10: 1 點 went from NT$7 to NT$3.5 with every NT$ price unchanged, so every point count doubled.
-# The whole ledger is doubled once (balances, charges, waived points, order points), which keeps each
-# user's balance worth the same NT$ and keeps subscription-period accounting consistent.
-POINTS_RESCALE = "points_x2_nt3_5"
+class AppSetting(Base):
+    """Settings an admin changes at runtime (e.g. point_twd: the NT$ price of one point)."""
+    __tablename__ = "app_settings"
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+# History: for a few minutes on 2026-10-16 every point count was doubled (flag points_x2_nt3_5) and the
+# ledger with it. The schedule went back to 100 點 a video (only the NT$ price of a point changed), so a
+# ledger that was doubled is halved once. Every doubled entry is even, so the halving is exact.
+POINTS_DOUBLED = "points_x2_nt3_5"
+POINTS_UNDOUBLED = "points_x2_reverted"
+
+
+async def get_setting(key: str) -> str | None:
+    async with Session() as s:
+        row = await s.get(AppSetting, key)
+        return row.value if row else None
+
+
+async def set_setting(key: str, value: str) -> None:
+    async with Session() as s:
+        row = await s.get(AppSetting, key)
+        if row:
+            row.value = value; row.updated_at = now()
+        else:
+            s.add(AppSetting(key=key, value=value))
+        await s.commit()
 
 
 async def init_db() -> None:
@@ -216,12 +241,12 @@ async def init_db() -> None:
                 await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
             except Exception:
                 pass  # column exists
-    async with engine.begin() as conn:   # one transaction: the doubling and its flag land together or not at all
-        done = (await conn.execute(text("SELECT 1 FROM app_flags WHERE key = :k"), {"k": POINTS_RESCALE})).first()
-        if not done:
-            await conn.execute(text("UPDATE credit_tx SET delta = delta * 2, points_waived = points_waived * 2"))
-            await conn.execute(text("UPDATE orders SET points = points * 2"))
-            await conn.execute(text("INSERT INTO app_flags (key, created_at) VALUES (:k, :t)"), {"k": POINTS_RESCALE, "t": now().isoformat()})
+    async with engine.begin() as conn:   # one transaction: the halving and its flag land together or not at all
+        flags = {r[0] for r in (await conn.execute(text("SELECT key FROM app_flags"))).all()}
+        if POINTS_DOUBLED in flags and POINTS_UNDOUBLED not in flags:
+            await conn.execute(text("UPDATE credit_tx SET delta = delta / 2, points_waived = points_waived / 2"))
+            await conn.execute(text("UPDATE orders SET points = points / 2"))
+            await conn.execute(text("INSERT INTO app_flags (key, created_at) VALUES (:k, :t)"), {"k": POINTS_UNDOUBLED, "t": now().isoformat()})
 
 
 EXPORT_NAMES = {"母帶": "master", "上傳用 1080p": "upload", "預覽 720p": "preview"}

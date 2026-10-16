@@ -1,7 +1,7 @@
 /* Posting a share link to Facebook / LINE. Facebook no longer accepts pre-filled text, so the promo
    copy is put on the clipboard (and shown for pasting) while the link preview itself carries the
    cover and the offer through Open Graph tags served by /api/og/s/<token>. LINE accepts text. */
-export const promoText = (name: string, url: string, points = 220) =>
+export const promoText = (name: string, url: string, points = 110) =>
   `${name} 的短影音出爐 🎬 用「旅剪」15 分鐘自動剪好，旁白、字幕、封面一次搞定。\n你也想試試？註冊送 ${points} 點，第一支免費 👉 ${url}`
 
 export function shareToFacebook(url: string, text: string) {

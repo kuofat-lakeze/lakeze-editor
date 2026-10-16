@@ -25,7 +25,7 @@ from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
 from .oauth import router as oauth_router
 from .pipeline import footage
 from .db import (GB, Asset, CreditTx, Message, Order, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict,
-                 backfill_sizes, backfill_versions, balance, deliverable_expiry, has_paid, init_db, storage_quota_bytes, storage_state, storage_used)
+                 backfill_sizes, backfill_versions, balance, deliverable_expiry, get_setting, has_paid, init_db, storage_quota_bytes, storage_state, storage_used)
 from .pipeline import eleven, ff
 from .pipeline.fonts import ensure_fonts
 from .storage import project_dir, safe_join
@@ -142,6 +142,12 @@ async def _storage_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    try:   # the NT$ price of a point is an admin setting (dashboard → 定價)
+        v = await get_setting("point_twd")
+        if v:
+            pricing.apply_point_price(float(v))
+    except Exception:
+        log.exception("loading point price failed; using the default")
     try:
         n = await backfill_versions()
         if n:

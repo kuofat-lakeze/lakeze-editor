@@ -54,6 +54,9 @@ export type Subscription = { id: string; label: string; who: string; desc: strin
   twd: number; payg_twd: number; save_twd: number; save_pct: number; per_video_twd: number; point_twd: number; member_discount_pct: number; checkout_url?: string | null }
 export type MySubscription = { id: string; label: string; points: number; videos: number; storage_gb: number; features: string[]; period_start: string | null; renews_at: string | null }
 export type Tier = { id: string; label: string; who: string; features?: string[]; voice_seconds?: number }
+export type PriceRow = { id: string; label: string; points: number; twd: number; cost_twd: number; per_video_twd: number; margin_pct: number | null }
+export type PricePreview = { point_twd: number; current_point_twd: number; default_point_twd: number; signup_points: number; signup_cost_twd: number
+  rows: PriceRow[]; current: PriceRow[]; packs: { id: string; points: number; twd: number }[] }
 export type Pricing = { point_twd: number; menu: { item: string; points: number }[]; free_revision_turns: number; packs: Pack[]; provider_configured: boolean; note: string
   first_video_points: number; revision_points: number; first_video_twd: number; revision_twd: number; subscriptions: Subscription[]; storage_plans: StoragePlan[]
   tiers: { free: Tier; payg: Tier }; free_storage_gb: number; free_retention_days: number; member_point_twd: number; member_discount_pct: number; trial_voice_seconds: number; signup_points: number }
@@ -155,6 +158,8 @@ export const api = {
     approveOrder: (id: string) => post(`/api/admin/orders/${id}/approve`, {}).then(j<{ order: Order }>),
     rejectOrder: (id: string) => post(`/api/admin/orders/${id}/reject`, {}).then(j<{ order: Order }>),
     subscription: (id: string, plan: string, paid_twd = 0) => post(`/api/admin/users/${id}/subscription`, { plan, paid_twd }).then(j<{ expired: number; granted?: number }>),
+    pricing: (pointTwd?: number) => fetch(`/api/admin/pricing${pointTwd != null ? `?point_twd=${pointTwd}` : ''}`).then(j<PricePreview>),
+    setPointPrice: (point_twd: number) => fetch('/api/admin/pricing', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ point_twd }) }).then(j<PricePreview>),
     messages: (pid: string) => fetch(`/api/admin/projects/${pid}/messages`).then(j<{ role: string; text?: string; tool?: string; at: string }[]>),
   },
   // Chunked upload. Railway's edge drops any request whose body takes more than 5 minutes to

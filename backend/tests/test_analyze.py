@@ -93,11 +93,11 @@ def test_analyze_charges_once_then_probe_is_free(client, monkeypatch):
     r = c.post(f"/api/projects/{pid}/analyze", json={"brief": "寵物友善"})
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["charged"] == P.TOOL_POINTS["probe_footage"] and d["selling_points"][0] == "無邊際泳池看海"
+    assert d["charged"] == 14 and d["selling_points"][0] == "無邊際泳池看海"
     assert [s["clip"] for s in d["storyboard"]] == [1, 2]                  # clip 99 dropped
     assert d["storyboard"][1]["dur"] == 6.0 and d["storyboard"][1]["t"] <= 4  # clamped to the clip
-    assert d["estimate"]["first_video_points"] == P.FIRST_VIDEO_POINTS == 128 and d["estimate"]["two_revisions_points"] == 200
-    assert d["estimate"]["balance"] == 192 and d["estimate"]["enough_first"] and not d["estimate"]["enough_two"] and d["estimate"]["short_two"] == 8
+    assert d["estimate"]["first_video_points"] == 64 and d["estimate"]["two_revisions_points"] == 100
+    assert d["estimate"]["balance"] == 96 and d["estimate"]["enough_first"] and not d["estimate"]["enough_two"] and d["estimate"]["short_two"] == 4
     assert (root / "sheets" / "analysis.json").exists()
     assert c.get(f"/api/projects/{pid}").json()["analysis"]["n_clips"] == 2
     # frames for the storyboard
@@ -106,13 +106,13 @@ def test_analyze_charges_once_then_probe_is_free(client, monkeypatch):
     # a failing model call refunds
     monkeypatch.setattr(A, "_client", lambda: _fake_client("not json"))
     assert c.post(f"/api/projects/{pid}/analyze", json={}).status_code == 500
-    assert asyncio.run(D.balance(u.id)) == 192
+    assert asyncio.run(D.balance(u.id)) == 96
     # the agent's probe is now free for this project
     cost = {}
 
     async def charge(pid_, points, reason):
         cost[reason] = points
-        return True, 192
+        return True, 96
     store = NS(charge=charge, storage_state=None, note_export=None, credit_state=None)
     tr = R.TurnRunner(pid, root, store, lambda ev: asyncio.sleep(0))
     tr._loop = asyncio.new_event_loop()
@@ -128,7 +128,7 @@ def test_analyze_insufficient_points(client, monkeypatch):
     pid = asyncio.run(_project(u.id))
     _clip(D.project_dir(pid) / "raw" / "uploads" / "a.mp4")
     r = c.post(f"/api/projects/{pid}/analyze", json={})
-    assert r.status_code == 402 and r.json()["needed"] == P.TOOL_POINTS["probe_footage"] and r.json()["balance"] == 5
+    assert r.status_code == 402 and r.json()["needed"] == 14 and r.json()["balance"] == 5
 
 
 def test_oauth_creates_then_links(monkeypatch):
@@ -173,7 +173,7 @@ def test_test_account_buys_without_payment(client):
     u = asyncio.run(_user(email="kuofat@gmail.com")); holder["u"] = u
     assert c.get("/api/me").json()["test_account"] is True
     r = c.get("/api/checkout/p100"); assert r.status_code == 200, r.text
-    assert r.json()["test"] and r.json()["granted"] == 200 and r.json()["balance"] == 200
+    assert r.json()["test"] and r.json()["granted"] == 100 and r.json()["balance"] == 100
     r = c.get("/api/checkout/sub5"); assert r.status_code == 200, r.text
 
     async def reload():
@@ -181,7 +181,7 @@ def test_test_account_buys_without_payment(client):
             return await s.get(D.User, u.id)
     holder["u"] = asyncio.run(reload())   # the real dependency reloads the user per request
     me = c.get("/api/me").json()
-    assert me["subscription"]["id"] == "sub5" and me["balance"] == 1200 and me["can_clone_voice"]
+    assert me["subscription"]["id"] == "sub5" and me["balance"] == 600 and me["can_clone_voice"]
     assert c.get("/api/checkout/nope").status_code == 404
     # a normal account without checkout URLs is still told to contact support
     holder["u"] = asyncio.run(_user(email="x@y.z"))

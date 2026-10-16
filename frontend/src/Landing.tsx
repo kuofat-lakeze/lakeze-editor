@@ -1,14 +1,29 @@
 import logo from './assets/logo.png'
 import { MiaoLogo } from './Logo'
 import { HowItWorks } from './HowItWorks'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { api } from './api'
 
 export const PRODUCT = { name: '旅剪', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
 const MARKET = { days: 3, low: 2000, high: 3000 }      // what a studio charges today
-// One video with cover and 2 revision rounds (the usual path to a final cut); from backend/app/pricing.py.
-const OURS = { minutes: 15, twd: 700 }                 // pay-as-you-go: 200 points × NT$3.5
-const SUB = { name: '專業旅人', twd: 3150, videos: 5, perVideo: 630 }   // monthly: 5 videos, 2 revisions each, 20 GB
-const SIGNUP_POINTS = 220
+// One video with cover and 2 revision rounds (the usual path to a final cut). The NT$ numbers follow the
+// point price set on the dashboard (/api/pricing); these are only the first paint before it loads.
+type Prices = { pointTwd: number; points: number; twd: number; sub: { name: string; twd: number; videos: number; perVideo: number }; signup: number }
+const FALLBACK: Prices = { pointTwd: 3.5, points: 100, twd: 350, sub: { name: '專業旅人', twd: 1550, videos: 5, perVideo: 310 }, signup: 110 }
+const MINUTES = 15
+
+function usePrices(): Prices {
+  const [p, setP] = useState(FALLBACK)
+  useEffect(() => {
+    api.pricing().then(r => {
+      const s = r.subscriptions.find(x => x.id === 'sub5') ?? r.subscriptions[0]
+      const pts = r.first_video_points + 2 * r.revision_points
+      setP({ pointTwd: r.point_twd, points: pts, twd: Math.round(pts * r.point_twd), signup: r.signup_points,
+        sub: s ? { name: s.label, twd: s.twd, videos: s.videos, perVideo: s.per_video_twd } : FALLBACK.sub })
+    }).catch(() => {})
+  }, [])
+  return p
+}
 
 
 function useReveal() {
@@ -23,6 +38,8 @@ function useReveal() {
 
 export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: () => void }) {
   useReveal()
+  const pr = usePrices()
+  const OURS = { minutes: MINUTES, twd: pr.twd }, SUB = pr.sub, SIGNUP_POINTS = pr.signup
   const saveLow = MARKET.low - OURS.twd, saveHigh = MARKET.high - OURS.twd
   const savePct = Math.round((1 - OURS.twd / ((MARKET.low + MARKET.high) / 2)) * 100)
   const timePct = Math.round((1 - OURS.minutes / (MARKET.days * 24 * 60)) * 1000) / 10
@@ -65,7 +82,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
             <div className="ld-cmp-label">{PRODUCT.name}</div>
             <div className="ld-cmp-row"><span>交件</span><b>{OURS.minutes} 分鐘</b></div>
             <div className="ld-bar"><div style={{ width: `${Math.max(2, 100 - timePct)}%` }} /></div>
-            <div className="ld-cmp-row"><span>費用（含 2 輪修改）</span><b>NT${OURS.twd}</b></div>
+            <div className="ld-cmp-row"><span>費用（含 2 輪修改）</span><b>NT${OURS.twd.toLocaleString()}</b></div>
             <div className="ld-bar"><div style={{ width: `${Math.round(OURS.twd / MARKET.high * 100)}%` }} /></div>
           </div>
         </div>
@@ -73,7 +90,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
           <div className="reveal"><div className="ld-save-num">{timePct}%</div><div className="muted small">時間省下來：3 天變 15 分鐘，今天拍今天發</div></div>
           <div className="reveal d1"><div className="ld-save-num">NT${saveLow.toLocaleString()}–{saveHigh.toLocaleString()}</div><div className="muted small">每支省下約 {savePct}% 的費用<span className="ld-long">；包月 {SUB.name} 每支再降到 NT${SUB.perVideo}（每月 NT${SUB.twd.toLocaleString()}，{SUB.videos} 支）</span><span className="ld-short">，包月再省</span></div></div>
         </div>
-        <div className="muted small ld-note ld-long">單次購買以一支含封面與 2 輪修改 200 點計（1 點 = NT$3.5）；包月另含成品空間。業界行情為市場常見報價區間。</div>
+        <div className="muted small ld-note ld-long">單次購買以一支含封面與 2 輪修改 {pr.points} 點計（1 點 = NT${pr.pointTwd}）；包月另含成品空間。業界行情為市場常見報價區間。</div>
       </section>
 
       <section className="ld-foot-cta reveal">

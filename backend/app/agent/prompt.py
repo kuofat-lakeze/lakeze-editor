@@ -48,7 +48,7 @@ def _price_text() -> tuple[str, str]:
     """The point prices in the prompt come from pricing.py, so a price change never leaves the editor quoting old numbers."""
     from .. import pricing as P
     t = P.TOOL_POINTS
-    intro = (f"1 點 = NT${P.POINT_TWD:g}；註冊送 {P.SIGNUP_POINTS} 點，約可做一支含封面與 2 輪修改的影片")
+    intro = f"註冊送 {P.SIGNUP_POINTS} 點，約可做一支含封面與 2 輪修改的影片；每點的台幣價格由後台設定，不要跟用戶講台幣"
     lst = (f"素材分析 {t['probe_footage']}、腳本+剪輯 {t['build_cut']}、旁白整組 {t['generate_voice']}、試聽每聲音 {P.VOICE_SAMPLE_POINTS}、"
            f"配樂 {t['generate_music']}、音效 {t['generate_sfx']}、混音 {t['compose_audio']}、字幕 {t['render_captions']}、輸出 {t['export_video']}、"
            f"封面 {t['make_cover']}、修改回合費 {P.REVISION_TURN_POINTS}。第一版含封面約 {P.FIRST_VIDEO_POINTS} 點；"

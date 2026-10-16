@@ -111,7 +111,7 @@ const CHIPS: Record<Stage, string[]> = {
 const DEFAULT_CHIP: Partial<Record<Stage, string>> = { progress: '照建議做' }
 const NO_VOICE = 'none'
 const OB_STEPS = ['給素材', '解析素材', '風格與賣點']
-const ANALYZE_POINTS = 28   // = backend analyze.ANALYZE_POINTS (probe_footage at NT$3.5 a point)
+const ANALYZE_POINTS = 14   // = backend analyze.ANALYZE_POINTS (probe_footage)
 const ROLE_LABEL: Record<string, string> = { hook: '開場', feature: '賣點', price: '價格', cta: '行動' }
 const AN_PHASES = ['看每個畫面', '找出賣點', '排分鏡', '寫旁白稿', '估算點數']
 const EXAMPLE_BRIEF = '宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑，結尾請大家點連結查空房。'
@@ -525,7 +525,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                   <i>{obDone[i] && i !== obStep ? '✓' : i + 1}</i><span>{t}</span>
                 </a>
               ))}
-              <span className="ob-count muted small">第 {obStep + 1} 步，共 3 步 · 註冊送的 220 點夠做第一支</span>
+              <span className="ob-count muted small">第 {obStep + 1} 步，共 3 步 · 註冊送的 110 點夠做第一支</span>
             </div>
 
             <div className="ob-main">
@@ -754,7 +754,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         {needCredits && (
           <div className="card need">
             <div><b>點數不足</b>：這一步需要 {needCredits.needed} 點，目前 {needCredits.balance} 點，差 {Math.max(0, needCredits.needed - needCredits.balance)} 點。
-              <div className="muted small">最小 100 點 = NT$350。儲值入帳後回來輸入「繼續」，剪輯師會接著做。</div></div>
+              <div className="muted small">最小 50 點起。儲值入帳後回來輸入「繼續」，剪輯師會接著做。</div></div>
             <button className="btn primary small" onClick={() => onTopUp(Math.max(0, needCredits.needed - needCredits.balance))}>去儲值</button>
           </div>
         )}
@@ -950,7 +950,7 @@ function ObPreview({ step, style, voiceName, uploads, linkOk, text, analysis, an
             <div key={r} className={`pa-row ${analyzing ? 'wait' : ''}`} style={{ animationDelay: `${i * .25}s` }}>
               <span className={`pa-fr f${i}`} /><span className="pa-main"><b>{i + 1}</b><em>{r}</em><span>{s}</span><small>「{l}」</small></span>
             </div>))}
-          <div className="pa-est"><span>第一版＋封面 <b>128 點</b></span><span>含 2 輪修改 <b>200 點</b></span></div>
+          <div className="pa-est"><span>第一版＋封面 <b>64 點</b></span><span>含 2 輪修改 <b>100 點</b></span></div>
           <div className="muted small">示意。你的素材解析完會換成真的畫面與賣點。</div>
         </div>
       )}

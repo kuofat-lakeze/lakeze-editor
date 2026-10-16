@@ -1,18 +1,21 @@
-"""Pricing. 1 點 = NT$3.5; a video with cover and two revision rounds is about 200 點. New accounts get 220 點.
+"""Pricing. A video with cover and two revision rounds is 100 點; new accounts get 110 點.
 
-Everything is derived from a measured cost basis (COST_TWD, per tool, in NT$) and two margin targets:
-  • pay-as-you-go (儲值點數)   → MARGIN_PAYG = 220 %   (price ≈ cost × 3.2)
-  • 專業旅人 (5 支/月)          → MARGIN_SUB  = 180 %   (price ≈ cost × 2.8)
-  • 超級玩家 (15 支/月)         → MARGIN_SUB_BIG = 150 % (price ≈ cost × 2.5)
-The subscription is the discount path; top-up packs carry no bonus points so pay-as-you-go stays at 220 %.
+Two separate things:
+  • the point schedule (how many points each tool costs) is fixed. It was sized from a measured cost
+    basis (COST_TWD, NT$ per tool) at NT$7 a point, which is why _pts divides by PRICE_STEP_TWD.
+  • the price of a point (POINT_TWD) is set by an admin on the dashboard (default NT$3.5). Every NT$
+    price follows from it: packs = points × price, subscriptions = their points (+ bundled storage) at
+    that price minus the plan's discount. Lowering the price lowers the margin; the dashboard previews
+    the margin of each plan before it is applied (see margins()).
 Override any table with the PRICING_JSON env var.
 """
 import json
 import math
 import os
 
-POINT_TWD = 3.5   # was NT$7 until the 2026-10 rescale; existing balances were doubled (db.POINTS_RESCALE)
-SIGNUP_POINTS = 220   # welcome credit: one video with 2 revision rounds, and a little spare
+DEFAULT_POINT_TWD = 3.5
+POINT_TWD: float = DEFAULT_POINT_TWD   # current price of a point; changed at runtime by apply_point_price()
+SIGNUP_POINTS = 110   # welcome credit: one video with 2 revision rounds, and a little spare
 MARGIN_PAYG = 2.20
 MARGIN_SUB = 1.80     # 專業旅人: the discount path, cheaper per video than pay-as-you-go (220 %)
 MARGIN_SUB_BIG = 1.50 # 超級玩家: volume plan, cheaper again per video
@@ -30,14 +33,12 @@ COST_TWD: dict[str, float] = {
 }
 
 
-PRICE_STEP_TWD = 7   # prices move in NT$7 steps (the old point), so the 3.5 rescale left every NT$ price unchanged
+PRICE_STEP_TWD = 7   # the point value the schedule was sized at; the schedule doesn't move with the point price
 
 
 def _pts(cost_twd: float, margin: float = MARGIN_PAYG) -> int:
-    """Price in whole points at the target margin, rounded half-up to a NT$7 step (so the realised
-    margin sits within a few percent of the target instead of always above it)."""
-    steps = math.floor(cost_twd * (1 + margin) / PRICE_STEP_TWD + 0.5) if cost_twd else 0
-    return int(round(steps * PRICE_STEP_TWD / POINT_TWD))
+    """Points for a tool: its cost at the design margin in NT$7 units, rounded half-up."""
+    return int(math.floor(cost_twd * (1 + margin) / PRICE_STEP_TWD + 0.5)) if cost_twd else 0
 
 
 # Points per tool call at pay-as-you-go margin. 0 = included.
@@ -76,7 +77,7 @@ CATEGORIES = [("cut", "素材與剪輯"), ("audio", "旁白與配樂"), ("subs",
 FREE_REVISION_TURNS = 3
 TRIAL_VOICE_SECONDS = 30
 
-# Top-up packs (儲值): straight NT$3.5 a point for pay-as-you-go, so that tier keeps its margin. Points never
+# Top-up packs (儲值): straight POINT_TWD a point for pay-as-you-go, so that tier keeps its margin. Points never
 # expire. Subscribers top up at their plan's price per point, so extra videos cost them the same as the
 # ones in the plan.
 
@@ -87,8 +88,7 @@ def _pack(points: int, label: str) -> dict:
 
 
 PACKS: dict[str, dict] = {
-    # ids kept from the NT$7 era (checkout products are tied to them): same NT$ price, twice the points
-    "p50": _pack(100, "100 點"), "p100": _pack(200, "200 點"), "p300": _pack(600, "600 點"), "p1000": _pack(2000, "2,000 點"),
+    "p50": _pack(50, "50 點"), "p100": _pack(100, "100 點"), "p300": _pack(300, "300 點"), "p1000": _pack(1000, "1,000 點"),
 }
 
 # Deliverable storage (成品: exported videos + covers, every version). Raw footage and work files are
@@ -99,23 +99,23 @@ FREE_STORAGE_GB = 0.5          # 500 MB
 FREE_RETENTION_DAYS = 7        # free deliverables are removed after this; any paid storage keeps them
 STORAGE_PLANS: dict[str, dict] = {   # gb = total quota
     "free": {"gb": 0.5, "points": 0, "label": "500 MB", "extra": 0},
-    "s20": {"gb": 20, "points": 20, "label": "20 GB", "extra": 18},
-    "s100": {"gb": 100, "points": 60, "label": "100 GB", "extra": 98},
+    "s20": {"gb": 20, "points": 10, "label": "20 GB", "extra": 18},
+    "s100": {"gb": 100, "points": 30, "label": "100 GB", "extra": 98},
 }
 STORAGE_PERIOD_DAYS = 30
 
 
-def _sub(videos: int, revisions_per_video: int, storage_gb: int, margin: float) -> dict:
-    """Size a monthly subscription: included points cover N first versions + revisions at list price,
-    storage is bundled, and the price is the bundle's cost at the plan's margin, rounded so the
-    per-video number is round. point_twd is what a point effectively costs on the plan; members
+def _sub(videos: int, revisions_per_video: int, storage_gb: int, discount: float) -> dict:
+    """Size a monthly subscription: included points cover N first versions + revisions, storage is
+    bundled, and the price is that bundle bought pay-as-you-go minus the plan's discount, rounded so
+    the per-video number is round. point_twd is what a point effectively costs on the plan; members
     top up at that same rate."""
     revisions = videos * revisions_per_video
     points = videos * FIRST_VIDEO_POINTS + revisions * REVISION_POINTS
     cost = videos * FIRST_VIDEO_COST + revisions * REVISION_COST + storage_gb * STORAGE_GB_COST_TWD
-    per_video = int(round(cost * (1 + margin) / videos / 10.0) * 10)   # the headline number: a round per-video price
-    twd = per_video * videos
     storage_plan = next((k for k, v in STORAGE_PLANS.items() if v["gb"] >= storage_gb), "s100")
+    per_video = int(round((points + STORAGE_PLANS[storage_plan]["points"]) * POINT_TWD * (1 - discount) / videos / 10.0) * 10)
+    twd = per_video * videos
     payg_twd = int(round(points * POINT_TWD + STORAGE_PLANS[storage_plan]["points"] * POINT_TWD))
     return {"videos": videos, "revisions": revisions, "points": points, "storage_gb": STORAGE_PLANS[storage_plan]["gb"],
             "storage_plan": storage_plan, "twd": twd, "payg_twd": payg_twd, "save_twd": payg_twd - twd,
@@ -127,16 +127,15 @@ def _sub(videos: int, revisions_per_video: int, storage_gb: int, margin: float) 
 SUBSCRIPTION_PERIOD_DAYS = 30
 SUBSCRIPTION_GRACE_DAYS = 3   # a renewal payment may land a little late before the plan lapses
 OWN_VOICE = "own_voice"       # feature flag: narrate with a clone of the customer's own voice
+# Subscriptions are the discount path: the same points bought pay-as-you-go, minus this much.
+SUB_DISCOUNT = {"sub5": 0.12, "sub15": 0.20}
+SUB_SHAPE = {"sub5": (5, 2, 20), "sub15": (15, 2, 100)}   # videos, revisions per video, storage GB
 SUBSCRIPTIONS: dict[str, dict] = {
-    "sub5": {"label": "專業旅人", "who": "一間民宿、每週固定發片的你", "desc": "每月 5 支影片，每支含 2 輪修改",
-             "features": [OWN_VOICE], **_sub(5, 2, 20, MARGIN_SUB)},
-    "sub15": {"label": "超級玩家", "who": "多間店、代操團隊，大量出片", "desc": "每月 15 支影片，每支含 2 輪修改",
-              "features": [OWN_VOICE], **_sub(15, 2, 100, MARGIN_SUB_BIG)},
+    "sub5": {"label": "專業旅人", "who": "一間民宿、每週固定發片的你", "desc": "每月 5 支影片，每支含 2 輪修改", "features": [OWN_VOICE]},
+    "sub15": {"label": "超級玩家", "who": "多間店、代操團隊，大量出片", "desc": "每月 15 支影片，每支含 2 輪修改", "features": [OWN_VOICE]},
 }
-for _pk in PACKS.values():   # each pack at each plan's price per point
-    _pk["member_twd"] = {k: int(round(_pk["points"] * v["point_twd"] / 10.0) * 10) for k, v in SUBSCRIPTIONS.items()}
-MEMBER_POINT_TWD = SUBSCRIPTIONS["sub5"]["point_twd"]
-MEMBER_DISCOUNT_PCT = SUBSCRIPTIONS["sub5"]["member_discount_pct"]
+MEMBER_POINT_TWD = 0.0
+MEMBER_DISCOUNT_PCT = 0
 # The two non-subscription tiers shown beside them on the plans page. 背包客 is the free first project;
 # 旅行者 is anyone who has bought points, and that tier already includes narration in their own voice.
 TIERS_FREE = {"id": "free", "label": "背包客", "who": "第一次用，先免費做一支看看", "features": [OWN_VOICE], "voice_seconds": TRIAL_VOICE_SECONDS}
@@ -164,13 +163,55 @@ MENU = [
 ELEVEN_COST_USD = {"elevenlabs_tts_chars": 0.00022, "elevenlabs_music_sec": 0.01,
                    "elevenlabs_sfx_sec": 0.01, "elevenlabs_stt_sec": 0.0001}
 
-if os.environ.get("PRICING_JSON"):
-    _o = json.loads(os.environ["PRICING_JSON"])
-    TOOL_POINTS.update(_o.get("tool_points", {}))
-    PACKS.update(_o.get("packs", {}))
-    FREE_REVISION_TURNS = int(_o.get("free_revision_turns", FREE_REVISION_TURNS))
-    STORAGE_PLANS.update(_o.get("storage_plans", {}))
-    SUBSCRIPTIONS.update(_o.get("subscriptions", {}))
+_OVERRIDE = json.loads(os.environ.get("PRICING_JSON") or "{}")
+TOOL_POINTS.update(_OVERRIDE.get("tool_points", {}))
+FREE_REVISION_TURNS = int(_OVERRIDE.get("free_revision_turns", FREE_REVISION_TURNS))
+STORAGE_PLANS.update(_OVERRIDE.get("storage_plans", {}))
+
+
+def apply_point_price(point_twd: float) -> None:
+    """Set the price of a point and re-derive every NT$ price in place (other modules hold references
+    to these dicts). Called at start-up with the saved setting and when an admin changes it."""
+    global POINT_TWD, MEMBER_POINT_TWD, MEMBER_DISCOUNT_PCT
+    POINT_TWD = float(point_twd)
+    for pk in PACKS.values():
+        pk["twd"] = int(round(pk["points"] * POINT_TWD))
+    for k, (v, r, gb) in SUB_SHAPE.items():
+        SUBSCRIPTIONS[k].update(_sub(v, r, gb, SUB_DISCOUNT[k]))
+    for k, o in _OVERRIDE.get("subscriptions", {}).items():
+        SUBSCRIPTIONS.setdefault(k, {}).update(o)
+    for pk in PACKS.values():   # each pack at each plan's price per point
+        pk["member_twd"] = {k: int(round(pk["points"] * v["point_twd"] / 10.0) * 10) for k, v in SUBSCRIPTIONS.items()}
+    for k, o in _OVERRIDE.get("packs", {}).items():
+        PACKS.setdefault(k, {}).update(o)
+    MEMBER_POINT_TWD = SUBSCRIPTIONS["sub5"]["point_twd"]
+    MEMBER_DISCOUNT_PCT = SUBSCRIPTIONS["sub5"]["member_discount_pct"]
+
+
+apply_point_price(DEFAULT_POINT_TWD)
+
+
+def margins(point_twd: float | None = None) -> dict:
+    """What each way of buying earns at a given point price (default: the current one), for the
+    dashboard's pricing page. margin_pct = (price − cost) / cost."""
+    p = POINT_TWD if point_twd is None else float(point_twd)
+    pts = FIRST_VIDEO_POINTS + 2 * REVISION_POINTS
+    cost = FIRST_VIDEO_COST + 2 * REVISION_COST
+    rows = [{"id": "payg", "label": "單次購買 · 一支含 2 輪修改", "points": pts, "twd": round(pts * p), "cost_twd": round(cost),
+             "per_video_twd": round(pts * p)}]
+    for k, (v, r, gb) in SUB_SHAPE.items():
+        saved = POINT_TWD
+        try:
+            globals()["POINT_TWD"] = p
+            sb = _sub(v, r, gb, SUB_DISCOUNT[k])
+        finally:
+            globals()["POINT_TWD"] = saved
+        rows.append({"id": k, "label": f"{SUBSCRIPTIONS[k]['label']} · 每月 {v} 支", "points": sb["points"], "twd": sb["twd"],
+                     "cost_twd": sb["cost_twd"], "per_video_twd": sb["per_video_twd"]})
+    for x in rows:
+        x["margin_pct"] = round((x["twd"] - x["cost_twd"]) / x["cost_twd"] * 100) if x["cost_twd"] else None
+    return {"point_twd": p, "signup_points": SIGNUP_POINTS, "signup_cost_twd": round(SIGNUP_POINTS * cost / pts),
+            "rows": rows, "packs": [{"id": k, "points": v["points"], "twd": int(round(v["points"] * p))} for k, v in PACKS.items()]}
 
 
 def tool_cost(name: str, inp: dict) -> int:

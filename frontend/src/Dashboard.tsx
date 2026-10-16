@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, type Costs, type Order, type AdminUser, type AdminUserDetail, type Dashboard, type DashRow, type Me, type Stage } from './api'
+import { api, type PricePreview, type Costs, type Order, type AdminUser, type AdminUserDetail, type Dashboard, type DashRow, type Me, type Stage } from './api'
 import logo from './assets/logo.png'
 import { MiaoMark } from './Logo'
 import { ask } from './Dialog'
@@ -19,7 +19,7 @@ const STAGE_CLS: Record<Stage, string> = { sub: 'sub', paid: 'paid', churn: 'chu
 const PROVIDER = { google: 'G', facebook: 'f', '': '@' } as Record<string, string>
 
 export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void }) {
-  const [tab, setTab] = useState<'overview' | 'users' | 'orders'>(location.pathname.endsWith('/users') ? 'users' : 'overview')
+  const [tab, setTab] = useState<'overview' | 'users' | 'orders' | 'pricing'>(location.pathname.endsWith('/users') ? 'users' : 'overview')
   const [days, setDays] = useState(30)
   const [dash, setDash] = useState<Dashboard | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -39,7 +39,9 @@ export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void })
           <a className={tab === 'overview' ? 'on' : ''} onClick={() => setTab('overview')}>總覽</a>
           <a className={tab === 'users' ? 'on' : ''} onClick={() => setTab('users')}>用戶 {users.length ? <span className="cnt">{users.length}</span> : null}</a>
           <a className={tab === 'orders' ? 'on' : ''} onClick={() => setTab('orders')}>訂單</a>
+          <a className={tab === 'pricing' ? 'on' : ''} onClick={() => setTab('pricing')}>定價</a>
         </nav>
+        {dash?.point_twd != null && tab !== 'pricing' && <a className="pp-chip" onClick={() => setTab('pricing')} title="調整 1 點的價格">1 點 = NT${dash.point_twd}</a>}
         {tab === 'overview' && (
           <div className="dnav mini">{[7, 30, 90].map(d => <a key={d} className={days === d ? 'on' : ''} onClick={() => setDays(d)}>{d} 天</a>)}</div>
         )}
@@ -51,6 +53,7 @@ export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void })
       <main className="dash-main">
         {tab === 'overview' && (dash ? <Overview d={dash} onOpen={setOpenId} onCosts={() => setCostsOpen(true)} /> : <div className="center muted">載入中…</div>)}
         {tab === 'users' && <Users users={users} stages={dash?.stages} onOpen={setOpenId} />}
+        {tab === 'pricing' && <PricingPanel onSaved={() => api.admin.dashboard(days).then(setDash)} />}
         {tab === 'orders' && <Orders onOpen={setOpenId} onChanged={() => { reloadUsers(); api.admin.dashboard(days).then(setDash) }} />}
       </main>
       {costsOpen && <CostDrawer days={days} onClose={() => setCostsOpen(false)} onOpenUser={id => { setCostsOpen(false); setOpenId(id) }} />}
@@ -488,5 +491,84 @@ function CostDrawer({ days: d0, onClose, onOpenUser }: { days: number; onClose: 
         )}
       </aside>
     </>
+  )
+}
+
+
+/* ---------------- 定價：1 點值多少錢 ----------------
+   Points per video never change (一支含 2 輪修改 = 100 點); this sets the NT$ price of a point, and with it
+   every NT$ price. Shows each plan's price, cost and margin now vs at the new price before applying. */
+const PRESETS = [3, 3.5, 4, 5, 7]
+function PricingPanel({ onSaved }: { onSaved: () => void }) {
+  const [cur, setCur] = useState<PricePreview | null>(null)
+  const [val, setVal] = useState('')
+  const [pv, setPv] = useState<PricePreview | null>(null)
+  const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { api.admin.pricing().then(r => { setCur(r); setVal(String(r.current_point_twd)) }) }, [])
+  const num = Number(val)
+  const valid = val !== '' && num >= 1 && num <= 20
+  useEffect(() => {
+    if (!valid) { setPv(null); return }
+    const t = setTimeout(() => api.admin.pricing(num).then(r => { setPv(r); setErr('') }).catch(e => setErr((e as Error).message)), 250)
+    return () => clearTimeout(t)
+  }, [val]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!cur) return <div className="center muted">載入中…</div>
+  const changed = valid && num !== cur.current_point_twd
+  const tone = (m: number | null) => (m == null ? '' : m < 20 ? 'bad' : m < 40 ? 'warn' : 'good')
+  const save = async () => {
+    if (!await ask.confirm(`把 1 點改成 NT$${num}？\n所有台幣價格（點數包、訂閱、空間）立刻跟著變；用戶手上的點數不變，一支影片一樣 100 點。`, { ok: '套用新價格' })) return
+    setSaving(true)
+    try { const r = await api.admin.setPointPrice(num); setCur(r); setPv(r); onSaved() } catch (e) { setErr((e as Error).message) } finally { setSaving(false) }
+  }
+  const rows = pv?.rows ?? cur.rows
+  return (
+    <div className="pp">
+      <section className="card pp-set">
+        <div className="pp-head">
+          <div><b>1 點值多少錢</b><div className="muted small">一支影片（含封面與 2 輪修改）固定 100 點；這裡只改每點的台幣價格，毛利率跟著變。</div></div>
+          <span className="pp-now">目前 <b>NT${cur.current_point_twd}</b> / 點</span>
+        </div>
+        <div className="pp-input">
+          <span>1 點 = NT$</span>
+          <input type="number" inputMode="decimal" step="0.1" min={1} max={20} value={val} onChange={e => setVal(e.target.value)} />
+          <div className="pp-presets">{PRESETS.map(x => <a key={x} className={`chipbtn ${num === x ? 'on' : ''}`} onClick={() => setVal(String(x))}>NT${x}</a>)}</div>
+        </div>
+        {!valid && val !== '' && <div className="error">每點價格要在 NT$1～20 之間</div>}
+        {err && <div className="error">{err}</div>}
+      </section>
+
+      <section className="card">
+        <div className="chart-h"><b>各方案售價與毛利</b><span className="muted small">{changed ? `目前 NT$${cur.current_point_twd} → 新價 NT$${num}` : '目前價格'} · 毛利率＝（售價−成本）÷ 成本</span></div>
+        <table className="pp-table">
+          <thead><tr><th>方案</th><th className="r">點數</th><th className="r">售價</th><th className="r">每支</th><th className="r">成本</th><th className="r">毛利率</th></tr></thead>
+          <tbody>{rows.map((r, i) => {
+            const old = cur.current[i]
+            return (
+              <tr key={r.id}>
+                <td>{r.label}</td>
+                <td className="r">{r.points.toLocaleString()}</td>
+                <td className="r">{changed && old.twd !== r.twd && <s className="muted">{twd(old.twd)}</s>} <b>{twd(r.twd)}</b></td>
+                <td className="r">{twd(r.per_video_twd)}</td>
+                <td className="r muted">{twd(r.cost_twd)}</td>
+                <td className="r">{changed && <span className="muted small">{old.margin_pct}% → </span>}<b className={`pp-m ${tone(r.margin_pct)}`}>{r.margin_pct}%</b></td>
+              </tr>)
+          })}</tbody>
+        </table>
+        <div className="pp-packs">
+          <span className="muted small">點數包</span>
+          {(pv ?? cur).packs.map(k => <span key={k.id} className="pp-pack"><b>{k.points.toLocaleString()} 點</b>{twd(k.twd)}</span>)}
+        </div>
+        <div className="muted small pp-note">
+          註冊送 {cur.signup_points} 點，每位新用戶的成本約 {twd((pv ?? cur).signup_cost_twd)}。訂閱價＝同樣點數單次購買再打折（專業旅人 88 折、超級玩家 8 折），所以永遠比單次划算。
+          若已在 Lemon Squeezy 設定刷卡商品，改價後記得到那邊同步修改金額。
+        </div>
+      </section>
+
+      <div className="pp-actions">
+        {changed && <a className="small" onClick={() => setVal(String(cur.current_point_twd))}>取消</a>}
+        <button className="btn primary" disabled={!changed || saving} onClick={save}>{saving ? '套用中…' : changed ? `套用 NT$${num} / 點` : '價格沒有變動'}</button>
+      </div>
+    </div>
   )
 }

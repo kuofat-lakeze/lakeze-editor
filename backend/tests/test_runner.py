@@ -120,8 +120,8 @@ def test_tool_round_trip(monkeypatch, tmp_path: Path):
     assert "沒有影片" in tool_result["content"][0]["text"]  # probe on empty dir
     assert [e["type"] for e in events if e["type"] in ("tool_run", "tool_end", "done")] == ["tool_run", "tool_end", "done"]
     assert len(store.usage) == 2 and store.usage[0][2] > 0
-    assert store.charges == [("probe_footage", 28)] and store.balance_points == 72
-    assert any(e["type"] == "credits" and e["balance"] == 72 for e in events)
+    assert store.charges == [("probe_footage", 14)] and store.balance_points == 86
+    assert any(e["type"] == "credits" and e["balance"] == 86 for e in events)
 
 
 def test_insufficient_credits(monkeypatch, tmp_path: Path):
@@ -143,7 +143,7 @@ def test_insufficient_credits(monkeypatch, tmp_path: Path):
     asyncio.run(R.TurnRunner("p1", tmp_path, store, emit).run([{"type": "text", "text": "封面"}]))
     tr = store.saved[2][1][0]
     assert tr["is_error"] and "點數不足" in tr["content"][0]["text"]
-    assert any(e["type"] == "need_credits" and e["needed"] == 10 for e in events)
+    assert any(e["type"] == "need_credits" and e["needed"] == 5 for e in events)
     assert store.balance_points == 2
 
 

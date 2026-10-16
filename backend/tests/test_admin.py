@@ -241,7 +241,7 @@ def test_share_og_page_and_default_admins(client):
     asyncio.run(seed())
     r = TestClient(M.app).get("/api/og/s/ogtok")
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
-    assert 'og:title" content="A1｜用旅剪 15 分鐘剪好的短影音"' in r.text and f"註冊送 {P.SIGNUP_POINTS} 點" in r.text
+    assert 'og:title" content="A1｜用旅剪 15 分鐘剪好的短影音"' in r.text and "註冊送 110 點" in r.text
     assert 'og:image" content="https://editor.lakeze.com/api/s/ogtok/file/' in r.text and 'refresh" content="0;url=https://editor.lakeze.com/s/ogtok"' in r.text
     assert TestClient(M.app).get("/api/og/s/nope").status_code == 404
 
@@ -260,7 +260,7 @@ def test_order_flow(client, monkeypatch):
     monkeypatch.setattr(C, "CHECKOUT_URLS", {"p100": "https://lakeze.lemonsqueezy.com/buy/abc"})
     r = c.post("/api/orders", json={"item": "p100", "method": "card"}).json()
     oid = r["order"]["id"]
-    assert r["order"]["status"] == "pending" and r["order"]["amount_twd"] == 700 and f"checkout[custom][order_id]={oid}" in r["redirect"]
+    assert r["order"]["status"] == "pending" and r["order"]["amount_twd"] == P.PACKS["p100"]["twd"] == 350 and f"checkout[custom][order_id]={oid}" in r["redirect"]
     assert "success_url" in r["redirect"]
     import hashlib, hmac, json as J
     monkeypatch.setattr(C, "LS_WEBHOOK_SECRET", "s3")
@@ -271,12 +271,12 @@ def test_order_flow(client, monkeypatch):
     for _ in range(2):
         assert c.post("/api/webhooks/lemonsqueezy", content=body, headers={"X-Signature": sig}).status_code == 200
     g = c.get(f"/api/orders/{oid}").json()
-    assert g["order"]["status"] == "paid" and g["balance"] == bal0 + P.PACKS["p100"]["points"]
+    assert g["order"]["status"] == "paid" and g["balance"] == bal0 + 100
     # transfer: report last 5 → admin approves → credited
     monkeypatch.setattr(C, "BANK_TRANSFER", {"bank": "國泰世華", "code": "013", "account": "123", "name": "人客多"})
     r = c.post("/api/orders", json={"item": "sub5", "method": "transfer"}).json()
     tid = r["order"]["id"]
-    assert r["bank"]["code"] == "013" and r["amount_twd"] == 3150 and r["order"]["kind"] == "sub"
+    assert r["bank"]["code"] == "013" and r["amount_twd"] == P.SUBSCRIPTIONS["sub5"]["twd"] == 1550 and r["order"]["kind"] == "sub"
     assert c.post(f"/api/orders/{tid}/transfer", json={"ref": " "}).status_code == 400
     assert c.post(f"/api/orders/{tid}/transfer", json={"ref": "12 345"}).json()["order"]["status"] == "reported"
     holder["u"] = admin
@@ -286,7 +286,7 @@ def test_order_flow(client, monkeypatch):
     assert c.post(f"/api/admin/orders/{tid}/approve").json()["already"] is True
     holder["u"] = b
     me = c.get("/api/me").json()
-    assert me["balance"] == bal0 + P.PACKS["p100"]["points"] + P.SUBSCRIPTIONS["sub5"]["points"]
+    assert me["balance"] == bal0 + 100 + 500
     # cancel + another user's order
     r = c.post("/api/orders", json={"item": "p50", "method": "transfer"}).json()
     assert c.post(f"/api/orders/{r['order']['id']}/cancel").json()["order"]["status"] == "cancelled"
@@ -340,3 +340,24 @@ def test_cost_breakdown(client, monkeypatch):
     assert g["stt"]["items"][0]["id"] == "voice_input" and g["music"]["items"][0]["unit"] == "秒"
     assert d["claude_tokens"]["in"] == 1000 and d["top_projects"][0]["name"] == "A1" and len(d["daily"]) == 30
     assert d["per_export_twd"] is not None and d["revenue_twd"] == 700
+
+
+def test_point_price_setting(client):
+    """Admin sets the NT$ price of a point: preview first, then apply; every NT$ price follows, points don't."""
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = a
+    assert c.get("/api/admin/pricing").status_code == 403
+    holder["u"] = admin
+    cur = c.get("/api/admin/pricing").json()
+    assert cur["point_twd"] == 3.5 and cur["rows"][0]["twd"] == 350 and cur["rows"][0]["points"] == 100
+    pv = c.get("/api/admin/pricing?point_twd=7").json()   # preview only
+    assert [r["twd"] for r in pv["rows"]] == [700, 3150, 8550] and P.POINT_TWD == 3.5
+    assert c.get("/api/admin/pricing?point_twd=0.5").status_code == 400
+    try:
+        r = c.put("/api/admin/pricing", json={"point_twd": 5}).json()
+        assert r["current_point_twd"] == 5 and P.PACKS["p100"]["twd"] == 500 and P.PACKS["p100"]["points"] == 100
+        assert c.get("/api/pricing").json()["point_twd"] == 5
+        assert asyncio.run(D.get_setting("point_twd")) == "5.0"
+    finally:
+        P.apply_point_price(P.DEFAULT_POINT_TWD)

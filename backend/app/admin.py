@@ -3,6 +3,7 @@ credit grants, subscriptions, tags and notes, CSV export."""
 import csv
 import io
 import json
+import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -13,9 +14,10 @@ from sqlalchemy import func, select
 
 from . import pricing, railway_cost
 from .auth import current_user
-from .db import Asset, CreditTx, Message, Order, Project, Session, Usage, User, add_credits, now, storage_quota_bytes
+from .db import Asset, CreditTx, set_setting, Message, Order, Project, Session, Usage, User, add_credits, now, storage_quota_bytes
 
 router = APIRouter(prefix="/api/admin")
+log = logging.getLogger("lakeze.admin")
 TWD_PER_USD = pricing.TWD_PER_USD
 
 
@@ -543,3 +545,33 @@ async def costs(days: int = 30, _: User = Admin):
             "top_projects": [{**p, "twd": round(p["usd"] * T), "by_group": {k: round(v * T) for k, v in p["by_group"].items()}}
                              for p in sorted(by_proj.values(), key=lambda x: -x["usd"])[:10]],
             "top_users": [{**x, "twd": round(x["usd"] * T)} for x in sorted(by_user.values(), key=lambda x: -x["usd"])[:10]]}
+
+
+# ---- 定價：1 點值多少錢 ------------------------------------------------------------------------------
+POINT_TWD_RANGE = (1.0, 20.0)
+
+
+@router.get("/pricing")
+async def pricing_preview(point_twd: float | None = None, _: User = Admin):
+    """Current point price, or a preview at another price: every plan's NT$ price, cost and margin."""
+    p = pricing.POINT_TWD if point_twd is None else point_twd
+    if not POINT_TWD_RANGE[0] <= p <= POINT_TWD_RANGE[1]:
+        raise HTTPException(400, f"每點價格要在 NT${POINT_TWD_RANGE[0]:g}～{POINT_TWD_RANGE[1]:g} 之間")
+    return {**pricing.margins(p), "current_point_twd": pricing.POINT_TWD, "default_point_twd": pricing.DEFAULT_POINT_TWD,
+            "current": pricing.margins()["rows"]}
+
+
+class PointPriceBody(BaseModel):
+    point_twd: float
+
+
+@router.put("/pricing")
+async def set_point_price(body: PointPriceBody, admin: User = Admin):
+    p = round(body.point_twd, 2)
+    if not POINT_TWD_RANGE[0] <= p <= POINT_TWD_RANGE[1]:
+        raise HTTPException(400, f"每點價格要在 NT${POINT_TWD_RANGE[0]:g}～{POINT_TWD_RANGE[1]:g} 之間")
+    await set_setting("point_twd", str(p))
+    pricing.apply_point_price(p)
+    log.info("point price set to NT$%s by %s", p, admin.email)
+    return {**pricing.margins(), "current_point_twd": pricing.POINT_TWD, "default_point_twd": pricing.DEFAULT_POINT_TWD,
+            "current": pricing.margins()["rows"]}
