@@ -56,7 +56,7 @@ export function SharePage({ token }: { token: string }) {
               <section key={v.version} className="share-ver">
                 {v.main && (
                   <div className="share-video">
-                    <video src={v.main.url} controls playsInline preload="metadata" poster={v.covers[v.covers.length - 1]?.url} />
+                    <video src={v.main.url} controls playsInline preload="metadata" poster={v.poster ?? v.covers[v.covers.length - 1]?.url} />
                     {data.allow_download && <a className="btn primary block" href={`${v.main.url}?download=1`}>下載影片（1080p{v.main.meta?.size_mb ? `，${v.main.meta.size_mb} MB` : ''}）</a>}
                   </div>
                 )}

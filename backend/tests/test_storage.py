@@ -337,3 +337,23 @@ def test_members_get_extra_points_not_a_lower_price():
         for plan in ("sub5", "sub15"):
             got = P.pack_points(v, plan)
             assert abs(v["twd"] / got - P.SUBSCRIPTIONS[plan]["point_twd"]) < 0.05 or got == v["total"], (k, plan)
+
+
+def test_cover_becomes_the_video_poster(client):
+    """點一下封面就套用到影片預覽；預設是最新的一張封面。"""
+    c, holder = client
+    u = asyncio.run(_mk_user()); holder["u"] = u
+    pid = asyncio.run(_mk_deliverable(u.id, 100))
+    async def covers():
+        async with D.Session() as s:
+            a1 = D.Asset(project_id=pid, kind="image", name="封面 A", rel_path="out/a.jpg", version=1, meta='{"role": "cover"}')
+            a2 = D.Asset(project_id=pid, kind="image", name="封面 B", rel_path="out/b.jpg", version=1, meta='{"role": "cover"}')
+            s.add_all([a1, a2]); await s.commit()
+            return a1.id, a2.id
+    a1, a2 = asyncio.run(covers())
+    v = c.get(f"/api/projects/{pid}/deliverables").json()["versions"][0]
+    assert v["poster"] and a2 in v["poster"]   # default: the latest cover
+    assert c.post(f"/api/projects/{pid}/versions/1/poster", json={"asset_id": a1}).status_code == 200
+    v = c.get(f"/api/projects/{pid}/deliverables").json()["versions"][0]
+    assert a1 in v["poster"] and [x["meta"].get("poster") for x in v["covers"]] == [True, False]
+    assert c.post(f"/api/projects/{pid}/versions/1/poster", json={"asset_id": "nope"}).status_code == 404

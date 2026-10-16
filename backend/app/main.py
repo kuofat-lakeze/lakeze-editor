@@ -1376,6 +1376,8 @@ def _versions(assets: list[Asset], owner: User | None = None) -> list[dict]:
         order = {"upload": 0, "master": 1, "preview": 2}
         v["videos"].sort(key=lambda x: order.get(x.get("role") or "", 9))
         v["main"] = next((x for x in v["videos"] if x.get("role") == "upload"), v["videos"][0] if v["videos"] else None)
+        chosen = next((c for c in v["covers"] if (c.get("meta") or {}).get("poster")), v["covers"][-1] if v["covers"] else None)
+        v["poster"] = chosen["url"] if chosen else None   # the cover shown on the video before it plays
     return [by[k] for k in sorted(by, reverse=True)]
 
 
@@ -1383,6 +1385,27 @@ def _share_dict(sh: Share) -> dict:
     return {"id": sh.id, "token": sh.token, "url": f"/s/{sh.token}", "version": sh.version, "allow_download": sh.allow_download,
             "note": sh.note, "expires_at": sh.expires_at.isoformat() if sh.expires_at else None, "revoked": sh.revoked,
             "views": sh.views, "created_at": sh.created_at.isoformat()}
+
+
+class PosterBody(BaseModel):
+    asset_id: str
+
+
+@app.post("/api/projects/{project_id}/versions/{version}/poster")
+async def set_poster(project_id: str, version: int, body: PosterBody, user: User = CurrentUser):
+    """Use one of a version's covers as its video's poster (deliverables page, gallery, share page)."""
+    await _own(project_id, user)
+    async with Session() as s:
+        covers = (await s.execute(select(Asset).where(Asset.project_id == project_id, Asset.version == version,
+                                                      Asset.kind == "image"))).scalars().all()
+        if body.asset_id not in {a.id for a in covers}:
+            raise HTTPException(404, "這一版沒有這張封面")
+        for a in covers:
+            m = json.loads(a.meta or "{}")
+            m["poster"] = a.id == body.asset_id
+            a.meta = json.dumps(m, ensure_ascii=False)
+        await s.commit()
+    return {"ok": True}
 
 
 @app.get("/api/projects/{project_id}/deliverables")
@@ -1594,7 +1617,7 @@ async def gallery(user: User = CurrentUser):
             continue
         v = next((x for x in vs if x["version"] == p.final_version), vs[0])
         out.append({"project_id": p.id, "name": p.name, "version": v["version"], "final": v["version"] == p.final_version,
-                    "cover": v["covers"][-1] if v["covers"] else None, "video": v.get("main"), "updated_at": p.updated_at.isoformat()})
+                    "cover": next((c for c in v["covers"] if c["url"] == v.get("poster")), v["covers"][-1] if v["covers"] else None), "video": v.get("main"), "updated_at": p.updated_at.isoformat()})
     return out
 
 

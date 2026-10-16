@@ -1440,3 +1440,15 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .cmp2-name > b { display: inline; } .cmp2-tag { align-self: flex-start; margin-left: 0; }
 .vs-mine-act { display: flex; gap: 12px; margin-top: 3px; font-size: 12.5px; } .vs-mine-act a { color: var(--brand); font-weight: 600; cursor: pointer; }
 .vs-item.add { border-style: dashed; } .vs-radio.plus { border: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--brand); font-weight: 800; }
+/* ---- 成品：點封面套用到預覽 ---- */
+.cover-pick { position: relative; display: block; padding: 0; border: 0; background: none; cursor: pointer; width: 100%; border-radius: 12px; overflow: hidden; }
+.cover-pick img { display: block; width: 100%; transition: transform .2s; }
+.cover-pick:hover img { transform: scale(1.02); }
+.cover.on .cover-pick { outline: 3px solid var(--brand); outline-offset: 2px; }
+.cover-badge { position: absolute; left: 8px; top: 8px; font-size: 11.5px; font-weight: 800; color: #fff; background: var(--brand); padding: 3px 8px; border-radius: 999px; }
+.cover-badge.ghost { background: rgba(0,0,0,.55); opacity: 0; transition: opacity .15s; }
+.cover-pick:hover .cover-badge.ghost, .cover-pick:focus-visible .cover-badge.ghost { opacity: 1; }
+@media (hover: none) { .cover-badge.ghost { opacity: .9; } }
+.cover-style { font-style: normal; margin-left: 6px; font-size: 11px; font-weight: 700; color: var(--muted); background: var(--panel2); padding: 1px 6px; border-radius: 6px; }
+.cover-hint { margin-bottom: 4px; }
+.cover-hint { grid-column: 1 / -1; }

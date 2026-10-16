@@ -2,7 +2,7 @@ export type Asset = { id: string; kind: 'video' | 'audio' | 'image' | 'file'; na
 export type Part = { type: 'text'; text: string } | { type: 'tool'; name: string }
 export type Msg = { id: number | string; role: 'user' | 'assistant'; parts: Part[]; created_at: string; assets?: Asset[] }
 export type Project = { id: string; name: string; updated_at?: string; exports?: number; final_version?: number | null }
-export type DeliverableVersion = { version: number; created_at: string; videos: Asset[]; covers: Asset[]; main: Asset | null; expires_at?: string | null }
+export type DeliverableVersion = { version: number; created_at: string; videos: Asset[]; covers: Asset[]; main: Asset | null; expires_at?: string | null; poster?: string | null }
 export type ShareLink = { id: string; token: string; url: string; version: number | null; allow_download: boolean; note: string; expires_at: string | null; revoked: boolean; views: number; created_at: string }
 export type DeliverablesData = { project: { id: string; name: string; final_version: number | null; exports: number }; versions: DeliverableVersion[]; shares: ShareLink[] }
 export type ThreadMsg = { id: number; name: string; text: string; created_at: string; owner: boolean }
@@ -131,6 +131,7 @@ export const api = {
   createShare: (id: string, body: { version: number | null; allow_download: boolean; expires_days: number | null; note: string }) =>
     post(`/api/projects/${id}/share`, body).then(j<ShareLink>),
   revokeShare: (id: string, shareId: string) => post(`/api/projects/${id}/share/${shareId}/revoke`, {}).then(j<{ ok: boolean }>),
+  setPoster: (id: string, version: number, asset_id: string) => post(`/api/projects/${id}/versions/${version}/poster`, { asset_id }).then(j<{ ok: boolean }>),
   deleteVersion: (id: string, version: number) => fetch(`/api/projects/${id}/versions/${version}`, { method: 'DELETE' }).then(j<{ ok: boolean; freed_bytes: number; storage: StorageState }>),
   storage: () => fetch('/api/storage').then(j<StorageInfo>),
   cloneVoice: (fd: FormData) => fetch('/api/voice/clone', { method: 'POST', body: fd }).then(j<{ ok: boolean; voice: Voice; seconds: number }>),

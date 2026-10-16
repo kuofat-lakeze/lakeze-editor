@@ -122,13 +122,14 @@ TOOLS: list[dict] = [
     {"name": "export_video", "description": "合成畫面與混音，輸出母帶、上傳用 1080p（<30MB）、預覽 720p 三個檔案給用戶。",
      "input_schema": {"type": "object", "additionalProperties": False,
                       "properties": {"stem": {"type": "string", "description": "檔名，預設 final"}}}},
-    {"name": "make_cover", "description": "做封面（1080x1920）。抽指定畫面並去色帶，標題最多兩行（第一行金、第二行白），價格放在 4:5 安全區。回傳封面卡片與裁切檢查圖。",
+    {"name": "make_cover", "description": "做封面（1080x1920）。抽指定畫面並去色帶，標題最多兩行，價格放在 4:5 安全區。三種風格：bold（醒目大字：金白大標在上半、底部暗漸層、大價格，跟影片字幕同一套）、magazine（雜誌風：品牌色橫條放店名、標題靠左下大字、價格標籤）、minimal（清爽留白：白色細框、下方淺色卡片、深色字、價格膠囊）。做兩款以上時每款要用不同 style 和不同畫面。回傳封面卡片與裁切檢查圖。",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["clip", "t", "title"],
                       "properties": {"clip": {"type": "integer"}, "t": {"type": "number"},
                                      "title": {"type": "array", "items": {"type": "string"}, "description": "最多兩行"},
                                      "super_text": {"type": "string"}, "sub_text": {"type": "string"},
                                      "price_text": {"type": "string"}, "crop_x": {"type": "number"},
-                                     "warm": {"type": "boolean"}, "name": {"type": "string"}}}},
+                                     "warm": {"type": "boolean"}, "name": {"type": "string"},
+                                     "style": {"type": "string", "enum": ["bold", "magazine", "minimal"], "description": "封面風格，預設 bold"}}}},
 ]
 
 
@@ -313,8 +314,9 @@ def _cover(inp, ctx):
     r = cover_mod.make_cover(ctx.root, inp["clip"], inp["t"], ctx.root / "cover" / f"{name}.jpg",
                              super_text=inp.get("super_text", ""), title=(inp.get("title") or None) and inp["title"][:2],
                              sub_text=inp.get("sub_text", ""), price_text=inp.get("price_text", ""),
-                             crop_x=inp.get("crop_x", 0.5), warm=inp.get("warm", False))
-    a = ctx.add_asset(r["cover"], "image", f"封面 {name}", {"role": "cover", "cover": True})
+                             crop_x=inp.get("crop_x", 0.5), warm=inp.get("warm", False), style=inp.get("style", "bold"))
+    style_label = {"bold": "醒目大字", "magazine": "雜誌風", "minimal": "清爽留白"}.get(inp.get("style", "bold"), "醒目大字")
+    a = ctx.add_asset(r["cover"], "image", f"封面 {name}", {"role": "cover", "cover": True, "style": inp.get("style", "bold"), "style_label": style_label})
     return [_text(f"封面卡片 {a['id']}。裁切檢查（9:16 / 4:5 / 3:4）："), _image(r["check"])]
 
 

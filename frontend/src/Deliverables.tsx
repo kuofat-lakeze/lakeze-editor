@@ -44,6 +44,11 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
   const { project, versions, shares } = data
   const live = shares.filter(s => !s.revoked && (!s.expires_at || Date.parse(s.expires_at) > Date.now()))
 
+  // Tap a cover: it becomes the poster of that version's video (also on the gallery and the share page).
+  const pickPoster = (version: number, assetId: string) => {
+    setData(d => d && { ...d, versions: d.versions.map(x => x.version !== version ? x : { ...x, poster: x.covers.find(c => c.id === assetId)?.url ?? x.poster }) })
+    api.setPoster(projectId, version, assetId).catch(e => ask.alert((e as Error).message))
+  }
   const setFinal = async (v: number | null) => { await api.setFinal(projectId, v); await load(); onChanged?.() }
   const del = async (v: number) => {
     const mb = sizeOf(versions.find(x => x.version === v)!)
@@ -91,7 +96,7 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
             </div>
             <div className="ver-body">
               <div className="ver-video">
-                {v.main ? <video src={v.main.url} controls preload="metadata" playsInline /> : <div className="muted small">沒有影片</div>}
+                {v.main ? <video key={v.poster ?? ''} src={v.main.url} controls preload="metadata" playsInline poster={v.poster ?? undefined} /> : <div className="muted small">沒有影片</div>}
                 {v.main && <div className="ver-meta">
                   <span>{v.main.name}{v.main.meta?.size_mb ? ` · ${v.main.meta.size_mb} MB` : ''}</span>
                   <a href={v.main.url} download>下載</a>
@@ -106,12 +111,19 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
               </div>
               <div className="ver-covers">
                 {v.covers.length === 0 && <div className="muted small">這版沒有封面</div>}
-                {v.covers.map((c: Asset) => (
-                  <figure key={c.id} className="cover">
-                    <img src={c.url} alt={c.name} loading="lazy" />
-                    <figcaption><span>{c.name}</span><a href={c.url} download>下載</a></figcaption>
-                  </figure>
-                ))}
+                {v.covers.length > 1 && <div className="muted small cover-hint">點封面就套用到左邊的影片預覽</div>}
+                {v.covers.map((c: Asset) => {
+                  const on = v.poster === c.url
+                  const style = (c.meta?.style_label as string | undefined)
+                  return (
+                    <figure key={c.id} className={`cover ${on ? 'on' : ''}`}>
+                      <button type="button" className="cover-pick" onClick={() => pickPoster(v.version, c.id)} title="套用到影片預覽" aria-pressed={on}>
+                        <img src={c.url} alt={c.name} loading="lazy" />
+                        {on ? <span className="cover-badge">✓ 預覽封面</span> : <span className="cover-badge ghost">點一下套用</span>}
+                      </button>
+                      <figcaption><span>{c.name}{style ? <em className="cover-style">{style}</em> : null}</span><a href={c.url} download>下載</a></figcaption>
+                    </figure>)
+                })}
               </div>
             </div>
           </section>
