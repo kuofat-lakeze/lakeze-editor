@@ -15,11 +15,11 @@ Needs RAILWAY_COST_TOKEN: a *project* token (read access to this project only), 
 """
 import asyncio
 import calendar
+import json
 import os
 import time
+import urllib.request
 from datetime import datetime, timedelta, timezone
-
-import httpx
 
 API = "https://backboard.railway.com/graphql/v2"
 TOKEN = os.environ.get("RAILWAY_COST_TOKEN", "")
@@ -38,10 +38,15 @@ SERVICE_LABEL = {"backend": "後端（剪輯、轉檔）", "frontend": "前端�
 _cache: dict[int, tuple[float, dict]] = {}
 
 
-async def _gql(c: httpx.AsyncClient, q: str, v: dict) -> dict:
-    r = await c.post(API, json={"query": q, "variables": v}, headers={"Project-Access-Token": TOKEN})
-    r.raise_for_status()
-    j = r.json()
+def _post(q: str, v: dict) -> dict:
+    req = urllib.request.Request(API, data=json.dumps({"query": q, "variables": v}).encode(),
+                                 headers={"Project-Access-Token": TOKEN, "content-type": "application/json", "user-agent": "lakeze-editor"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+
+async def _gql(q: str, v: dict) -> dict:
+    j = await asyncio.to_thread(_post, q, v)
     if j.get("errors"):
         raise RuntimeError(j["errors"][0].get("message", "railway api error"))
     return j["data"]
@@ -51,15 +56,14 @@ async def _fetch(days: int) -> dict:
     ref = datetime.now(timezone.utc)
     since = ref - timedelta(days=days)
     ms = list(RATES)
-    async with httpx.AsyncClient(timeout=15) as c:
-        used, est, proj = await asyncio.gather(
-            _gql(c, "query($p:String!,$s:DateTime!,$e:DateTime!,$m:[MetricMeasurement!]!){ usage(projectId:$p, measurements:$m,"
-                    " startDate:$s, endDate:$e, groupBy:[SERVICE_ID]){ measurement value tags{ serviceId } } }",
-                 {"p": PROJECT_ID, "s": since.isoformat(), "e": ref.isoformat(), "m": ms}),
-            _gql(c, "query($p:String!,$m:[MetricMeasurement!]!){ estimatedUsage(projectId:$p, measurements:$m){ measurement estimatedValue } }",
-                 {"p": PROJECT_ID, "m": ms}),
-            _gql(c, "query($p:String!){ project(id:$p){ services{ edges{ node{ id name } } } } }", {"p": PROJECT_ID}),
-        )
+    used, est, proj = await asyncio.gather(
+        _gql("query($p:String!,$s:DateTime!,$e:DateTime!,$m:[MetricMeasurement!]!){ usage(projectId:$p, measurements:$m,"
+             " startDate:$s, endDate:$e, groupBy:[SERVICE_ID]){ measurement value tags{ serviceId } } }",
+             {"p": PROJECT_ID, "s": since.isoformat(), "e": ref.isoformat(), "m": ms}),
+        _gql("query($p:String!,$m:[MetricMeasurement!]!){ estimatedUsage(projectId:$p, measurements:$m){ measurement estimatedValue } }",
+             {"p": PROJECT_ID, "m": ms}),
+        _gql("query($p:String!){ project(id:$p){ services{ edges{ node{ id name } } } } }", {"p": PROJECT_ID}),
+    )
     names = {e["node"]["id"]: e["node"]["name"] for e in proj["project"]["services"]["edges"]}
     items: dict[str, dict] = {}
     for u in used["usage"]:
