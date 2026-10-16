@@ -14,7 +14,7 @@ from typing import Awaitable, Callable
 import anthropic
 
 from .. import config
-from ..pricing import tool_cost
+from ..pricing import REVISION_TURN_POINTS, tool_cost
 from .prompt import SYSTEM
 from .tools import ToolContext, TOOLS, dispatch
 
@@ -157,7 +157,20 @@ class TurnRunner:
         try:
             inp = tu.input if isinstance(tu.input, dict) else json.loads(tu.input)
             cost = tool_cost(tu.name, inp)
+            st = await self.store.storage_state() if tu.name in ("export_video", "make_cover") else None
+            if st and st["over"]:
+                await self.emit({"type": "need_storage", **st})
+                used, quota = st["used_bytes"] / 2**30, st["quota_bytes"] / 2**30
+                return {"type": "tool_result", "tool_use_id": tu.id, "is_error": True,
+                        "content": [{"type": "text", "text": f"成品空間已滿（已用 {used:.2f} GB / {quota:.0f} GB），無法輸出新的影片或封面。"
+                                                             "請停下來，告訴用戶到「成品」頁刪除舊版本或到點數頁升級空間，之後說「繼續」再輸出。"}]}
             charged, bal = await self.store.charge(self.project_id, cost, tu.name)
+            if charged and cost and self._exports_at_start and not self._revision_noted:
+                # first chargeable tool of a revision turn: count the turn and charge the per-turn fee
+                self._revision_noted = True
+                fee_ok, bal = await self.store.note_revision_turn(self.project_id)
+                if fee_ok and REVISION_TURN_POINTS:
+                    await self.emit({"type": "credits", "balance": bal, "charged": REVISION_TURN_POINTS, "tool": "revision_turn"})
             if not charged:
                 await self.emit({"type": "need_credits", "needed": cost, "balance": bal})
                 content = [{"type": "text", "text": f"點數不足：此動作需 {cost} 點，目前餘額 {bal} 點。"
@@ -166,9 +179,6 @@ class TurnRunner:
             else:
                 if cost:
                     await self.emit({"type": "credits", "balance": bal, "charged": cost, "tool": tu.name})
-                    if self._exports_at_start and not self._revision_noted:
-                        await self.store.note_revision_turn(self.project_id)
-                        self._revision_noted = True
                 content = await asyncio.to_thread(dispatch, tu.name, inp, self.ctx)
                 ok = True
                 if tu.name == "export_video":

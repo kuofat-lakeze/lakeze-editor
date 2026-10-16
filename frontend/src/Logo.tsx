@@ -1,4 +1,4 @@
-/* 秒剪 identity: a clapperboard snapping shut, leaning forward with speed streaks behind it,
+/* 旅剪 identity: a clapperboard snapping shut, leaning forward with speed streaks behind it,
    a play triangle on the board (剪 + 影片 + 秒). `tone="light"` is the white tile used in the app;
    `tone="brand"` is the orange tile for dark surfaces, avatars and app icons. */
 export function MiaoMark({ size = 40, radius = 0.25, tone = 'light' }: { size?: number; radius?: number; tone?: 'light' | 'brand' }) {
@@ -6,7 +6,7 @@ export function MiaoMark({ size = 40, radius = 0.25, tone = 'light' }: { size?: 
   const brand = tone === 'brand'
   const trailId = brand ? 'mj-trail-w' : 'mj-trail-o'
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="秒剪" className="miao-mark">
+    <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="旅剪" className="miao-mark">
       <defs>
         <linearGradient id="mj-og" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#EC5A1E" /><stop offset="1" stopColor="#F5921E" />
@@ -49,7 +49,7 @@ export function MiaoLogo({ size = 40, tagline = false, className = '', tone = 'l
     <span className={`miao-logo ${className}`} style={{ ['--mj' as string]: `${size}px` }}>
       <MiaoMark size={size} tone={tone} />
       <span className="miao-text">
-        <span className="miao-word">秒剪</span>
+        <span className="miao-word">旅剪</span>
         {tagline && <span className="miao-tag">旅遊短影音自動剪片軟體</span>}
       </span>
     </span>

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from .auth import current_user
-from .db import CreditTx, Message, Project, Session, Usage, User, add_credits, now
+from .db import Asset, CreditTx, Message, Project, Session, Usage, User, add_credits, now, storage_quota_bytes
 
 router = APIRouter(prefix="/api/admin")
 
@@ -46,16 +46,21 @@ async def users(q: str = "", _: User = Admin):
         cost = select(Usage.user_id, func.sum(Usage.cost_usd).label("cost")).group_by(Usage.user_id).subquery()
         proj = select(Project.user_id, func.count(Project.id).label("n"), func.sum(Project.exports).label("ex"),
                       func.max(Project.updated_at).label("last")).group_by(Project.user_id).subquery()
-        stmt = (select(User, bal.c.bal, bal.c.waived, bal.c.paid, cost.c.cost, proj.c.n, proj.c.ex, proj.c.last)
+        sto = (select(Project.user_id, func.sum(Asset.size_bytes).label("bytes")).join(Asset, Asset.project_id == Project.id)
+               .where(Asset.version.is_not(None)).group_by(Project.user_id).subquery())
+        stmt = (select(User, bal.c.bal, bal.c.waived, bal.c.paid, cost.c.cost, proj.c.n, proj.c.ex, proj.c.last, sto.c.bytes)
                 .outerjoin(bal, bal.c.user_id == User.id).outerjoin(cost, cost.c.user_id == User.id)
-                .outerjoin(proj, proj.c.user_id == User.id).order_by(User.created_at.desc()))
+                .outerjoin(proj, proj.c.user_id == User.id).outerjoin(sto, sto.c.user_id == User.id).order_by(User.created_at.desc()))
         if q:
             stmt = stmt.where(User.email.contains(q.lower()))
         rows = (await s.execute(stmt.limit(500))).all()
     return [{"id": u.id, "email": u.email, "created_at": u.created_at.isoformat(), "is_admin": u.is_admin,
              "disabled": u.disabled, "note": u.note, "balance": int(b or 0), "waived": int(w or 0), "paid_twd": int(p or 0),
              "cost_usd": round(c or 0, 2), "projects": int(n or 0), "exports": int(e or 0),
-             "last_active": (last.isoformat() if last else None)} for u, b, w, p, c, n, e, last in rows]
+             "last_active": (last.isoformat() if last else None),
+             "storage_plan": u.storage_plan or "free", "storage_bytes": int(sb or 0), "storage_quota_bytes": storage_quota_bytes(u),
+             "subscription": u.subscription or ""}
+            for u, b, w, p, c, n, e, last, sb in rows]
 
 
 @router.get("/users/{user_id}")
@@ -74,7 +79,8 @@ async def user_detail(user_id: str, _: User = Admin):
                      "free": u.free_project_id == p.id, "cost_usd": round(pc.get(p.id, 0) or 0, 2),
                      "updated_at": p.updated_at.isoformat()} for p in ps]
     return {"id": u.id, "email": u.email, "is_admin": u.is_admin, "disabled": u.disabled, "note": u.note,
-            "created_at": u.created_at.isoformat(), "ledger": ledger, "projects": projects}
+            "created_at": u.created_at.isoformat(), "subscription": u.subscription or "", "storage_plan": u.storage_plan or "free",
+            "storage_quota_gb": u.storage_quota_gb, "ledger": ledger, "projects": projects}
 
 
 class Grant(BaseModel):
@@ -95,6 +101,7 @@ class Patch(BaseModel):
     is_admin: bool | None = None
     note: str | None = None
     reset_free_project: bool = False
+    storage_quota_gb: int | None = None   # 0 clears the override (back to the plan's quota)
 
 
 @router.post("/users/{user_id}")
@@ -111,8 +118,27 @@ async def patch_user(user_id: str, p: Patch, admin: User = Admin):
             u.note = p.note
         if p.reset_free_project:  # give another free trial
             u.free_project_id = None
+        if p.storage_quota_gb is not None:
+            u.storage_quota_gb = p.storage_quota_gb or None
         await s.commit()
     return {"ok": True}
+
+
+class SubBody(BaseModel):
+    plan: str = ""        # a key of pricing.SUBSCRIPTIONS, or "" to end the subscription now
+    paid_twd: int = 0     # what was collected (bank transfer / LINE Pay), for the revenue figures
+
+
+@router.post("/users/{user_id}/subscription")
+async def set_subscription(user_id: str, b: SubBody, admin: User = Admin):
+    """Start / renew / end a subscription by hand (used until the payment provider does it via webhook)."""
+    from . import pricing
+    from .main import activate_subscription, cancel_subscription
+    if b.plan:
+        if b.plan not in pricing.SUBSCRIPTIONS:
+            raise HTTPException(404, "unknown plan")
+        return await activate_subscription(user_id, b.plan, paid_twd=b.paid_twd, meta={"by": admin.email})
+    return await cancel_subscription(user_id)
 
 
 @router.get("/projects/{project_id}/messages")

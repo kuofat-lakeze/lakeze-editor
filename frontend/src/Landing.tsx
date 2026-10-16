@@ -3,9 +3,10 @@ import { MiaoLogo } from './Logo'
 import { HowItWorks } from './HowItWorks'
 import { useEffect } from 'react'
 
-export const PRODUCT = { name: '秒剪', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
+export const PRODUCT = { name: '旅剪', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
 const MARKET = { days: 3, low: 2000, high: 3000 }      // what a studio charges today
-const OURS = { minutes: 15, twd: 390 }                 // first version incl. cover = 39 points
+const OURS = { minutes: 15, twd: 470 }                 // pay-as-you-go first version incl. cover = 47 points (backend/app/pricing.py)
+const SUB = { name: '旅剪 5', twd: 3150, videos: 5, perVideo: 630 }   // monthly: 5 videos, 2 revisions each, 22 GB
 
 
 function useReveal() {
@@ -65,9 +66,9 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
         </div>
         <div className="ld-save">
           <div className="reveal"><div className="ld-save-num">{timePct}%</div><div className="muted small">時間省下來：3 天變 15 分鐘，今天拍今天發</div></div>
-          <div className="reveal d1"><div className="ld-save-num">NT${saveLow.toLocaleString()}–{saveHigh.toLocaleString()}</div><div className="muted small">每支省下約 {savePct}% 的費用，一個月發 8 支就省超過一萬</div></div>
+          <div className="reveal d1"><div className="ld-save-num">NT${saveLow.toLocaleString()}–{saveHigh.toLocaleString()}</div><div className="muted small">每支省下約 {savePct}% 的費用；訂閱 {SUB.name} 每月 NT${SUB.twd.toLocaleString()}，{SUB.videos} 支含 2 輪修改，每支 NT${SUB.perVideo}</div></div>
         </div>
-        <div className="muted small ld-note">費用以第一版含封面 39 點（1 點 = NT$10）計；修改一輪約 NT$80。業界行情為市場常見報價區間。</div>
+        <div className="muted small ld-note">按次付費以第一版含封面 47 點（1 點 = NT$10）計，修改一輪約 NT$130；訂閱另含成品空間。業界行情為市場常見報價區間。</div>
       </section>
 
       <section className="ld-foot-cta reveal">

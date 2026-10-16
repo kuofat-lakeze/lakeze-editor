@@ -9,7 +9,7 @@ export type ShareView = { project_name: string; note: string; allow_download: bo
 export type GalleryItem = { project_id: string; name: string; version: number; final: boolean; cover: Asset | null; video: Asset | null; updated_at: string }
 export type ClientComment = { id: number; name: string; text: string; created_at: string }
 export type CreditsSummary = {
-  balance: number; purchased: number; refunded: number; used: number; waived: number; revision_points: number
+  balance: number; purchased: number; refunded: number; used: number; waived: number; revision_points: number; first_video_points: number
   free_project?: { id: string; name: string; exports: number; in_free: boolean; free_revisions_left: number | null } | null
   categories: { id: string; label: string }[]; tool_labels: Record<string, string>
   projects: { id: string; name: string; exports: number; revision_turns: number; free: boolean; updated_at: string
@@ -19,13 +19,23 @@ export type CreditsSummary = {
 export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null }
 export type CreditState = { balance: number; free_project: boolean; in_free: boolean; free_revisions_left: number | null; exports: number }
 export type ProjectDetail = Project & { messages: Msg[]; assets: Asset[]; running: boolean; credits: CreditState; final_version?: number | null; exports?: number; client_comments?: ClientComment[] }
-export type Me = { id: string; email: string; is_admin: boolean; balance: number; free_project_id: string | null }
+export type StorageState = { used_bytes: number; quota_bytes: number; plan: string; renews_at: string | null; over: boolean }
+export type StoragePlan = { id: string; gb: number; extra_gb: number; points: number; label: string; twd: number }
+export type StorageInfo = StorageState & {
+  balance: number; period_days: number; raw_retention_days: number; override_gb: number | null; plans: StoragePlan[]
+  projects: { id: string; name: string; final_version: number | null; bytes: number; versions: number }[]
+}
+export type Me = { id: string; email: string; is_admin: boolean; balance: number; free_project_id: string | null; storage?: StorageState; subscription?: MySubscription | null }
 export type Pack = { id: string; twd: number; points: number; label: string; checkout_url: string | null }
-export type Pricing = { point_twd: number; menu: { item: string; points: number }[]; free_revision_turns: number; packs: Pack[]; provider_configured: boolean; note: string }
-export type AdminUser = { id: string; email: string; created_at: string; is_admin: boolean; disabled: boolean; note: string; balance: number; waived: number; paid_twd: number; cost_usd: number; projects: number; exports: number; last_active?: string | null }
+export type Subscription = { id: string; label: string; desc: string; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
+  twd: number; payg_twd: number; save_twd: number; save_pct: number; per_video_twd: number; checkout_url?: string | null }
+export type MySubscription = { id: string; label: string; points: number; videos: number; storage_gb: number; period_start: string | null; renews_at: string | null }
+export type Pricing = { point_twd: number; menu: { item: string; points: number }[]; free_revision_turns: number; packs: Pack[]; provider_configured: boolean; note: string
+  first_video_points: number; revision_points: number; first_video_twd: number; revision_twd: number; subscriptions: Subscription[]; storage_plans: StoragePlan[] }
+export type AdminUser = { id: string; email: string; created_at: string; is_admin: boolean; disabled: boolean; note: string; balance: number; waived: number; paid_twd: number; cost_usd: number; projects: number; exports: number; last_active?: string | null; storage_plan?: string; storage_bytes?: number; storage_quota_bytes?: number; subscription?: string }
 export type AdminStats = { users: number; new_users_7d: number; projects: number; exports: number; revenue_twd: number; points_sold: number; points_used: number; points_waived: number; cost_usd: number; claude_cost_usd: number; eleven_cost_usd: number }
 export type Ledger = { id?: number; delta: number; waived: number; kind: string; reason: string; amount_twd?: number; project_id: string | null; created_at: string }
-export type AdminUserDetail = { id: string; email: string; is_admin: boolean; disabled: boolean; note: string; created_at: string; ledger: Ledger[]; projects: { id: string; name: string; exports: number; revision_turns: number; free: boolean; cost_usd: number; updated_at: string }[] }
+export type AdminUserDetail = { id: string; email: string; is_admin: boolean; disabled: boolean; note: string; created_at: string; subscription?: string; storage_plan?: string; storage_quota_gb?: number | null; ledger: Ledger[]; projects: { id: string; name: string; exports: number; revision_turns: number; free: boolean; cost_usd: number; updated_at: string }[] }
 
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {
@@ -57,6 +67,9 @@ export const api = {
   createShare: (id: string, body: { version: number | null; allow_download: boolean; expires_days: number | null; note: string }) =>
     post(`/api/projects/${id}/share`, body).then(j<ShareLink>),
   revokeShare: (id: string, shareId: string) => post(`/api/projects/${id}/share/${shareId}/revoke`, {}).then(j<{ ok: boolean }>),
+  deleteVersion: (id: string, version: number) => fetch(`/api/projects/${id}/versions/${version}`, { method: 'DELETE' }).then(j<{ ok: boolean; freed_bytes: number; storage: StorageState }>),
+  storage: () => fetch('/api/storage').then(j<StorageInfo>),
+  setStoragePlan: (plan: string) => post('/api/storage/plan', { plan }).then(j<{ ok: boolean; storage: StorageState; balance?: number }>),
   share: (token: string) => fetch(`/api/s/${token}`).then(j<ShareView>),
   shareComment: (token: string, name: string, text: string) => post(`/api/s/${token}/comment`, { name, text }).then(j<{ ok: boolean }>),
   gallery: () => fetch('/api/gallery').then(j<GalleryItem[]>),
@@ -68,6 +81,7 @@ export const api = {
     grant: (id: string, delta: number, reason: string, amount_twd: number) =>
       post(`/api/admin/users/${id}/credits`, { delta, reason, amount_twd }).then(j<{ balance: number }>),
     patch: (id: string, body: Record<string, unknown>) => post(`/api/admin/users/${id}`, body).then(j<{ ok: boolean }>),
+    subscription: (id: string, plan: string, paid_twd = 0) => post(`/api/admin/users/${id}/subscription`, { plan, paid_twd }).then(j<{ expired: number; granted?: number }>),
     messages: (pid: string) => fetch(`/api/admin/projects/${pid}/messages`).then(j<{ role: string; text?: string; tool?: string; at: string }[]>),
   },
   // Chunked upload. Railway's edge drops any request whose body takes more than 5 minutes to

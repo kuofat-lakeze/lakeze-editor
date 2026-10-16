@@ -20,7 +20,8 @@ from . import config, pricing
 from .admin import router as admin_router
 from .agent.runner import TurnRunner
 from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
-from .db import Asset, CreditTx, Message, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict, backfill_versions, balance, init_db
+from .db import (GB, Asset, CreditTx, Message, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict,
+                 backfill_sizes, backfill_versions, balance, init_db, storage_quota_bytes, storage_state, storage_used)
 from .pipeline import eleven
 from .pipeline.fonts import ensure_fonts
 from .storage import project_dir, safe_join
@@ -56,6 +57,48 @@ async def _cleanup_loop():
         await asyncio.sleep(6 * 3600)
 
 
+async def renew_storage_plans(now: datetime | None = None) -> dict:
+    """Charge every paid storage plan whose period has ended. A user who can't pay drops to the free
+    plan: files stay, but exports are blocked while usage is above the free quota."""
+    now = now or datetime.now(timezone.utc)
+    renewed, lapsed = 0, 0
+    async with Session() as s:
+        due = (await s.execute(select(User).where(User.storage_plan != "free", User.storage_renews_at <= now))).scalars().all()
+    for u in due:
+        plan = pricing.STORAGE_PLANS.get(u.storage_plan)
+        if not plan or not plan["points"]:
+            continue
+        if await balance(u.id) >= plan["points"]:
+            await add_credits(u.id, -plan["points"], "charge", "storage", meta={"plan": u.storage_plan, "renewal": True})
+            nxt = (u.storage_renews_at or now) + timedelta(days=pricing.STORAGE_PERIOD_DAYS)
+            renewed += 1
+        else:
+            nxt = None
+            lapsed += 1
+            log.info("storage: %s lapsed from %s (balance too low)", u.email, u.storage_plan)
+        async with Session() as s:
+            uu = await s.get(User, u.id)
+            uu.storage_renews_at = nxt
+            if nxt is None:
+                uu.storage_plan = "free"
+            await s.commit()
+    return {"renewed": renewed, "lapsed": lapsed}
+
+
+async def _storage_loop():
+    while True:
+        try:
+            r = await renew_storage_plans()
+            if r["renewed"] or r["lapsed"]:
+                log.info("storage renewals: %s", r)
+            n = await lapse_subscriptions()
+            if n:
+                log.info("subscriptions lapsed: %d", n)
+        except Exception:
+            log.exception("storage/subscription renewal failed")
+        await asyncio.sleep(3600)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -63,16 +106,21 @@ async def lifespan(app: FastAPI):
         n = await backfill_versions()
         if n:
             log.info("backfilled version on %d legacy deliverable assets", n)
+        n = await backfill_sizes()
+        if n:
+            log.info("backfilled size on %d assets", n)
     except Exception:
         log.exception("deliverable backfill failed")
     try:
         await asyncio.to_thread(ensure_fonts)
     except Exception as e:  # fonts can be fetched later; don't block startup
         log.warning("font download failed: %s", e)
-    task = asyncio.create_task(_cleanup_loop()) if config.RAW_RETENTION_DAYS > 0 else None
+    tasks = [asyncio.create_task(_storage_loop())]
+    if config.RAW_RETENTION_DAYS > 0:
+        tasks.append(asyncio.create_task(_cleanup_loop()))
     yield
-    if task:
-        task.cancel()
+    for t in tasks:
+        t.cancel()
 
 
 app = FastAPI(title="Lakeze Editor", lifespan=lifespan)
@@ -144,7 +192,166 @@ async def me(user: User = CurrentUser):
     if user.disabled:
         raise HTTPException(403, "帳號已停用")
     return {"id": user.id, "email": user.email, "is_admin": user.is_admin, "balance": await balance(user.id),
-            "free_project_id": user.free_project_id}
+            "free_project_id": user.free_project_id, "storage": await storage_state(user.id),
+            "subscription": _sub_dict(user)}
+
+
+# ---- subscriptions ------------------------------------------------------------------------------
+def _sub_dict(u: User) -> dict | None:
+    if not u.subscription or u.subscription not in pricing.SUBSCRIPTIONS:
+        return None
+    s = pricing.SUBSCRIPTIONS[u.subscription]
+    return {"id": u.subscription, "label": s["label"], "points": s["points"], "videos": s["videos"], "storage_gb": s["storage_gb"],
+            "period_start": u.sub_period_start.isoformat() if u.sub_period_start else None,
+            "renews_at": u.sub_renews_at.isoformat() if u.sub_renews_at else None}
+
+
+async def _expire_subscription_points(u: User) -> int:
+    """End of a subscription period: whatever is left of that period's included points expires.
+    Charges during the period are attributed to the included points first, so top-up points
+    (which never expire) are only touched after the included ones are used up."""
+    if not u.subscription or not u.sub_period_start:
+        return 0
+    granted = pricing.SUBSCRIPTIONS.get(u.subscription, {}).get("points", 0)
+    start = u.sub_period_start if u.sub_period_start.tzinfo else u.sub_period_start.replace(tzinfo=timezone.utc)
+    async with Session() as s:
+        used = -int((await s.execute(select(func.coalesce(func.sum(CreditTx.delta), 0))
+                                     .where(CreditTx.user_id == u.id, CreditTx.kind == "charge", CreditTx.created_at >= start))).scalar() or 0)
+    expire = min(max(0, granted - used), await balance(u.id))
+    if expire > 0:
+        await add_credits(u.id, -expire, "expire", "expire", meta={"plan": u.subscription, "granted": granted, "used": used})
+    return expire
+
+
+async def activate_subscription(user_id: str, plan_id: str, *, paid_twd: int = 0, meta: dict | None = None) -> dict:
+    """Start (or renew) a subscription period: expire the previous period's leftover, grant this
+    period's points, bundle the storage. Called by the payment webhook or by an admin."""
+    sub = pricing.SUBSCRIPTIONS[plan_id]
+    now = datetime.now(timezone.utc)
+    async with Session() as s:
+        u = await s.get(User, user_id)
+    if not u:
+        raise HTTPException(404, "user not found")
+    expired = await _expire_subscription_points(u)
+    await add_credits(user_id, sub["points"], "subscription", f"subscription {plan_id}", amount_twd=paid_twd,
+                      meta={"plan": plan_id, **(meta or {})})
+    async with Session() as s:
+        u = await s.get(User, user_id)
+        u.subscription = plan_id
+        u.sub_period_start = now
+        u.sub_renews_at = now + timedelta(days=pricing.SUBSCRIPTION_PERIOD_DAYS)
+        if pricing.STORAGE_PLANS[sub["storage_plan"]]["gb"] >= storage_quota_bytes(u) // GB or u.storage_plan == "free":
+            u.storage_plan = sub["storage_plan"]
+            u.storage_renews_at = None   # bundled: the storage loop never charges it
+        await s.commit()
+    return {"expired": expired, "granted": sub["points"], "subscription": _sub_dict(u)}
+
+
+async def cancel_subscription(user_id: str) -> dict:
+    """End the subscription now: leftover included points expire, storage goes back to free."""
+    async with Session() as s:
+        u = await s.get(User, user_id)
+    if not u or not u.subscription:
+        return {"expired": 0}
+    expired = await _expire_subscription_points(u)
+    async with Session() as s:
+        u = await s.get(User, user_id)
+        u.subscription = ""; u.sub_period_start = None; u.sub_renews_at = None
+        if u.storage_renews_at is None:   # storage came with the subscription
+            u.storage_plan = "free"
+        await s.commit()
+    return {"expired": expired}
+
+
+async def lapse_subscriptions(now: datetime | None = None) -> int:
+    """Subscriptions whose renewal payment didn't arrive within the grace period end."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=pricing.SUBSCRIPTION_GRACE_DAYS)
+    async with Session() as s:
+        due = (await s.execute(select(User).where(User.subscription != "", User.sub_renews_at <= cutoff))).scalars().all()
+    for u in due:
+        log.info("subscription: %s lapsed from %s", u.email, u.subscription)
+        await cancel_subscription(u.id)
+    return len(due)
+
+
+# ---- deliverable storage ---------------------------------------------------------------------
+def _plan_dict(pid: str) -> dict:
+    p = pricing.STORAGE_PLANS[pid]
+    return {"id": pid, "gb": p["gb"], "extra_gb": p["extra"], "points": p["points"], "label": p["label"],
+            "twd": p["points"] * pricing.POINT_TWD}
+
+
+@app.get("/api/storage")
+async def storage_summary(user: User = CurrentUser):
+    """Deliverable storage: usage against quota, per-project breakdown, plans."""
+    st = await storage_state(user.id)
+    async with Session() as s:
+        rows = (await s.execute(select(Project.id, Project.name, Project.final_version, func.coalesce(func.sum(Asset.size_bytes), 0),
+                                       func.count(func.distinct(Asset.version)))
+                                .join(Asset, Asset.project_id == Project.id).where(Project.user_id == user.id, Asset.version.is_not(None))
+                                .group_by(Project.id).order_by(func.sum(Asset.size_bytes).desc()))).all()
+    return {**st, "balance": await balance(user.id), "period_days": pricing.STORAGE_PERIOD_DAYS,
+            "raw_retention_days": config.RAW_RETENTION_DAYS, "override_gb": user.storage_quota_gb,
+            "plans": [_plan_dict(k) for k in pricing.STORAGE_PLANS],
+            "projects": [{"id": i, "name": n, "final_version": fv, "bytes": int(b), "versions": int(v)} for i, n, fv, b, v in rows]}
+
+
+class PlanBody(BaseModel):
+    plan: str
+
+
+@app.post("/api/storage/plan")
+async def set_storage_plan(body: PlanBody, user: User = CurrentUser):
+    """Switch plan. A paid plan is charged now and renews every 30 days; moving to free takes effect
+    immediately (no refund for the rest of the period, files are never deleted)."""
+    plan = pricing.STORAGE_PLANS.get(body.plan)
+    if not plan:
+        raise HTTPException(404, "unknown plan")
+    async with Session() as s:
+        cur = await s.get(User, user.id)
+    if body.plan == cur.storage_plan:
+        return {"ok": True, "storage": await storage_state(user.id)}
+    if cur.subscription and plan["gb"] <= pricing.STORAGE_PLANS[pricing.SUBSCRIPTIONS[cur.subscription]["storage_plan"]]["gb"]:
+        raise HTTPException(400, "訂閱方案已內含這個空間")
+    now = datetime.now(timezone.utc)
+    if plan["points"]:
+        bal = await balance(user.id)
+        if bal < plan["points"]:
+            raise HTTPException(402, f"點數不足：此方案每月 {plan['points']} 點，目前 {bal} 點")
+        await add_credits(user.id, -plan["points"], "charge", "storage", meta={"plan": body.plan, "renewal": False})
+    async with Session() as s:
+        u = await s.get(User, user.id)
+        u.storage_plan = body.plan
+        u.storage_renews_at = (now + timedelta(days=pricing.STORAGE_PERIOD_DAYS)) if plan["points"] else None
+        await s.commit()
+    return {"ok": True, "storage": await storage_state(user.id), "balance": await balance(user.id)}
+
+
+@app.delete("/api/projects/{project_id}/versions/{version}")
+async def delete_version(project_id: str, version: int, user: User = CurrentUser):
+    """Remove one deliverable version (videos + covers) to free storage. The final version must be
+    un-marked first so a client link can't suddenly point at nothing."""
+    p = await _own(project_id, user)
+    if p.final_version == version:
+        raise HTTPException(409, "這一版是最終版，先取消最終版再刪除")
+    root = project_dir(project_id)
+    freed = 0
+    async with Session() as s:
+        rows = (await s.execute(select(Asset).where(Asset.project_id == project_id, Asset.version == version))).scalars().all()
+        if not rows:
+            raise HTTPException(404, "version not found")
+        for a in rows:
+            f = root / a.rel_path
+            if f.exists():
+                freed += f.stat().st_size
+                f.unlink()
+            await s.delete(a)
+        shares = (await s.execute(select(Share).where(Share.project_id == project_id, Share.version == version))).scalars().all()
+        for sh in shares:
+            sh.revoked = True
+        await s.commit()
+    return {"ok": True, "freed_bytes": freed, "storage": await storage_state(user.id)}
 
 
 @app.get("/api/pricing")
@@ -152,8 +359,9 @@ async def get_pricing():
     packs = []
     for pid, p in pricing.PACKS.items():
         packs.append({"id": pid, **p, "checkout_url": config.CHECKOUT_URLS.get(pid)})
-    return {"point_twd": pricing.POINT_TWD, "menu": [{"item": i, "points": p} for i, p in pricing.MENU],
-            "free_revision_turns": pricing.FREE_REVISION_TURNS, "packs": packs,
+    subs = [{**s, "checkout_url": config.CHECKOUT_URLS.get(s["id"])} for s in pricing.public_pricing()["subscriptions"]]
+    return {**pricing.public_pricing(), "menu": [{"item": i, "points": p} for i, p in pricing.MENU],
+            "free_revision_turns": pricing.FREE_REVISION_TURNS, "packs": packs, "subscriptions": subs,
             "provider_configured": bool(config.CHECKOUT_URLS), "note": config.TOPUP_NOTE}
 
 
@@ -209,7 +417,7 @@ async def credits_summary(user: User = CurrentUser):
                          "free_revisions_left": st["free_revisions_left"]}
     return {
         "balance": balance_now, "purchased": purchased, "refunded": refunded, "used": used, "waived": waived, "free_project": free_info,
-        "revision_points": 8,  # typical revision round (mix + captions + export), for the "about N more revisions" hint
+        "revision_points": pricing.REVISION_POINTS, "first_video_points": pricing.FIRST_VIDEO_POINTS,
         "categories": [{"id": c, "label": l} for c, l in pricing.CATEGORIES],
         "tool_labels": pricing.TOOL_LABELS,
         "projects": [{"id": p.id, "name": p.name, "exports": p.exports, "revision_turns": p.revision_turns,
@@ -223,7 +431,7 @@ async def credits_summary(user: User = CurrentUser):
 @app.get("/api/checkout/{pack_id}")
 async def checkout(pack_id: str, user: User = CurrentUser):
     """Hosted checkout link with the user id attached so the webhook can credit the right account."""
-    url = config.CHECKOUT_URLS.get(pack_id)
+    url = config.CHECKOUT_URLS.get(pack_id)   # packs and subscriptions share the map (p500…, sub5…)
     if not url:
         raise HTTPException(404, "此方案未開放線上付款")
     sep = "&" if "?" in url else "?"
@@ -241,23 +449,28 @@ async def lemonsqueezy_webhook(request: Request):
     if not hmac.compare_digest(sig, expected):
         raise HTTPException(401, "bad signature")
     ev = json.loads(body)
-    if ev.get("meta", {}).get("event_name") != "order_created":
+    event = ev.get("meta", {}).get("event_name")
+    if event not in ("order_created", "subscription_payment_success"):
         return {"ignored": True}
     attrs = ev["data"]["attributes"]
     order_id = str(ev["data"]["id"])
     user_id = (ev["meta"].get("custom_data") or {}).get("user_id")
-    variant = str((attrs.get("first_order_item") or {}).get("variant_id"))
-    pack_id = config.LS_VARIANTS.get(variant)
-    if not user_id or not pack_id or pack_id not in pricing.PACKS:
-        log.warning("webhook: unmapped order %s variant=%s user=%s", order_id, variant, user_id)
+    variant = str((attrs.get("first_order_item") or {}).get("variant_id") or (attrs.get("first_subscription_item") or {}).get("variant_id")
+                  or attrs.get("variant_id"))
+    plan_id = config.LS_VARIANTS.get(variant)
+    if not user_id or not plan_id or (plan_id not in pricing.PACKS and plan_id not in pricing.SUBSCRIPTIONS):
+        log.warning("webhook: unmapped %s %s variant=%s user=%s", event, order_id, variant, user_id)
         return {"ignored": True}
-    async with Session() as s:  # idempotent on order id
-        dup = (await s.execute(select(CreditTx).where(CreditTx.meta.contains(f'"order_id": "{order_id}"')))).first()
+    async with Session() as s:  # idempotent on order / invoice id
+        dup = (await s.execute(select(CreditTx).where(CreditTx.meta.contains(f'"order_id": "{event}:{order_id}"')))).first()
     if dup:
         return {"duplicate": True}
-    pack = pricing.PACKS[pack_id]
-    await add_credits(user_id, pack["points"], "purchase", f"lemonsqueezy {pack_id}", amount_twd=pack["twd"],
-                      meta={"order_id": order_id, "total": attrs.get("total"), "currency": attrs.get("currency")})
+    meta = {"order_id": f"{event}:{order_id}", "total": attrs.get("total"), "currency": attrs.get("currency")}
+    if plan_id in pricing.SUBSCRIPTIONS:
+        await activate_subscription(user_id, plan_id, paid_twd=pricing.SUBSCRIPTIONS[plan_id]["twd"], meta=meta)
+        return {"ok": True, "subscription": plan_id}
+    pack = pricing.PACKS[plan_id]
+    await add_credits(user_id, pack["points"], "purchase", f"lemonsqueezy {plan_id}", amount_twd=pack["twd"], meta=meta)
     return {"ok": True}
 
 

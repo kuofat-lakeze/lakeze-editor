@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
-import { api, type Asset, type DeliverablesData, type ShareLink } from './api'
+import { api, type Asset, type DeliverablesData, type ShareLink, type StorageState } from './api'
+import { StorageMeter, fmtBytes } from './Storage'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+const sizeOf = (v: { videos: Asset[]; covers: Asset[] }) =>
+  [...v.videos, ...v.covers].reduce((a, x) => a + ((x.meta?.size_mb as number | undefined) ?? 0) * 2 ** 20, 0)
 
-export function Deliverables({ projectId, onChanged }: { projectId: string; onChanged?: () => void }) {
+export function Deliverables({ projectId, onChanged, onStorage }: { projectId: string; onChanged?: () => void; onStorage?: () => void }) {
   const [data, setData] = useState<DeliverablesData | null>(null)
+  const [st, setSt] = useState<StorageState | null>(null)
   const [sharing, setSharing] = useState<number | null | 'final'>(null)  // version being shared ('final' = follow final)
   const [copied, setCopied] = useState<string | null>(null)
-  const load = () => api.deliverables(projectId).then(setData)
+  const [busy, setBusy] = useState<number | null>(null)
+  const load = () => Promise.all([api.deliverables(projectId).then(setData), api.storage().then(setSt).catch(() => {})])
   useEffect(() => { load() }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!data) return <div className="center muted">載入中…</div>
@@ -15,6 +20,12 @@ export function Deliverables({ projectId, onChanged }: { projectId: string; onCh
   const live = shares.filter(s => !s.revoked && (!s.expires_at || Date.parse(s.expires_at) > Date.now()))
 
   const setFinal = async (v: number | null) => { await api.setFinal(projectId, v); await load(); onChanged?.() }
+  const del = async (v: number) => {
+    const mb = sizeOf(versions.find(x => x.version === v)!)
+    if (!confirm(`刪除 v${v}（影片與封面，約 ${fmtBytes(mb)}）？刪了就拿不回來，指向這一版的客戶連結也會失效。`)) return
+    setBusy(v)
+    try { await api.deleteVersion(projectId, v); await load(); onChanged?.() } catch (e) { alert((e as Error).message) } finally { setBusy(null) }
+  }
   const copy = async (s: ShareLink) => {
     const url = `${location.origin}${s.url}`
     try { await navigator.clipboard.writeText(url) } catch { /* fall back to showing the url */ }
@@ -23,6 +34,9 @@ export function Deliverables({ projectId, onChanged }: { projectId: string; onCh
 
   return (
     <div className="deliv">
+      {st && (versions.length > 0 || st.over) && (
+        <div className="card deliv-storage"><StorageMeter s={st} onManage={onStorage} compact={!st.over} /></div>
+      )}
       {versions.length === 0 && (
         <div className="card empty-deliv">
           <b>還沒有成品</b>
@@ -38,13 +52,15 @@ export function Deliverables({ projectId, onChanged }: { projectId: string; onCh
                 <b>v{v.version}</b>
                 {isFinal && <span className="pill final">最終版</span>}
                 {!isFinal && project.final_version == null && v === versions[0] && <span className="pill">最新</span>}
-                <span className="muted small">{fmtDate(v.created_at)}</span>
+                <span className="muted small">{fmtDate(v.created_at)}{sizeOf(v) > 0 && ` · ${fmtBytes(sizeOf(v))}`}</span>
               </div>
               <div className="ver-actions">
                 {isFinal
                   ? <button className="btn small" onClick={() => setFinal(null)}>取消最終版</button>
                   : <button className="btn small" onClick={() => setFinal(v.version)}>標成最終版</button>}
                 <button className="btn primary small" onClick={() => setSharing(v.version)}>分享給客戶</button>
+                <button className="btn small ghost danger" disabled={isFinal || busy === v.version} title={isFinal ? '先取消最終版才能刪' : '刪除這一版，釋放空間'}
+                  onClick={() => del(v.version)}>{busy === v.version ? '刪除中…' : '刪除'}</button>
               </div>
             </div>
             <div className="ver-body">

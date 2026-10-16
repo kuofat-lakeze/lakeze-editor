@@ -3,11 +3,12 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { api, type Asset, type Msg, type ProjectDetail, type Voice } from './api'
 import { Deliverables } from './Deliverables'
+import { DropZone, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
+import { fmtBytes } from './Storage'
 
 type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string; charged?: number; balance?: number; startedAt?: number }[] }
 const fmtDur = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${String(s % 60).padStart(2, '0')} 秒` }
 const emptyLive = (): Live => ({ text: '', thinking: '', tools: [] })
-type Up = { name: string; size: number; loaded: number; status: 'wait' | 'up' | 'ok' | 'err'; error?: string }
 const IN_APP = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent)
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
 const CRIOS = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent)  // third-party iOS browsers: file picker is flakier than Safari
@@ -32,23 +33,46 @@ const STYLES = [
   { id: 'promo', name: '促銷活動', tag: '', desc: '價格與優惠放最前面，倒數限時感，CTA 強。',
     brief: '風格：促銷活動。開頭 3 秒就講優惠與價格，價格用跳數強調，營造限時感（例如「只到月底」），CTA 出現兩次（中段＋結尾），配樂有力、節奏強，字幕用大字與對比色。' },
 ]
-const MAX_FILES = 6
-const MAX_FILE_BYTES = 1024 * 2 ** 20  // 1 GB per file (backend MAX_UPLOAD_MB defaults to the same)
 const ClipIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M21.4 11.05 12.2 20.25a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 1 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
   </svg>
 )
-const fmtMB = (b: number) => `${(b / 2 ** 20).toFixed(b > 100 * 2 ** 20 ? 0 : 1)} MB`
+/* One small icon per kind of work, so a glance at the step list says what the editor is doing. */
+const TOOL_KIND: Record<string, string> = {
+  list_drive_folder: 'drive', download_footage: 'drive', probe_footage: 'look', sample_frames: 'look',
+  build_cut: 'cut', search_voices: 'voice', generate_voice: 'voice', generate_music: 'music', generate_sfx: 'music',
+  preview_video: 'look', compose_audio: 'music', render_captions: 'text', export_video: 'export', make_cover: 'image', revision_turn: 'cut',
+}
+const ICON_PATH: Record<string, string> = {
+  drive: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  look: 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  cut: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12',
+  voice: 'M12 15a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v5a4 4 0 0 0 4 4zm7-4a7 7 0 0 1-14 0M12 18v3',
+  music: 'M9 18V6l11-2v12M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm11-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
+  text: 'M4 6h16M4 12h10M4 18h7',
+  export: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM10 9l5 3-5 3z',
+  image: 'M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9h.01',
+}
+function ToolIcon({ name }: { name: string }) {
+  const d = ICON_PATH[TOOL_KIND[name] ?? 'cut']
+  return <span className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg></span>
+}
+const shortSummary = (s?: string) => {
+  if (!s) return ''
+  const t = s.replace(/\s+/g, ' ').trim()
+  return /^[[{]/.test(t) || t.length < 4 ? '' : t.slice(0, 90)
+}
 
 const TOOL_LABEL: Record<string, string> = {
   list_drive_folder: '讀取 Drive 資料夾', download_footage: '下載素材', probe_footage: '分析素材',
   sample_frames: '放大檢視畫面', build_cut: '剪輯畫面', search_voices: '搜尋聲音', generate_voice: '生成旁白並核對',
   generate_music: '生成配樂', generate_sfx: '生成音效', preview_video: '做預覽', compose_audio: '混音',
-  render_captions: '燒字幕', export_video: '輸出成品', make_cover: '做封面',
+  render_captions: '燒字幕', export_video: '輸出成品', make_cover: '做封面', revision_turn: '修改回合',
 }
 
-export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsChanged }: { projectId: string; name?: string; onUsage: () => void; onTopUp: () => void; onCredits?: () => void; onProjectsChanged?: () => void }) {
+export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, onProjectsChanged }:
+  { projectId: string; name?: string; onUsage: () => void; onTopUp: () => void; onCredits?: () => void; onStorage?: () => void; onProjectsChanged?: () => void }) {
   const [tab, setTab] = useState<'chat' | 'files'>('chat')
   const [proj, setProj] = useState<ProjectDetail | null>(null)
   const [live, setLive] = useState<Live>(emptyLive())
@@ -56,7 +80,9 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
   const [text, setText] = useState('')
   const [err, setErr] = useState('')
   const [needCredits, setNeedCredits] = useState<{ needed: number; balance: number } | null>(null)
+  const [needStorage, setNeedStorage] = useState<{ used_bytes: number; quota_bytes: number } | null>(null)
   const [uploads, setUploads] = useState<Up[]>([])
+  const prog = useRef<Record<string, { t: number; l: number; rate: number }>>({})
   const [picking, setPicking] = useState(false)
   const [pickFail, setPickFail] = useState(false)
   const [style, setStyle] = useState('travel')
@@ -151,6 +177,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
           return { ...l, tools }
         }); break
         case 'need_credits': setNeedCredits({ needed: ev.needed, balance: ev.balance }); break
+        case 'need_storage': setNeedStorage({ used_bytes: ev.used_bytes, quota_bytes: ev.quota_bytes }); break
         case 'error': setErr(ev.message); break
         case 'idle': es.close(); setRunning(false); break
         case 'done': es.close(); setRunning(false); setLive(emptyLive()); liveAssets.current = []; reload(); onUsage(); break
@@ -185,39 +212,51 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
     await submit(t)
   }
   const submit = async (t: string) => {
-    setErr(''); setText(''); setNeedCredits(null); atBottom.current = true; turnStart.current = Date.now()
+    setErr(''); setText(''); setNeedCredits(null); setNeedStorage(null); atBottom.current = true; turnStart.current = Date.now()
     setProj(p => p && { ...p, messages: [...p.messages, { id: 'tmp', role: 'user', parts: [{ type: 'text', text: t }], created_at: '' }] })
     try { await api.send(projectId, t); setLive(emptyLive()); listen() } catch (e) { setErr((e as Error).message) }
   }
 
-  const onFiles = async (files: FileList | null) => {
+  const patchUp = (id: string, u: Partial<Up>) => setUploads(us => us.map(x => (x.id === id ? { ...x, ...u } : x)))
+  const runUpload = async (up: Up) => {
+    patchUp(up.id, { status: 'up', loaded: 0, error: undefined, rate: undefined })
+    prog.current[up.id] = { t: Date.now(), l: 0, rate: 0 }
+    const t0 = Date.now()
+    try {
+      await api.uploadOne(projectId, up.file, loaded => {
+        const pr = prog.current[up.id]; const now = Date.now(); const dt = (now - pr.t) / 1000
+        if (dt >= 0.5) { const inst = (loaded - pr.l) / dt; pr.rate = pr.rate ? pr.rate * 0.7 + inst * 0.3 : inst; pr.t = now; pr.l = loaded }
+        patchUp(up.id, { loaded, rate: pr.rate || undefined })
+      })
+      patchUp(up.id, { status: 'ok', loaded: up.size })
+      api.clientLog('upload_ok', { name: up.name, size: up.size, seconds: (Date.now() - t0) / 1000 })
+      return true
+    } catch (e) {
+      const msg = (e as Error).message
+      patchUp(up.id, { status: 'err', error: msg })
+      api.clientLog('upload_err', { name: up.name, size: up.size, seconds: (Date.now() - t0) / 1000, error: msg })
+      return false
+    }
+  }
+  const onFiles = async (files: FileList | File[] | null) => {
     setPicking(false); setPickFail(false)
     const list = Array.from(files ?? [])
     api.clientLog('files_selected', { n: list.length, files: list.map(f => ({ name: f.name, size: f.size, type: f.type })) })
     if (!list.length) return
     setErr('')
     if (list.length > MAX_FILES) { setErr(`一次最多上傳 ${MAX_FILES} 支影片，這次只會傳前 ${MAX_FILES} 支，其餘請再選一次。`); list.splice(MAX_FILES) }
-    setUploads(list.map(f => ({ name: f.name || 'clip', size: f.size, loaded: 0,
-      status: f.size > MAX_FILE_BYTES ? 'err' : 'wait', error: f.size > MAX_FILE_BYTES ? `超過 1 GB 上限（${fmtMB(f.size)}），請先壓縮，或放到 Google Drive 貼連結` : undefined })))
+    const ups: Up[] = list.map(f => ({ id: Math.random().toString(36).slice(2, 10), file: f, name: f.name || 'clip.mp4', size: f.size, loaded: 0,
+      status: f.size > MAX_FILE_BYTES ? 'err' : 'wait', error: f.size > MAX_FILE_BYTES ? `超過 1 GB 上限（${fmtMB(f.size)}），請先壓縮，或放到 Google Drive 貼連結` : undefined }))
+    setUploads(us => [...us, ...ups])
     let ok = 0
-    for (let i = 0; i < list.length; i++) {
-      const f = list[i]
-      if (f.size > MAX_FILE_BYTES) { api.clientLog('upload_skipped_too_large', { name: f.name, size: f.size }); continue }
-      const patch = (u: Partial<Up>) => setUploads(us => us.map((x, k) => (k === i ? { ...x, ...u } : x)))
-      patch({ status: 'up' })
-      const t0 = Date.now()
-      try {
-        await api.uploadOne(projectId, f, (loaded, total) => patch({ loaded, size: total || f.size }))
-        patch({ status: 'ok', loaded: f.size }); ok++
-        api.clientLog('upload_ok', { name: f.name, size: f.size, seconds: (Date.now() - t0) / 1000 })
-      } catch (e) {
-        const msg = (e as Error).message
-        patch({ status: 'err', error: msg })
-        api.clientLog('upload_err', { name: f.name, size: f.size, seconds: (Date.now() - t0) / 1000, error: msg })
-      }
+    for (const up of ups) {
+      if (up.status === 'err') { api.clientLog('upload_skipped_too_large', { name: up.name, size: up.size }); continue }
+      if (await runUpload(up)) ok++
     }
     if (ok) setText(t => t || `我上傳了 ${ok} 支素材，請先分析。`)
   }
+  const retryUpload = (id: string) => setUploads(us => { const u = us.find(x => x.id === id); if (u) queueMicrotask(() => { runUpload(u) }); return us })
+  const removeUpload = (id: string) => setUploads(us => us.filter(u => u.id !== id))
   const pick = () => { setPicking(true); setPickFail(false); api.clientLog('picker_open') }
   // iOS never tells the page that the picker was dismissed. If no change event arrives, show the workarounds.
   useEffect(() => {
@@ -253,7 +292,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
         {running && <span className="working-chip"><span className="spinner" />工作中 {turnStart.current ? fmtDur(now - turnStart.current) : ''}</span>}
         {running && <button className="btn small" onClick={() => api.cancel(projectId)}>停止</button>}
       </header>
-      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onChanged={() => { reload(); onProjectsChanged?.() }} />}
+      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} />}
       {tab === 'chat' && <>
       <div className="thread" ref={threadRef} onScroll={onScroll}>
         {IN_APP && (
@@ -270,15 +309,12 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
               <div className="step-head"><span className="step-no">1</span><b>給素材</b>
                 <span className="muted small">{linkOk ? 'Drive 連結已就緒' : okUploads > 0 ? `已上傳 ${okUploads} 支` : '貼 Google Drive 資料夾連結，或上傳影片'}</span></div>
               <div className="step-body">
+                <DropZone onFiles={onFiles} onPick={pick} disabled={uploading} count={okUploads} />
+                {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />}
+                <div className="or"><span>或貼 Google Drive 資料夾連結</span></div>
                 <input className="link" placeholder="https://drive.google.com/drive/folders/…（設為「知道連結的人都能檢視」）" value={link}
                   onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" />
-                <div className="or"><span>或</span></div>
-                <label className={`btn block upload-btn ${uploading ? 'busy' : ''}`}>
-                  <ClipIcon /> {uploading ? '上傳中…' : okUploads ? `再上傳（已 ${okUploads} 支）` : '從手機／電腦上傳影片'}
-                  <input type="file" multiple accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading} onClick={pick}
-                    onChange={e => { onFiles(e.target.files); e.target.value = '' }} />
-                </label>
-                <div className="muted small">一次最多 6 支、每支 1 GB 內。素材多的話用 Drive 連結最快。</div>
+                <div className="muted small">素材很多或檔案很大時，Drive 連結最快；手機拍的直接上傳就好。</div>
               </div>
             </section>
 
@@ -339,15 +375,22 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
                 <span className="muted">· {cur ? TOOL_LABEL[cur.name] ?? cur.name : live.text ? '回覆中' : '思考中'}</span>
                 {turnStart.current && <span className="muted">· 已 {fmtDur(now - turnStart.current)}</span>}
               </div>) })()}
-            {live.thinking && <details className="thinking"><summary>思考中…</summary>{live.thinking}</details>}
-            {live.tools.map((t, i) => (
-              <div key={i} className={`tool ${t.status}`}>
-                <span className="dot" /> {TOOL_LABEL[t.name] ?? t.name}
-                {t.status === 'run' ? ` … ${t.startedAt ? fmtDur(now - t.startedAt) : ''}` : t.seconds !== undefined ? ` ${t.seconds}s` : ''}
-                {t.status === 'err' && <span className="muted small"> 失敗</span>}
-                {t.charged ? <span className="charge">−{t.charged} 點 · 餘額 {t.balance}</span> : null}
-              </div>
-            ))}
+            {live.thinking && <details className="thinking"><summary>思考中</summary><div>{live.thinking}</div></details>}
+            {live.tools.length > 0 && (
+              <ol className="steps">
+                {live.tools.map((t, i) => (
+                  <li key={i} className={`step ${t.status}`}>
+                    <ToolIcon name={t.name} />
+                    <span className="step-label">{TOOL_LABEL[t.name] ?? t.name}</span>
+                    <span className="step-meta">
+                      {t.charged ? <span className="charge">−{t.charged} 點</span> : null}
+                      {t.status === 'run' ? (t.startedAt ? fmtDur(now - t.startedAt) : '') : t.status === 'err' ? '失敗' : t.seconds !== undefined ? `${t.seconds}s` : ''}
+                    </span>
+                    {t.status === 'ok' && shortSummary(t.summary) && <span className="step-sum">{shortSummary(t.summary)}</span>}
+                  </li>
+                ))}
+              </ol>
+            )}
             {liveAssets.current.map(a => <AssetCard key={a.id} a={a} onOpenFiles={() => setTab('files')} />)}
             {live.text && <Md text={live.text} />}
             {!live.text && live.tools.every(t => t.status !== 'run') && <span className="muted">…</span>}
@@ -392,29 +435,17 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
             <a className="small" onClick={() => setPickFail(false)}>關閉</a>
           </div>
         )}
-        {uploads.length > 0 && (
-          <div className="card uploads">
-            <div className="uploads-head">
-              <b>{uploading ? '上傳中…' : '上傳完成'}</b>
-              <span className="muted small">{uploads.filter(u => u.status === 'ok').length}/{uploads.length} 個檔案
-                {uploading && IOS && '，請保持在這個畫面'}</span>
-              {!uploading && <a className="small" onClick={() => setUploads([])}>關閉</a>}
-            </div>
-            {uploads.map((u, i) => (
-              <div key={i} className={`up ${u.status}`}>
-                <div className="up-row">
-                  <span className="up-name">{u.name}</span>
-                  <span className="muted small">
-                    {u.status === 'wait' && '等待中'}
-                    {u.status === 'up' && `${fmtMB(u.loaded)} / ${fmtMB(u.size)} · ${u.size ? Math.round(u.loaded / u.size * 100) : 0}%`}
-                    {u.status === 'ok' && `完成 · ${fmtMB(u.size)}`}
-                    {u.status === 'err' && '失敗'}
-                  </span>
-                </div>
-                <div className="bar"><div style={{ width: `${u.size ? Math.min(100, u.loaded / u.size * 100) : 0}%` }} /></div>
-                {u.error && <div className="error">{u.error}</div>}
-              </div>
-            ))}
+        {needStorage && (
+          <div className="card need">
+            <div><b>成品空間已滿</b>：已用 {fmtBytes(needStorage.used_bytes)} / {Math.round(needStorage.quota_bytes / 2 ** 30)} GB，新的影片與封面先暫停輸出。
+              <div className="muted small">刪掉不要的舊版本，或升級空間，再輸入「繼續」，剪輯師會接著輸出。已有的成品照常可看可下載。</div></div>
+            <button className="btn primary small" onClick={onStorage}>升級空間</button>
+            <button className="btn small" onClick={() => setTab('files')}>刪舊版本</button>
+          </div>
+        )}
+        {uploads.length > 0 && stage !== 'start' && (
+          <div className="card uq-card">
+            <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />
           </div>
         )}
         {err && <div className="error">{err}</div>}
@@ -442,18 +473,37 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onProjectsC
 }
 
 function Bubble({ m, assets, onOpenFiles }: { m: Msg; assets: Asset[]; onOpenFiles?: () => void }) {
+  // Consecutive tool parts collapse into one quiet "did N steps" line; the editor's words stay prominent.
+  const groups: ({ kind: 'text'; text: string } | { kind: 'tools'; names: string[] })[] = []
+  for (const p of m.parts) {
+    const last = groups[groups.length - 1]
+    if (p.type === 'text') groups.push({ kind: 'text', text: p.text })
+    else if (last && last.kind === 'tools') last.names.push(p.name)
+    else groups.push({ kind: 'tools', names: [p.name] })
+  }
   return (
     <div className={`bubble ${m.role}`}>
-      {m.parts.map((p, i) => p.type === 'text'
-        ? <Md key={i} text={p.text} />
-        : <div key={i} className="tool ok"><span className="dot" /> {TOOL_LABEL[p.name] ?? p.name}</div>)}
+      {groups.map((g, i) => g.kind === 'text'
+        ? <Md key={i} text={g.text} />
+        : (
+          <details key={i} className="steps-done">
+            <summary><span className="chev" />做了 {g.names.length} 步<span className="muted">· {[...new Set(g.names.map(n => TOOL_LABEL[n] ?? n))].slice(0, 4).join(' → ')}{g.names.length > 4 ? ' …' : ''}</span></summary>
+            <ol className="steps">{g.names.map((n, k) => <li key={k} className="step ok"><ToolIcon name={n} /><span className="step-label">{TOOL_LABEL[n] ?? n}</span><span className="step-meta">完成</span></li>)}</ol>
+          </details>
+        ))}
       {assets.map(a => <AssetCard key={a.id} a={a} onOpenFiles={onOpenFiles} />)}
     </div>
   )
 }
 
+/* Markdown with a little semantics: paragraphs that open with ⚠ / ✅ / 請確認 become callouts, so a
+   warning, a confirmation request and a plain sentence don't all look the same. */
 function Md({ text }: { text: string }) {
-  const html = DOMPurify.sanitize(marked.parse(text, { async: false }) as string)
+  let html = DOMPurify.sanitize(marked.parse(text, { async: false }) as string)
+  html = html
+    .replace(/<p>(⚠|注意[:：]|請確認|請注意)/g, '<p class="callout warn">$1')
+    .replace(/<p>(✅|完成[:：]|已完成)/g, '<p class="callout ok">$1')
+    .replace(/<p>(❓|問題[:：]|請選擇|要不要)/g, '<p class="callout ask">$1')
   return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />
 }
 

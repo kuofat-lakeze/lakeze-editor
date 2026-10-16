@@ -39,6 +39,15 @@ class User(Base):
     # The one project that runs on the free trial allowance.
     free_project_id: Mapped[str | None] = mapped_column(String(12), nullable=True)
     note: Mapped[str] = mapped_column(Text, default="")
+    # Deliverable storage plan (pricing.STORAGE_PLANS); paid plans renew from points every 30 days.
+    storage_plan: Mapped[str] = mapped_column(String(20), default="free")
+    storage_renews_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    storage_quota_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)  # admin override of the plan's quota
+    # Monthly subscription (pricing.SUBSCRIPTIONS): included points are granted per period and the
+    # unused part expires when the next period starts; storage is bundled.
+    subscription: Mapped[str] = mapped_column(String(20), default="")
+    sub_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sub_renews_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Project(Base):
@@ -89,6 +98,7 @@ class Asset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     # Deliverables (exported videos, covers) are grouped into versions: v1 = first export, v2 = next…
     version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)  # counted against the owner's storage quota when version is set
 
 
 class Share(Base):
@@ -135,6 +145,9 @@ _MIGRATIONS = [
     ("users", "free_project_id", "VARCHAR(12)"), ("users", "note", "TEXT DEFAULT ''"),
     ("projects", "exports", "INTEGER DEFAULT 0"), ("projects", "revision_turns", "INTEGER DEFAULT 0"),
     ("projects", "final_version", "INTEGER"), ("assets", "version", "INTEGER"),
+    ("users", "storage_plan", "VARCHAR(20) DEFAULT 'free'"), ("users", "storage_renews_at", "DATETIME"),
+    ("users", "storage_quota_gb", "INTEGER"), ("assets", "size_bytes", "INTEGER DEFAULT 0"),
+    ("users", "subscription", "VARCHAR(20) DEFAULT ''"), ("users", "sub_period_start", "DATETIME"), ("users", "sub_renews_at", "DATETIME"),
 ]
 
 
@@ -185,6 +198,50 @@ async def backfill_versions() -> int:
                 p.exports = v
         await s.commit()
     return n
+
+
+async def backfill_sizes() -> int:
+    """Assets created before size tracking have size_bytes 0: stat the files once."""
+    n = 0
+    async with Session() as s:
+        rows = (await s.execute(select(Asset).where((Asset.size_bytes == 0) | (Asset.size_bytes.is_(None))))).scalars().all()
+        for a in rows:
+            p = project_dir(a.project_id) / a.rel_path
+            if p.exists():
+                a.size_bytes = p.stat().st_size; n += 1
+        await s.commit()
+    return n
+
+
+# ---- deliverable storage ------------------------------------------------------------------------
+GB = 1 << 30
+
+
+async def storage_used(user_id: str, session: AsyncSession | None = None) -> int:
+    """Bytes of deliverables (assets with a version) across the user's projects."""
+    async def q(s: AsyncSession) -> int:
+        return int((await s.execute(select(func.coalesce(func.sum(Asset.size_bytes), 0)).join(Project, Project.id == Asset.project_id)
+                                    .where(Project.user_id == user_id, Asset.version.is_not(None)))).scalar() or 0)
+    if session is not None:
+        return await q(session)
+    async with Session() as s:
+        return await q(s)
+
+
+def storage_quota_bytes(u: User) -> int:
+    from .pricing import STORAGE_PLANS
+    if u.storage_quota_gb:
+        return u.storage_quota_gb * GB
+    return STORAGE_PLANS.get(u.storage_plan or "free", STORAGE_PLANS["free"])["gb"] * GB
+
+
+async def storage_state(user_id: str) -> dict:
+    async with Session() as s:
+        u = await s.get(User, user_id)
+        used = await storage_used(user_id, s)
+    quota = storage_quota_bytes(u) if u else 0
+    return {"used_bytes": used, "quota_bytes": quota, "plan": (u.storage_plan if u else "free") or "free",
+            "renews_at": u.storage_renews_at.isoformat() if u and u.storage_renews_at else None, "over": used >= quota}
 
 
 async def balance(user_id: str) -> int:
@@ -245,7 +302,8 @@ class Store:
             elif meta.get("cover"):          # a cover belongs to the latest export (or v1 before any export)
                 version = max(exports, 1)
             a = Asset(project_id=project_id, kind=kind, name=name, rel_path=str(dest.relative_to(root)),
-                      meta=json.dumps(meta, ensure_ascii=False), version=version)
+                      meta=json.dumps(meta, ensure_ascii=False), version=version,
+                      size_bytes=dest.stat().st_size if dest.exists() else 0)
             s.add(a)
             await s.commit()
         return asset_dict(a)
@@ -272,14 +330,17 @@ class Store:
         return {"balance": await balance(self.user_id), "free_project": free, "in_free": in_free,
                 "free_revisions_left": free_left, "exports": p.exports if p else 0}
 
-    async def note_revision_turn(self, project_id: str) -> None:
-        """Count one revision turn: called by the runner the first time a turn that started after the
-        first export runs a chargeable tool. Turns that only answer questions don't consume a revision."""
+    async def note_revision_turn(self, project_id: str) -> tuple[bool, int]:
+        """Count one revision turn and charge the per-turn fee: called by the runner the first time a
+        turn that started after the first export runs a chargeable tool. Turns that only answer
+        questions don't consume a revision. Returns the charge result (ok, balance)."""
+        from .pricing import REVISION_TURN_POINTS
         async with Session() as s:
             p = await s.get(Project, project_id)
             if p and p.exports:
                 p.revision_turns += 1
                 await s.commit()
+        return await self.charge(project_id, REVISION_TURN_POINTS, "revision_turn")
 
     async def charge(self, project_id: str, points: int, reason: str) -> tuple[bool, int]:
         """Deduct points unless the project is in its free allowance. Returns (ok, balance)."""
@@ -292,6 +353,9 @@ class Store:
         if st["balance"] < points:
             return False, st["balance"]
         return True, await add_credits(self.user_id, -points, "charge", reason, project_id=project_id)
+
+    async def storage_state(self) -> dict:
+        return await storage_state(self.user_id)
 
     async def note_export(self, project_id: str) -> None:
         async with Session() as s:

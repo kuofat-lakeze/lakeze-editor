@@ -65,6 +65,10 @@ class FakeStore:
 
     async def note_revision_turn(self, pid):
         self.revisions += 1
+        return await self.charge(pid, 4, "revision_turn")
+
+    async def storage_state(self):
+        return {"used_bytes": 0, "quota_bytes": 2 << 30, "over": False, "plan": "free", "renews_at": None}
 
     async def charge(self, pid, points, reason):
         if points > self.balance_points:
@@ -116,8 +120,8 @@ def test_tool_round_trip(monkeypatch, tmp_path: Path):
     assert "沒有影片" in tool_result["content"][0]["text"]  # probe on empty dir
     assert [e["type"] for e in events if e["type"] in ("tool_run", "tool_end", "done")] == ["tool_run", "tool_end", "done"]
     assert len(store.usage) == 2 and store.usage[0][2] > 0
-    assert store.charges == [("probe_footage", 6)] and store.balance_points == 94
-    assert any(e["type"] == "credits" and e["balance"] == 94 for e in events)
+    assert store.charges == [("probe_footage", 10)] and store.balance_points == 90
+    assert any(e["type"] == "credits" and e["balance"] == 90 for e in events)
 
 
 def test_insufficient_credits(monkeypatch, tmp_path: Path):
@@ -165,6 +169,7 @@ def test_revision_turn_counted_once_and_only_with_tool_work(monkeypatch, tmp_pat
         NS(stop_reason="end_turn", usage=usage, content=[Block(type="text", text="好了")]),
     ], store)
     assert store.revisions == 1
+    assert [c for c in store.charges if c[0] == "revision_turn"] == [("revision_turn", 4)]  # the per-turn fee, once
     # before the first export nothing is counted even with tool work
     store2 = FakeStore()
     run_turn([
