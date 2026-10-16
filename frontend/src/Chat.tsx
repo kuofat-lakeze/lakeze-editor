@@ -107,9 +107,11 @@ const CHIPS: Record<Stage, string[]> = {
   progress: ['照建議做', '先給我看分鏡', '旁白稿先給我看'],
   revise: ['價格字幕放大一點', '換一張封面畫面', '旁白慢一點', '配樂小聲一點', '第一句換成游泳池畫面'],
 }
+// The chip that is the default answer for a stage: shown as the main button, and sent when the box is empty.
+const DEFAULT_CHIP: Partial<Record<Stage, string>> = { progress: '照建議做' }
 const NO_VOICE = 'none'
 const OB_STEPS = ['給素材', '解析素材', '風格與賣點']
-const ANALYZE_POINTS = 14
+const ANALYZE_POINTS = 28   // = backend analyze.ANALYZE_POINTS (probe_footage at NT$3.5 a point)
 const ROLE_LABEL: Record<string, string> = { hook: '開場', feature: '賣點', price: '價格', cta: '行動' }
 const AN_PHASES = ['看每個畫面', '找出賣點', '排分鏡', '寫旁白稿', '估算點數']
 const EXAMPLE_BRIEF = '宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑，結尾請大家點連結查空房。'
@@ -369,8 +371,10 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
     goStep(2)
   }
   const copyScript = () => { if (analysis) navigator.clipboard?.writeText(analysis.script.map(l => l.text).join('\n')).catch(() => {}) }
+  const stageNow = (): Stage => !proj ? 'start' : running ? 'working' : proj.messages.length === 0 ? 'start' : proj.credits.exports > 0 ? 'revise' : 'progress'
   const send = async () => {
-    const t = text.trim(); if (!t || running) return
+    const t = text.trim() || DEFAULT_CHIP[stageNow()] || ''   // empty box: the stage's default answer (照建議做)
+    if (!t || running) return
     await submit(t)
   }
   const submit = async (t: string, withAnalysis = false) => {
@@ -813,9 +817,16 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
       {unseen && <a className="jump" onClick={jump}>↓ 有新內容</a>}
       {stage !== 'start' && CHIPS[stage].length > 0 && !uploading && (
         <div className="qr">
-          <span className="qr-lbl">👆 點一下直接送出</span>
-          <div className="chips qr-chips">
-            {CHIPS[stage].map(c => <a key={c} className="chipbtn qr-chip" role="button" onClick={() => { if (!running) submit(c) }}>{c}<i aria-hidden="true">↑</i></a>)}
+          <span className="qr-lbl">下一步 · 點一下就送出</span>
+          <div className="qr-row">
+            {CHIPS[stage].map(c => {
+              const main = c === DEFAULT_CHIP[stage]
+              return (
+                <button key={c} type="button" className={`qrb ${main ? 'main' : ''}`} disabled={running} onClick={() => submit(c)}>
+                  {main && <em>建議</em>}<span>{c}</span>
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </button>)
+            })}
           </div>
         </div>
       )}
@@ -833,7 +844,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
             if (e.key === 'Enter' && !e.shiftKey && !composing && !IS_TOUCH) { e.preventDefault(); send() }
           }} />
         {mic.available && <button type="button" className={`attach mic ${mic.on ? 'on' : ''} ${mic.busy ? 'busy' : ''}`} title={mic.on ? '按一下結束，開始辨識' : mic.busy ? '辨識中…' : '語音輸入（按一下開始說）'} aria-label="語音輸入" onClick={mic.toggle} disabled={mic.busy}>{mic.busy ? <span className="spinner" /> : <MicIcon />}{mic.on && <b className="mic-sec">{mic.seconds}s</b>}</button>}
-        <button className="btn primary" onClick={send} disabled={running || uploading || !text.trim()}>送出</button>
+        <button className="btn primary" onClick={send} disabled={running || uploading || (!text.trim() && !DEFAULT_CHIP[stage])}>{!text.trim() && DEFAULT_CHIP[stage] ? DEFAULT_CHIP[stage] : '送出'}</button>
         {(mic.on || mic.busy) ? <span className="composer-hint small mic-hint">{mic.on ? `錄音中 ${mic.seconds}s · 說完再按一次麥克風` : '辨識中，文字馬上出現…'}</span>
           : !IS_TOUCH && <span className="composer-hint muted small">Enter 送出 · Shift+Enter 換行 · 🎙 可以用說的</span>}
       </footer>}

@@ -1307,3 +1307,26 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .pill.exp { border: 0; cursor: pointer; background: #FFF4E5; color: #8A5300; font-weight: 700; }
 .pill.exp.soon { background: #FDE8E8; color: var(--err); }
 .cg-rw-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+
+/* ---- 下一步快速回覆：主按鈕（預設）＋次要按鈕 ---- */
+.qr-lbl { color: var(--muted) !important; font-weight: 600 !important; letter-spacing: .02em !important; }
+.qr-row { display: flex; gap: 8px; overflow-x: auto; padding: 4px 16px 10px; scrollbar-width: none; }
+.qr-row::-webkit-scrollbar { display: none; }
+.qrb { flex: none; display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 12px 0 15px; border-radius: 12px; font: inherit; font-size: 14px; font-weight: 600; letter-spacing: .01em; cursor: pointer;
+  color: var(--text); background: var(--panel); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(34,38,46,.06);
+  transition: transform .12s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease; }
+.qrb svg { width: 15px; height: 15px; color: var(--muted); transition: transform .18s ease, color .18s ease; }
+.qrb:hover:not(:disabled) { border-color: #D9D2C7; box-shadow: 0 4px 12px rgba(34,38,46,.08); transform: translateY(-1px); }
+.qrb:hover:not(:disabled) svg { transform: translateX(2px); color: var(--text); }
+.qrb:active:not(:disabled) { transform: scale(.97); }
+.qrb:disabled { opacity: .5; cursor: default; }
+.qrb.main { color: #fff; border-color: transparent; padding-left: 8px; background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  box-shadow: 0 1px 0 rgba(255,255,255,.25) inset, 0 6px 16px rgba(236,90,30,.28); }
+.qrb.main svg { color: #fff; }
+.qrb.main:hover:not(:disabled) { box-shadow: 0 1px 0 rgba(255,255,255,.25) inset, 0 8px 22px rgba(236,90,30,.36); }
+.qrb.main em { font-style: normal; font-size: 11px; font-weight: 800; padding: 3px 7px; border-radius: 7px; background: rgba(255,255,255,.22); letter-spacing: .04em; }
+.qrb:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (max-width: 760px) { .qr-row { padding: 4px 10px 10px; } }
+.qrb { flex-direction: row !important; white-space: nowrap; line-height: 1; }
+.qrb > em, .qrb > span { display: inline-block !important; position: static !important; margin: 0 !important; }
+.qrb svg { flex: none; }
