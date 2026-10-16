@@ -1084,3 +1084,11 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .note-field.preset textarea { background: var(--panel2); border-style: dashed; cursor: text; } .note-field.preset textarea::placeholder { color: #8C8F96; opacity: 1; }
 .note-pen { position: absolute; right: 10px; bottom: 10px; font-size: 14px; color: var(--muted); pointer-events: none; }
 .note-dots { display: flex; gap: 5px; justify-content: center; } .note-dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); cursor: pointer; transition: width .2s; } .note-dots i.on { width: 16px; background: var(--brand); }
+
+/* step 1: upload first, link as a chat-style line */
+.up-kinds { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; } .up-kinds span { font-size: 12px; color: var(--muted); background: var(--panel2); padding: 3px 10px; border-radius: 999px; }
+.link-chat { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
+.link-chat input { flex: 1; border: 0; background: transparent; padding: 8px 0; font-size: 14px; min-width: 0; box-shadow: none !important; } .link-chat input:focus { outline: none; }
+.link-chat:focus-within { border-color: var(--brand-2); box-shadow: 0 0 0 3px var(--brand-soft); } .link-chat.ok { border-color: var(--teal); } .link-chat.err { border-color: var(--brand); }
+.link-chat .dg-ok { position: static; } .lc-ic { font-size: 15px; }
+.lc-msg { font-size: 12.5px; color: var(--muted); padding: 0 14px; } .lc-msg.ok { color: #1F8A8E; font-weight: 600; } .lc-msg.err { color: var(--brand); }

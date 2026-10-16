@@ -33,8 +33,8 @@ export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false
       onDragOver={over} onDragEnter={over} onDragLeave={() => setDrag(false)} onDrop={drop}>
       <span className="dz-icon"><FilmIcon /></span>
       <span className="dz-text">
-        <b>{disabled ? '上傳中…' : count ? `再加素材（已 ${count} 個）` : drag ? '放開就開始上傳' : '點一下選影片或照片，或直接拖進來'}</b>
-        <span className="muted small">影片、照片可以混著給 · 一次建議 {SUGGESTED_FILES} 個、最多 {MAX_FILES} 個 · 每個 1 GB 內</span>
+        <b>{disabled ? '上傳中…' : count ? `再加素材（已 ${count} 個）` : drag ? '放開就開始上傳' : '從手機選影片或照片'}</b>
+        <span className="muted small">影片、照片都可以 · 可以多選，也可以只給一支長影片 · 每個 1 GB 內、最多 {MAX_FILES} 個</span>
       </span>
       <span className="dz-cta">選擇</span>
       <input type="file" multiple accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp,.heic" hidden disabled={disabled} onClick={onPick}

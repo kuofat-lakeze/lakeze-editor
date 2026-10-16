@@ -6,12 +6,12 @@ import { FbIcon, LineIcon, promoText, shareToFacebook, shareToLine } from './sha
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 /* 給朋友的一句話: six ready-made lines. Shown in grey as the default; sent as-is unless the user edits. */
 const NOTE_PRESETS = [
-  '剛剪好的新影片，幫我看看哪裡可以更好 🙏',
-  '這是第一版，價格字幕和旁白語氣 OK 嗎？',
-  '開頭 3 秒有沒有抓住你？看完跟我說感覺！',
-  '想用這支來宣傳，你覺得會想訂房嗎？',
-  '封面 A、B 你比較喜歡哪一張？',
-  '用 AI 15 分鐘剪好的，你也可以試試看 😆',
+  '噹噹～新片出爐 🎬 熱騰騰的，趁熱幫我看一下！',
+  '我只花 15 分鐘就剪好這支 😎 你給幾顆星？⭐️',
+  '前 3 秒有沒有把你勾住？老實說沒關係 🙈',
+  '看完會不會想立刻訂房？想的話我就成功了 🏖️',
+  '封面 A 還是 B？二選一，不准說都好 😤',
+  '偷偷跟你說，這支是 AI 剪的 🤫 你看得出來嗎？',
 ]
 const sizeOf = (v: { videos: Asset[]; covers: Asset[] }) =>
   [...v.videos, ...v.covers].reduce((a, x) => a + ((x.meta?.size_mb as number | undefined) ?? 0) * 2 ** 20, 0)

@@ -96,10 +96,10 @@ function useSpeaking(id: string | number) {
 const CRIOS = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent)  // third-party iOS browsers: file picker is flakier than Safari
 type Stage = 'start' | 'working' | 'progress' | 'revise'
 const PLACEHOLDER: Record<Stage, string> = {
-  start: '貼 Drive 連結＋賣點、價格、語氣…',
+  start: '貼雲端連結＋賣點、價格、語氣…',
   working: '剪輯師工作中，可以先輸入下一步想法…',
-  progress: '回覆剪輯師，或直接說「照建議做」…',
-  revise: '要改哪裡？例如：價格字幕放大…',
+  progress: '回覆剪輯師，或直接說「照建議做」…（可貼雲端連結加素材）',
+  revise: '要改哪裡？例如：價格字幕放大…（要加素材也可以直接貼雲端連結）',
 }
 const CHIPS: Record<Stage, string[]> = {
   start: [], working: [],
@@ -190,7 +190,6 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [style, setStyle] = useState('travel')
   const [obStep, setObStep] = useState(0)
   const [link, setLink] = useState('')
-  const [src, setSrc] = useState<'local' | 'cloud'>('local')
   const [drive, setDrive] = useState<{ state: 'idle' | 'checking' | 'ok' | 'err'; info?: DriveCheck; error?: string }>({ state: 'idle' })
   // Verify the folder as soon as a Drive link is pasted: shows what's inside, or why it can't be opened.
   useEffect(() => {
@@ -506,59 +505,29 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
               <section className="card ob-card" key={obStep}>
                 {obStep === 0 && (
                   <>
-                    <h3>先把素材給剪輯師</h3>
-                    <p className="muted">手機拍的影片、照片都可以。直接選檔案，或貼雲端的分享連結，兩種都行。</p>
-                    <div className="src-tabs" role="tablist">
-                      <a role="tab" className={src === 'local' ? 'on' : ''} onClick={() => setSrc('local')}>
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3" /><path d="M11 18h2" /></svg>
-                        <span><b>從手機／電腦選</b><small>相簿、檔案直接上傳</small></span>
-                      </a>
-                      <a role="tab" className={src === 'cloud' ? 'on' : ''} onClick={() => setSrc('cloud')}>
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 10 4 4 0 0 1 18 18z" /></svg>
-                        <span><b>貼雲端連結</b><small>Google 雲端、Dropbox、iCloud、OneDrive</small></span>
-                      </a>
+                    <h3>先丟素材給剪輯師</h3>
+                    <p className="muted">手機裡的影片、照片都可以，不用先挑：幾段短片、一支長影片，或影片照片混著給都行。</p>
+                    <div className={`spot ${!okUploads && !uploading && !linkOk ? 'on' : ''}`}>
+                      {!okUploads && !uploading && !linkOk && <span className="coach">點這裡選影片</span>}
+                      <DropZone onFiles={onFiles} onPick={pick} disabled={uploading} count={okUploads} />
                     </div>
-                    {src === 'local' && (
-                      <>
-                        <div className={`spot ${!okUploads && !uploading ? 'on' : ''}`}>
-                          {!okUploads && !uploading && <span className="coach">點這裡選影片</span>}
-                          <DropZone onFiles={onFiles} onPick={pick} disabled={uploading} count={okUploads} />
-                        </div>
-                        {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />}
-                        {IOS && !uploads.length && <div className="muted small">iPhone 選大影片會先壓縮，可能要等一下；選不到檔案時，改用「貼雲端連結」最穩。</div>}
-                      </>
-                    )}
-                    {src === 'cloud' && (
-                      <>
-                        <ol className="dg-steps">
-                          <li><i>1</i><div><b>把影片、照片放進雲端的同一個資料夾</b><span>Google 雲端硬碟、Dropbox、OneDrive 都可以；iCloud 可以分享單一檔案或「公開網站」的共享相簿。</span></div></li>
-                          <li><i>2</i><div><b>分享 → 設成「任何有連結的人都能檢視」</b><span>再按「複製連結」，剪輯師才讀得到、下載得到。</span></div></li>
-                          <li><i>3</i><div><b>貼到下面</b><span>貼上後會自動檢查裡面有什麼。直接的影片網址也可以。</span></div></li>
-                        </ol>
-                        <div className={`spot ${!linkOk ? 'on' : ''}`}>
-                          {!link && <span className="coach">連結貼在這裡</span>}
-                          <div className={`dg-input ${drive.state}`}>
-                            <input className="link" placeholder="https://drive.google.com/… 或 dropbox.com/… 或 icloud.com/…" value={link}
-                              onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" />
-                            {drive.state === 'checking' && <span className="spinner" />}
-                            {drive.state === 'ok' && <span className="dg-ok">✓</span>}
-                            {link && drive.state !== 'checking' && <a className="small dg-clear" onClick={() => setLink('')}>清除</a>}
-                          </div>
-                        </div>
-                        {drive.state === 'checking' && <div className="muted small">正在打開連結…</div>}
-                        {drive.state === 'ok' && drive.info && (drive.info.media > 0 ? (
-                          <div className="dg-found">
-                            <b>{drive.info.label}：{drive.info.folder_zip ? '找到一個資料夾' : `找到 ${drive.info.media} 個素材`}</b>
-                            <span className="muted small">{drive.info.folder_zip ? '下載時會自動解開，只留影片和照片' : `${drive.info.videos} 支影片、${drive.info.photos} 張照片${drive.info.other ? `，另有 ${drive.info.other} 個其他檔案會略過` : ''}`}</span>
-                            {!drive.info.folder_zip && <div className="dg-names">{drive.info.names.map(n => <em key={n}>{n}</em>)}{drive.info.media > drive.info.names.length && <em>…</em>}</div>}
-                          </div>
-                        ) : <div className="card need">連結打得開，但裡面沒有影片或照片（支援 MP4、MOV、JPG、PNG、HEIC）。</div>)}
-                        {drive.state === 'err' && <div className="card need"><div><b>連結還不能用</b><div className="muted small">{drive.error}</div></div></div>}
-                        {link && drive.state === 'idle' && <div className="muted small">請貼完整的分享網址（https:// 開頭）。</div>}
-                      </>
-                    )}
+                    <div className="up-kinds" aria-hidden="true"><span>🎞 好幾段短片</span><span>🎬 一支長影片</span><span>🖼 照片也行</span></div>
+                    {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />}
+                    <div className={`link-chat ${drive.state}`}>
+                      <span className="lc-ic" aria-hidden="true">🔗</span>
+                      <input placeholder="素材在雲端？直接貼分享連結（Google 雲端、Dropbox、iCloud、OneDrive）" value={link}
+                        onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" />
+                      {drive.state === 'checking' && <span className="spinner" />}
+                      {drive.state === 'ok' && <span className="dg-ok">✓</span>}
+                      {link && drive.state !== 'checking' && <a className="small" onClick={() => setLink('')}>清除</a>}
+                    </div>
+                    {drive.state === 'ok' && drive.info && (drive.info.media > 0
+                      ? <div className="lc-msg ok">{drive.info.label}：{drive.info.folder_zip ? '讀到一個資料夾，下載時自動解開' : `讀到 ${drive.info.media} 個素材（${drive.info.videos} 支影片、${drive.info.photos} 張照片）`}</div>
+                      : <div className="lc-msg err">連結打得開，但裡面沒有影片或照片。</div>)}
+                    {drive.state === 'err' && <div className="lc-msg err">{drive.error}</div>}
+                    {link && drive.state === 'idle' && <div className="lc-msg">請貼完整網址（https:// 開頭），並把分享設成「任何有連結的人都能檢視」。</div>}
                     <div className="ob-nav">
-                      <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : linkOk ? `${drive.info?.label}連結就緒` : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : uploading ? '上傳中…' : drive.state === 'checking' ? '檢查連結中…' : '還沒有素材'}</span>
+                      <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : linkOk ? `${drive.info?.label}連結就緒` : uploading ? '上傳中…' : drive.state === 'checking' ? '讀取連結中…' : '還沒有素材'}</span>
                       <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading} onClick={() => goStep(1)}>下一步：解析素材 →</button>
                     </div>
                   </>
