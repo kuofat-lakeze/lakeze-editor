@@ -286,10 +286,47 @@ async def _can_clone(user: User) -> bool:
 
 
 # ---- own voice (instant clone) -------------------------------------------------------------------
+PREVIEW_LINE = "嗨，這是我用自己的聲音配的旁白。推開窗就是一整片海，今晚就來住一晚吧！"
+
+
 def _custom_voice(u: User) -> dict | None:
     if not u.voice_id:
         return None
-    return {"voice_id": u.voice_id, "name": u.voice_name or "我的聲音", "gender": None, "description": "你自己的聲音", "preview_url": None, "custom": True}
+    v = u.voice_id[-6:]   # cache-buster: a re-recorded voice gets a new id
+    return {"voice_id": u.voice_id, "name": u.voice_name or "我的聲音", "gender": None, "description": "你自己的聲音",
+            "preview_url": f"/api/voice/clone/preview?v={v}", "sample_url": f"/api/voice/clone/sample?v={v}", "custom": True}
+
+
+async def _clone_preview(u: User) -> Path:
+    """A short line in the cloned voice, made once per voice (re-recording replaces it)."""
+    d = config.DATA_DIR / "voices" / u.id
+    dest = d / f"preview_{u.voice_id}.mp3"
+    if not dest.exists():
+        d.mkdir(parents=True, exist_ok=True)
+        for old in d.glob("preview_*.mp3"):
+            old.unlink(missing_ok=True)
+        await asyncio.to_thread(eleven.tts_line, PREVIEW_LINE, u.voice_id, dest)
+    return dest
+
+
+@app.get("/api/voice/clone/preview")
+async def clone_preview(user: User = CurrentUser):
+    if not user.voice_id:
+        raise HTTPException(404, "還沒有自己的聲音")
+    try:
+        f = await _clone_preview(user)
+    except Exception as e:
+        raise HTTPException(502, f"試聽生成失敗：{str(e)[:160]}")
+    return FileResponse(f, media_type="audio/mpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.get("/api/voice/clone/sample")
+async def clone_sample(user: User = CurrentUser):
+    """The user's own recording the clone was made from."""
+    f = config.DATA_DIR / "voices" / user.id / "sample.mp3"
+    if not user.voice_id or not f.exists():
+        raise HTTPException(404, "找不到原始錄音")
+    return FileResponse(f, media_type="audio/mpeg", headers={"Cache-Control": "private, no-cache"})
 
 
 @app.post("/api/voice/clone")
@@ -332,6 +369,10 @@ async def clone_voice(file: UploadFile, name: str = Form("我的聲音"), user: 
         u = await s.get(User, user.id)
         u.voice_id, u.voice_name = vid, label
         await s.commit()
+    try:   # make the preview now so 「試聽」 plays at once
+        await _clone_preview(u)
+    except Exception:
+        log.warning("clone preview failed for %s", user.id)
     return {"ok": True, "voice": _custom_voice(u), "seconds": round(dur)}
 
 

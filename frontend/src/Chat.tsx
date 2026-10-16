@@ -232,16 +232,24 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
     api.voices().then(vs => { setVoices(vs); if (fresh) setVoice(v => v ?? vs[0]?.voice_id ?? NO_VOICE) }).catch(() => { if (fresh) setVoice(NO_VOICE) })
     if (fresh) api.me().then(setMe).catch(() => {})
   }, [proj?.id, proj?.messages.length === 0]) // eslint-disable-line react-hooks/exhaustive-deps
+  const recloneForScript = useRef(false)   // the clone was (re)recorded from a 旁白稿 card: re-voice with it
   const onCloned = (v: Voice) => {
     setCloning(false)
     setVoices(vs => [v, ...vs.filter(x => !x.custom)]); setVoice(v.voice_id)
     api.me().then(setMe).catch(() => {})
+    if (recloneForScript.current) {
+      recloneForScript.current = false
+      submit(`我重新錄了自己的聲音。旁白改用我的聲音「${v.name}」（voice_id ${v.voice_id}）重新生成，稿子、秒數和其他都不變，配好後重新輸出影片。`)
+    }
   }
-  const preview = (v: Voice) => {
-    if (!v.preview_url) return
-    if (playing === v.voice_id) { audioRef.current?.pause(); setPlaying(null); return }
+  // ▶ plays a voice's preview; the cloned voice also has the original recording (key `${id}:sample`).
+  const preview = (v: Voice, which: 'preview' | 'sample' = 'preview') => {
+    const url = which === 'sample' ? v.sample_url : v.preview_url
+    const key = which === 'sample' ? `${v.voice_id}:sample` : v.voice_id
+    if (!url) return
+    if (playing === key) { audioRef.current?.pause(); setPlaying(null); return }
     audioRef.current?.pause()
-    const a = new Audio(v.preview_url); audioRef.current = a; setPlaying(v.voice_id)
+    const a = new Audio(url); audioRef.current = a; setPlaying(key)
     a.onended = () => setPlaying(null); a.play().catch(() => setPlaying(null))
   }
   // Coming back from the 成品 tab remounts the thread at the top: jump to the latest message.
@@ -435,7 +443,9 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   if (!proj) return <div className="center muted">載入中…</div>
   // 旁白稿 → 換一個聲音: the same voice list as the wizard; a pick becomes a plain instruction to the editor.
   const voiceSwap: VoiceSwap = {
-    voices, current: voice && voice !== NO_VOICE ? voice : null, playing, onPreview: preview, disabled: running,
+    voices, current: voice && voice !== NO_VOICE ? voice : null, playing, onPreview: v => preview(v), onSample: v => preview(v, 'sample'), disabled: running,
+    canClone: !!me?.can_clone_voice || voices.some(v => v.custom),
+    onReclone: () => { recloneForScript.current = true; setCloning(true) },
     onPick: v => { setVoice(v.voice_id); submit(`旁白改用「${v.name}」的聲音（voice_id ${v.voice_id}）重新生成，稿子、秒數和其他都不變，配好後重新輸出影片。`) },
     onMore: () => submit('這份旁白稿想換個聲音：請再找 3 個台灣腔的聲音，各用稿子第一句做試聽給我選，先不要重新輸出。'),
   }
@@ -667,7 +677,8 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                         <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''} ${v.custom ? 'mine' : ''}`} onClick={() => setVoice(v.voice_id)}>
                           <div className="voice-name">{v.custom && <span className="mine-tag">我的聲音</span>}{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
                           {v.description && <div className="muted small">{v.description}</div>}
-                          {v.preview_url && <a className="small" onClick={e => { e.stopPropagation(); preview(v) }}>{playing === v.voice_id ? '■ 停止' : '▶ 試聽'}</a>}
+                          {v.preview_url && <a className="small" onClick={e => { e.stopPropagation(); preview(v) }}>{playing === v.voice_id ? '■ 停止' : v.custom ? '▶ 試聽 AI 配出來的樣子' : '▶ 試聽'}</a>}
+                          {v.sample_url && <a className="small muted" onClick={e => { e.stopPropagation(); preview(v, 'sample') }}>{playing === `${v.voice_id}:sample` ? '■ 停止' : '▶ 聽我的原始錄音'}</a>}
                           {v.custom && me?.voice_trial && <div className="muted small">試用剩 {Math.max(0, Math.round(me.voice_trial.limit - me.voice_trial.used))} 秒，儲值後不限</div>}
                           {v.custom && <a className="small" onClick={e => { e.stopPropagation(); setCloning(true) }}>重新錄</a>}
                         </div>
@@ -795,7 +806,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
           })()}
         </div>
       )}
-      {cloning && <VoiceCloneDialog current={voices.find(v => v.custom)} onClose={() => setCloning(false)} onDone={onCloned} />}
+      {cloning && <VoiceCloneDialog current={voices.find(v => v.custom)} onClose={() => { recloneForScript.current = false; setCloning(false) }} onDone={onCloned} />}
       {unseen && <a className="jump" onClick={jump}>↓ 有新內容</a>}
       {stage !== 'start' && CHIPS[stage].length > 0 && !uploading && (
         <div className="qr">

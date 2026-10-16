@@ -19,7 +19,7 @@ export type CreditsSummary = {
     used: number; waived: number; by_category: Record<string, number>; by_tool: Record<string, number> }[]
   daily: { date: string; used: number; waived: number }[]
 }
-export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null; custom?: boolean }
+export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null; sample_url?: string | null; custom?: boolean }
 export type CreditState = { balance: number; free_project: boolean; in_free: boolean; free_revisions_left: number | null; exports: number }
 export type DriveCheck = { ok: boolean; provider: string; label: string; folder_zip?: boolean; files: number; media: number; videos: number; photos: number; names: string[]; other: number }
 export type Order = { id: string; item: string; kind: 'pack' | 'sub'; label: string; points: number; amount_twd: number; method: string; status: 'pending' | 'reported' | 'paid' | 'failed' | 'cancelled'; transfer_ref: string; created_at: string; paid_at: string | null; email?: string; user_id?: string }

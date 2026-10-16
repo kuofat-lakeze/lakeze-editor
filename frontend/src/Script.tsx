@@ -5,7 +5,8 @@ import { api, type Voice } from './api'
    voice list and what to do with a choice; script cards in assistant messages show the picker. */
 export type VoiceSwap = {
   voices: Voice[]; current?: string | null; playing?: string | null
-  onPreview: (v: Voice) => void; onPick: (v: Voice) => void; onMore: () => void; disabled?: boolean
+  onPreview: (v: Voice) => void; onSample?: (v: Voice) => void; onPick: (v: Voice) => void; onMore: () => void; disabled?: boolean
+  canClone?: boolean; onReclone?: () => void   // (re)record the user's own voice; Chat re-voices the script with it
 }
 export const VoiceSwapCtx = createContext<VoiceSwap | null>(null)
 
@@ -84,10 +85,19 @@ function VoicePicker() {
                   <span className="vs-main">
                     <b>{v.custom && <em>我的聲音</em>}{v.name}<span className="muted small">{v.gender === 'female' ? ' · 女' : v.gender === 'male' ? ' · 男' : ''}{isCur ? ' · 目前' : ''}</span></b>
                     {v.description && <small>{v.description}</small>}
+                    {v.custom && <span className="vs-mine-act">
+                      {v.sample_url && ctx.onSample && <a onClick={e => { e.stopPropagation(); ctx.onSample!(v) }}>{ctx.playing === `${v.voice_id}:sample` ? '■ 停止' : '聽原始錄音'}</a>}
+                      {ctx.onReclone && <a onClick={e => { e.stopPropagation(); setOpen(false); ctx.onReclone!() }}>重錄並重新配音</a>}
+                    </span>}
                   </span>
-                  {v.preview_url && <a className="vs-play" onClick={e => { e.stopPropagation(); ctx.onPreview(v) }}>{ctx.playing === v.voice_id ? '■' : '▶'}</a>}
+                  {v.preview_url && <a className="vs-play" title={v.custom ? '試聽 AI 用你的聲音配出來的樣子' : '試聽'} onClick={e => { e.stopPropagation(); ctx.onPreview(v) }}>{ctx.playing === v.voice_id ? '■' : '▶'}</a>}
                 </div>)
             })}
+            {ctx.canClone && ctx.onReclone && !ctx.voices.some(v => v.custom) && (
+              <div role="button" tabIndex={0} className="vs-item add" onClick={() => { setOpen(false); ctx.onReclone!() }}>
+                <span className="vs-radio plus" aria-hidden="true">＋</span>
+                <span className="vs-main"><b>用自己的聲音</b><small>錄 30 秒，錄好就用你的聲音重新配這份稿</small></span>
+              </div>)}
           </div>
           <div className="vs-foot">
             <a className="small" onClick={() => { ctx.onMore(); setOpen(false) }}>都不喜歡？請剪輯師再找幾個台灣腔聲音</a>

@@ -170,6 +170,8 @@ def test_own_voice_is_a_subscription_feature(client, monkeypatch, tmp_path: Path
     monkeypatch.setattr(eleven, "add_voice", lambda name, sample, description="": (calls.append(name), "v_clone")[1])
     monkeypatch.setattr(eleven, "delete_voice", lambda vid: calls.append(("del", vid)))
     monkeypatch.setattr(M, "_voices_cache", {"at": 1e12, "data": [{"voice_id": "preset", "name": "Vivian"}]})
+    tts = []
+    monkeypatch.setattr(eleven, "tts_line", lambda text, vid, dest, **k: (tts.append(vid), Path(dest).write_bytes(b"ID3prev")))
     r = c.post("/api/voice/clone", files={"file": ("s.webm", b"xx", "audio/webm")}, data={"name": "老闆"})
     assert r.status_code == 200, r.text
     assert r.json()["voice"]["voice_id"] == "v_clone" and calls and "老闆" in calls[0]
@@ -177,6 +179,10 @@ def test_own_voice_is_a_subscription_feature(client, monkeypatch, tmp_path: Path
     vs = c.get("/api/voices").json()
     assert vs[0]["voice_id"] == "v_clone" and vs[0]["custom"] and vs[1]["voice_id"] == "preset"
     assert c.get("/api/me").json()["voice"]["name"] == "老闆"
+    # 試聽: a line in the cloned voice (made once, right after cloning) and the original recording
+    assert vs[0]["preview_url"].startswith("/api/voice/clone/preview") and tts == ["v_clone"]
+    pv = c.get(vs[0]["preview_url"]); assert pv.status_code == 200 and pv.content == b"ID3prev" and tts == ["v_clone"]
+    assert c.get(vs[0]["sample_url"]).status_code == 200
     # too short a recording is refused before anything is sent
     monkeypatch.setattr(ff, "duration", lambda p: 8.0)
     assert c.post("/api/voice/clone", files={"file": ("s.webm", b"xx", "audio/webm")}).status_code == 400
