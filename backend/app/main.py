@@ -914,6 +914,39 @@ def _comment_dict(c: ShareComment, sh: Share | None = None, project_name: str | 
     return d
 
 
+# ---- 我自己唸的旁白 (owner-read narration) ------------------------------------------------------------
+@app.post("/api/projects/{project_id}/narration")
+async def upload_narration(project_id: str, audio: UploadFile, user: User = CurrentUser):
+    """The owner reads the script with the teleprompter; the take becomes a voice-over clip the editor
+    can place with compose_audio (key MY, MY2, …) instead of generating AI narration."""
+    import tempfile
+    await _own(project_id, user)
+    data = await audio.read()
+    if not data:
+        raise HTTPException(400, "沒有收到錄音")
+    if len(data) > 60 * 2**20:
+        raise HTTPException(413, "錄音太大")
+    vo = project_dir(project_id) / "work" / "vo"
+    vo.mkdir(parents=True, exist_ok=True)
+    n = 1
+    while (vo / f"MY{'' if n == 1 else n}.wav").exists():
+        n += 1
+    key = f"MY{'' if n == 1 else n}"
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / ("in" + (Path(audio.filename or "a.webm").suffix or ".webm"))
+        src.write_bytes(data)
+        try:
+            await asyncio.to_thread(ff.ffmpeg, "-i", str(src), "-vn", "-ac", "1", "-ar", "44100", "-af", "highpass=f=80,loudnorm=I=-16:TP=-1.5", str(vo / f"{key}.wav"))
+            seconds = await asyncio.to_thread(ff.duration, vo / f"{key}.wav")
+        except Exception as e:
+            raise HTTPException(400, f"錄音檔讀不了：{str(e)[:120]}")
+    if seconds < 1:
+        (vo / f"{key}.wav").unlink(missing_ok=True)
+        raise HTTPException(400, "錄音太短")
+    a = await Store(user.id).add_asset(project_id, vo / f"{key}.wav", "audio", f"我唸的旁白 {key}", {"role": "my_narration", "key": key})
+    return {"key": key, "seconds": round(seconds, 1), "asset": a}
+
+
 # ---- 語音輸入 (server-side speech-to-text) -----------------------------------------------------------
 STT_MAX_BYTES = 8 * 2**20
 STT_MAX_SECONDS = 90

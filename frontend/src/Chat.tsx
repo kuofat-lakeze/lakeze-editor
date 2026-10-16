@@ -6,6 +6,7 @@ import { Deliverables } from './Deliverables'
 import { VoiceCloneDialog } from './VoiceClone'
 import { DropZone, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
 import { fmtBytes } from './Storage'
+import { SCRIPT_BLOCK, ScriptCard, Teleprompter, parseScript, type Line } from './Script'
 
 type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string; charged?: number; balance?: number; startedAt?: number }[] }
 const fmtDur = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${String(s % 60).padStart(2, '0')} 秒` }
@@ -98,8 +99,8 @@ type Stage = 'start' | 'working' | 'progress' | 'revise'
 const PLACEHOLDER: Record<Stage, string> = {
   start: '貼雲端連結＋賣點、價格、語氣…',
   working: '剪輯師工作中，可以先輸入下一步想法…',
-  progress: '回覆剪輯師，或直接說「照建議做」…（可貼雲端連結加素材）',
-  revise: '要改哪裡？例如：價格字幕放大…（要加素材也可以直接貼雲端連結）',
+  progress: '回覆剪輯師，或說「照建議做」',
+  revise: '要改哪裡？也可以貼雲端連結加素材',
 }
 const CHIPS: Record<Stage, string[]> = {
   start: [], working: [],
@@ -162,6 +163,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   { projectId: string; name?: string; onUsage: () => void; onTopUp: (needPoints?: number) => void; onCredits?: () => void; onStorage?: () => void; onProjectsChanged?: () => void; feedbackUnread?: number; onFeedbackRead?: () => void }) {
   const [tab, setTab] = useState<'chat' | 'files'>('chat')
   const [fbOpen, setFbOpen] = useState(false)
+  const [prompter, setPrompter] = useState<Line[] | null>(null)
   const [reply, setReply] = useState('')
   const [replying, setReplying] = useState(false)
   const sendReply = async () => {
@@ -694,7 +696,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
             </div>
           </div>
         )}
-        {proj.messages.map((m, i) => <Bubble key={m.id} m={m} assets={assetsFor(m, i)} onOpenFiles={() => setTab('files')} />)}
+        {proj.messages.map((m, i) => <Bubble key={m.id} m={m} assets={assetsFor(m, i)} onOpenFiles={() => setTab('files')} onRecord={running ? undefined : setPrompter} />)}
         {running && (
           <div className="bubble assistant">
             {(() => { const cur = [...live.tools].reverse().find(t => t.status === 'run'); return (
@@ -767,11 +769,16 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         {err && <div className="error">{err}</div>}
         <div ref={bottom} />
       </div>
+      {prompter && <Teleprompter lines={prompter} projectId={projectId} onClose={() => setPrompter(null)}
+        onUploaded={(key, secs) => { setPrompter(null); submit(`我上傳了自己唸的旁白（key ${key}，${secs} 秒），請用它當旁白，不要再生成 AI 配音；從 0 秒開始放，字幕照我的聲音對齊，然後重新輸出。`) }} />}
       {cloning && <VoiceCloneDialog current={voices.find(v => v.custom)} onClose={() => setCloning(false)} onDone={onCloned} />}
       {unseen && <a className="jump" onClick={jump}>↓ 有新內容</a>}
       {stage !== 'start' && CHIPS[stage].length > 0 && !uploading && (
-        <div className="chips">
-          {CHIPS[stage].map(c => <a key={c} className="chipbtn" onClick={() => setText(t => (t ? t + ' ' : '') + c)}>{c}</a>)}
+        <div className="qr">
+          <span className="qr-lbl">👆 點一下直接送出</span>
+          <div className="chips qr-chips">
+            {CHIPS[stage].map(c => <a key={c} className="chipbtn qr-chip" role="button" onClick={() => { if (!running) submit(c) }}>{c}<i aria-hidden="true">↑</i></a>)}
+          </div>
         </div>
       )}
       {stage !== 'start' && <footer className="composer">
@@ -797,7 +804,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   )
 }
 
-function Bubble({ m, assets, onOpenFiles }: { m: Msg; assets: Asset[]; onOpenFiles?: () => void }) {
+function Bubble({ m, assets, onOpenFiles, onRecord }: { m: Msg; assets: Asset[]; onOpenFiles?: () => void; onRecord?: (lines: Line[]) => void }) {
   const speaking = useSpeaking(m.id)
   const spoken = m.parts.filter(p => p.type === 'text').map(p => (p as { text: string }).text).join('\n')
   // Consecutive tool parts collapse into one quiet "did N steps" line; the editor's words stay prominent.
@@ -811,7 +818,7 @@ function Bubble({ m, assets, onOpenFiles }: { m: Msg; assets: Asset[]; onOpenFil
   return (
     <div className={`bubble ${m.role}`}>
       {groups.map((g, i) => g.kind === 'text'
-        ? <Md key={i} text={g.text} />
+        ? <Md key={i} text={g.text} onRecord={m.role === 'assistant' ? onRecord : undefined} />
         : (
           <details key={i} className="steps-done">
             <summary><span className="chev" />做了 {g.names.length} 步<span className="muted">· {[...new Set(g.names.map(n => TOOL_LABEL[n] ?? n))].slice(0, 4).join(' → ')}{g.names.length > 4 ? ' …' : ''}</span></summary>
@@ -827,7 +834,24 @@ function Bubble({ m, assets, onOpenFiles }: { m: Msg; assets: Asset[]; onOpenFil
 
 /* Markdown with a little semantics: paragraphs that open with ⚠ / ✅ / 請確認 become callouts, so a
    warning, a confirmation request and a plain sentence don't all look the same. */
-function Md({ text }: { text: string }) {
+function Md({ text, onRecord }: { text: string; onRecord?: (lines: Line[]) => void }) {
+  // ```旁白 blocks become script cards; the rest is markdown
+  const parts: ({ md: string } | { lines: Line[] })[] = []
+  let last = 0
+  for (const m of text.matchAll(SCRIPT_BLOCK)) {
+    if (m.index! > last) parts.push({ md: text.slice(last, m.index) })
+    const lines = parseScript(m[1])
+    parts.push(lines.length ? { lines } : { md: m[0] })
+    last = m.index! + m[0].length
+  }
+  if (parts.length) {
+    if (last < text.length) parts.push({ md: text.slice(last) })
+    return <>{parts.map((p, i) => 'lines' in p ? <ScriptCard key={i} lines={p.lines} onRecord={onRecord ? () => onRecord(p.lines) : undefined} /> : <MdHtml key={i} text={p.md} />)}</>
+  }
+  return <MdHtml text={text} />
+}
+
+function MdHtml({ text }: { text: string }) {
   let html = DOMPurify.sanitize(marked.parse(text, { async: false }) as string)
   html = html
     .replace(/<p>(⚠|注意[:：]|請確認|請注意)/g, '<p class="callout warn">$1')

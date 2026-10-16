@@ -62,7 +62,7 @@ export function VoiceCloneDialog({ current, onClose, onDone }: { current?: Voice
         </div>
         {mode === 'rec' && (
           <>
-            <div className="vc-script">{SCRIPT.map((l, i) => <p key={i}>{l}</p>)}</div>
+            <div className={`vc-script tpish ${rec ? 'live' : ''}`}>{SCRIPT.map((l, i) => <p key={i} className={rec ? (i === Math.min(SCRIPT.length - 1, Math.floor(secs / 15)) ? 'on' : i < Math.floor(secs / 15) ? 'past' : '') : ''}>{l}</p>)}</div>
             <div className="vc-rec">
               {!rec
                 ? <button className={`btn ${blob ? '' : 'primary'} vc-btn`} onClick={start}><i className="vc-dot" />{blob ? '重錄' : '開始錄音'}</button>

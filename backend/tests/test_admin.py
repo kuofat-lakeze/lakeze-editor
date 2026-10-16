@@ -293,3 +293,22 @@ def test_order_flow(client, monkeypatch):
     holder["u"] = a
     assert c.get(f"/api/orders/{tid}").status_code == 404
     assert c.post("/api/orders", json={"item": "nope"}).status_code == 404
+
+
+def test_owner_narration_upload(client, monkeypatch, tmp_path: Path):
+    import subprocess
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = a
+    async def pid():
+        async with D.Session() as s:
+            return (await s.execute(D.select(D.Project).where(D.Project.user_id == a.id))).scalar_one().id
+    p = asyncio.run(pid())
+    clip = tmp_path / "n.webm"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=300:duration=3", "-c:a", "libopus", str(clip)], check=True)
+    r = c.post(f"/api/projects/{p}/narration", files={"audio": ("n.webm", clip.read_bytes(), "audio/webm")})
+    assert r.status_code == 200, r.text
+    assert r.json()["key"] == "MY" and 2.5 < r.json()["seconds"] < 3.5 and r.json()["asset"]["kind"] == "audio"
+    assert (D.project_dir(p) / "work" / "vo" / "MY.wav").exists()
+    assert c.post(f"/api/projects/{p}/narration", files={"audio": ("n.webm", clip.read_bytes(), "audio/webm")}).json()["key"] == "MY2"
+    assert c.post(f"/api/projects/{p}/narration", files={"audio": ("n.webm", b"", "audio/webm")}).status_code == 400
