@@ -53,10 +53,10 @@ _CAP = {"type": "object", "additionalProperties": False, "required": ["start", "
                        "y": {"type": "integer", "description": "垂直位置，旁白預設 1300、Super 預設 330"}}}
 
 TOOLS: list[dict] = [
-    {"name": "list_drive_folder", "description": "列出 Google Drive 共用資料夾裡的檔案（不下載）。回傳 id 與相對路徑。",
+    {"name": "list_drive_folder", "description": "讀取用戶貼的雲端分享連結（Google 雲端硬碟資料夾或檔案、Dropbox、iCloud 檔案或共享相簿、OneDrive、直接的影片／照片網址），列出可下載的檔案（不下載）。",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["url"],
                       "properties": {"url": {"type": "string"}}}},
-    {"name": "download_footage", "description": "下載 Drive 資料夾的檔案到專案。ids 省略時下載全部。4 支平行，4.5GB 約 10 分鐘。",
+    {"name": "download_footage", "description": "下載 list_drive_folder 列出的檔案到專案。ids 省略時下載全部（Dropbox 資料夾會自動解壓只留影片與照片）。4 支平行，4.5GB 約 10 分鐘。",
      "input_schema": {"type": "object", "additionalProperties": False,
                       "properties": {"ids": {"type": "array", "items": {"type": "string"}}}}},
     {"name": "probe_footage", "description": "分析專案裡所有影片（含用戶上傳）：長度、解析度、編號，並回傳縮圖總表圖片讓你看畫面。素材變動後要重跑。",
@@ -142,9 +142,14 @@ def dispatch(name: str, inp: dict, ctx: ToolContext) -> list[dict]:
 # ---- handlers ------------------------------------------------------------------
 
 def _list_drive(inp, ctx):
-    items = footage.list_drive_folder(inp["url"], ctx.root)
-    lines = [f"{it['id']}\t{it['path']}" for it in items]
-    return [_text(f"{len(items)} 個檔案\n" + "\n".join(lines))]
+    from ..pipeline import links
+    try:
+        r = links.resolve(inp["url"], ctx.root)
+    except links.LinkError as e:
+        return [_text(f"連結讀不到：{e}。請用戶檢查分享設定（任何有連結的人都能檢視）或改用上傳。")]
+    items = r["items"]
+    lines = [f"{it['id']}\t{it['path']}" + ("\t（資料夾壓縮檔，下載後自動解開）" if it.get("zip") else "") for it in items]
+    return [_text(f"{r['label']}：{len(items)} 個檔案\n" + "\n".join(lines))]
 
 
 def _download(inp, ctx):

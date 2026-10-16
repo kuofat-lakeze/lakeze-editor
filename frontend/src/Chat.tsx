@@ -4,7 +4,7 @@ import DOMPurify from 'dompurify'
 import { api, type Analysis, type Asset, type DriveCheck, type Me, type Msg, type ProjectDetail, type Voice } from './api'
 import { Deliverables } from './Deliverables'
 import { VoiceCloneDialog } from './VoiceClone'
-import { MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
+import { DropZone, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
 import { fmtBytes } from './Storage'
 
 type Live = { text: string; thinking: string; tools: { name: string; status: 'run' | 'ok' | 'err'; seconds?: number; summary?: string; charged?: number; balance?: number; startedAt?: number }[] }
@@ -190,10 +190,11 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [style, setStyle] = useState('travel')
   const [obStep, setObStep] = useState(0)
   const [link, setLink] = useState('')
+  const [src, setSrc] = useState<'local' | 'cloud'>('local')
   const [drive, setDrive] = useState<{ state: 'idle' | 'checking' | 'ok' | 'err'; info?: DriveCheck; error?: string }>({ state: 'idle' })
   // Verify the folder as soon as a Drive link is pasted: shows what's inside, or why it can't be opened.
   useEffect(() => {
-    const m = /drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/[\w-]+/.test(link)
+    const m = /^https?:\/\/\S+\.\S+/.test(link.trim())
     if (!m) { setDrive({ state: 'idle' }); return }
     let dead = false
     setDrive({ state: 'checking' })
@@ -331,7 +332,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
     const st = STYLES.find(x => x.id === style) ?? STYLES[0]
     const v = voices.find(x => x.voice_id === voice)
     const parts = [
-      analysis ? `素材已上傳並解析過（${analysis.n_clips} 個）。` : linkOk ? `素材在 ${link.trim()} 。` : `我上傳了 ${okUploads} 支素材。`,
+      analysis ? `素材已上傳並解析過（${analysis.n_clips} 個）。` : linkOk ? `素材在這個雲端分享連結（${drive.info?.label}）：${link.trim()} 。請用 list_drive_folder 讀取再下載。` : `我上傳了 ${okUploads} 支素材。`,
       text.trim(),
       st.brief,
       voice === NO_VOICE ? '不要配音：只要配樂和字幕，賣點用字幕呈現。'
@@ -505,34 +506,59 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
               <section className="card ob-card" key={obStep}>
                 {obStep === 0 && (
                   <>
-                    <h3>把素材放在 Google 雲端，貼連結給剪輯師</h3>
-                    <p className="muted">手機拍的影片、照片先放進雲端硬碟的一個資料夾，貼連結就好，不用等上傳。</p>
-                    <ol className="dg-steps">
-                      <li><i>1</i><div><b>開 Google 雲端硬碟</b><span>把這次要用的影片、照片放進同一個資料夾（6 個以內最順）。</span></div></li>
-                      <li><i>2</i><div><b>資料夾 → 分享 → 「知道連結的使用者」</b><span>再按「複製連結」。這樣剪輯師才讀得到。</span></div></li>
-                      <li><i>3</i><div><b>貼到下面</b><span>貼上後會自動檢查資料夾裡有什麼。</span></div></li>
-                    </ol>
-                    <div className={`spot ${!linkOk ? 'on' : ''}`}>
-                      {!link && <span className="coach">連結貼在這裡</span>}
-                      <div className={`dg-input ${drive.state}`}>
-                        <input className="link" placeholder="https://drive.google.com/drive/folders/…" value={link}
-                          onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" autoFocus={!IS_TOUCH} />
-                        {drive.state === 'checking' && <span className="spinner" />}
-                        {drive.state === 'ok' && <span className="dg-ok">✓</span>}
-                        {link && drive.state !== 'checking' && <a className="small dg-clear" onClick={() => setLink('')}>清除</a>}
-                      </div>
+                    <h3>先把素材給剪輯師</h3>
+                    <p className="muted">手機拍的影片、照片都可以。直接選檔案，或貼雲端的分享連結，兩種都行。</p>
+                    <div className="src-tabs" role="tablist">
+                      <a role="tab" className={src === 'local' ? 'on' : ''} onClick={() => setSrc('local')}>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3" /><path d="M11 18h2" /></svg>
+                        <span><b>從手機／電腦選</b><small>相簿、檔案直接上傳</small></span>
+                      </a>
+                      <a role="tab" className={src === 'cloud' ? 'on' : ''} onClick={() => setSrc('cloud')}>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 10 4 4 0 0 1 18 18z" /></svg>
+                        <span><b>貼雲端連結</b><small>Google 雲端、Dropbox、iCloud、OneDrive</small></span>
+                      </a>
                     </div>
-                    {drive.state === 'checking' && <div className="muted small">正在打開資料夾…</div>}
-                    {drive.state === 'ok' && drive.info && (drive.info.media > 0 ? (
-                      <div className="dg-found">
-                        <b>找到 {drive.info.media} 個素材</b><span className="muted small">{drive.info.videos} 支影片、{drive.info.photos} 張照片{drive.info.other ? `，另有 ${drive.info.other} 個其他檔案會略過` : ''}</span>
-                        <div className="dg-names">{drive.info.names.map(n => <em key={n}>{n}</em>)}{drive.info.media > drive.info.names.length && <em>…</em>}</div>
-                      </div>
-                    ) : <div className="card need">資料夾打得開，但裡面沒有影片或照片（支援 MP4、MOV、JPG、PNG、HEIC）。</div>)}
-                    {drive.state === 'err' && <div className="card need"><div><b>連結還不能用</b><div className="muted small">{drive.error}</div></div></div>}
-                    {link && drive.state === 'idle' && <div className="muted small">這看起來不是資料夾連結。到雲端硬碟對「資料夾」按分享 → 複製連結（網址會含 /folders/）。</div>}
+                    {src === 'local' && (
+                      <>
+                        <div className={`spot ${!okUploads && !uploading ? 'on' : ''}`}>
+                          {!okUploads && !uploading && <span className="coach">點這裡選影片</span>}
+                          <DropZone onFiles={onFiles} onPick={pick} disabled={uploading} count={okUploads} />
+                        </div>
+                        {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />}
+                        {IOS && !uploads.length && <div className="muted small">iPhone 選大影片會先壓縮，可能要等一下；選不到檔案時，改用「貼雲端連結」最穩。</div>}
+                      </>
+                    )}
+                    {src === 'cloud' && (
+                      <>
+                        <ol className="dg-steps">
+                          <li><i>1</i><div><b>把影片、照片放進雲端的同一個資料夾</b><span>Google 雲端硬碟、Dropbox、OneDrive 都可以；iCloud 可以分享單一檔案或「公開網站」的共享相簿。</span></div></li>
+                          <li><i>2</i><div><b>分享 → 設成「任何有連結的人都能檢視」</b><span>再按「複製連結」，剪輯師才讀得到、下載得到。</span></div></li>
+                          <li><i>3</i><div><b>貼到下面</b><span>貼上後會自動檢查裡面有什麼。直接的影片網址也可以。</span></div></li>
+                        </ol>
+                        <div className={`spot ${!linkOk ? 'on' : ''}`}>
+                          {!link && <span className="coach">連結貼在這裡</span>}
+                          <div className={`dg-input ${drive.state}`}>
+                            <input className="link" placeholder="https://drive.google.com/… 或 dropbox.com/… 或 icloud.com/…" value={link}
+                              onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" />
+                            {drive.state === 'checking' && <span className="spinner" />}
+                            {drive.state === 'ok' && <span className="dg-ok">✓</span>}
+                            {link && drive.state !== 'checking' && <a className="small dg-clear" onClick={() => setLink('')}>清除</a>}
+                          </div>
+                        </div>
+                        {drive.state === 'checking' && <div className="muted small">正在打開連結…</div>}
+                        {drive.state === 'ok' && drive.info && (drive.info.media > 0 ? (
+                          <div className="dg-found">
+                            <b>{drive.info.label}：{drive.info.folder_zip ? '找到一個資料夾' : `找到 ${drive.info.media} 個素材`}</b>
+                            <span className="muted small">{drive.info.folder_zip ? '下載時會自動解開，只留影片和照片' : `${drive.info.videos} 支影片、${drive.info.photos} 張照片${drive.info.other ? `，另有 ${drive.info.other} 個其他檔案會略過` : ''}`}</span>
+                            {!drive.info.folder_zip && <div className="dg-names">{drive.info.names.map(n => <em key={n}>{n}</em>)}{drive.info.media > drive.info.names.length && <em>…</em>}</div>}
+                          </div>
+                        ) : <div className="card need">連結打得開，但裡面沒有影片或照片（支援 MP4、MOV、JPG、PNG、HEIC）。</div>)}
+                        {drive.state === 'err' && <div className="card need"><div><b>連結還不能用</b><div className="muted small">{drive.error}</div></div></div>}
+                        {link && drive.state === 'idle' && <div className="muted small">請貼完整的分享網址（https:// 開頭）。</div>}
+                      </>
+                    )}
                     <div className="ob-nav">
-                      <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : linkOk ? `雲端資料夾就緒 · ${drive.info?.media} 個素材` : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : uploading ? '上傳中…' : drive.state === 'checking' ? '檢查連結中…' : '還沒有素材'}</span>
+                      <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : linkOk ? `${drive.info?.label}連結就緒` : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : uploading ? '上傳中…' : drive.state === 'checking' ? '檢查連結中…' : '還沒有素材'}</span>
                       <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading} onClick={() => goStep(1)}>下一步：解析素材 →</button>
                     </div>
                   </>
@@ -874,7 +900,7 @@ function ObPreview({ step, style, voiceName, uploads, linkOk, text, analysis, an
   const hook = analysis?.script[0]?.text
   return (
     <aside className="ob-prev">
-      <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? (analysis ? '開頭 3 秒會是這樣' : analyzing ? '解析完你會看到' : '解析完你會看到') : '貼好連結，剪輯師會自己把素材抓下來'}</span></div>
+      <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? (analysis ? '開頭 3 秒會是這樣' : analyzing ? '解析完你會看到' : '解析完你會看到') : '選好或貼好，剪輯師會自己把素材抓下來'}</span></div>
       {step === 1 && !analysis && (
         <div className="ob-prev-an">
           <div className="pa-chips">{['無邊際泳池看海', '包棟', '龜山島日出', '寵物友善'].map((c, i) => <span key={c} className={i === 0 ? 'top' : ''}>{c}</span>)}</div>

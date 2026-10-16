@@ -677,26 +677,30 @@ class DriveBody(BaseModel):
 
 @app.post("/api/projects/{project_id}/drive/check")
 async def drive_check(project_id: str, body: DriveBody, user: User = CurrentUser):
-    """Peek into a shared Drive folder (no download) so the wizard can confirm the link works and show
-    what is inside before anything is charged."""
+    """Resolve any cloud share link (Google / Dropbox / iCloud / OneDrive / direct) without downloading,
+    so the wizard can confirm it works and show what's inside before anything is charged."""
+    from .pipeline import links
     await _own(project_id, user)
     url = body.url.strip()
-    if not re.search(r"drive\.google\.com/drive/(?:u/\d+/)?folders/[\w-]+", url):
-        raise HTTPException(400, "這不是 Google 雲端硬碟的「資料夾」連結。請在雲端硬碟對資料夾按「分享」→「複製連結」。")
     try:
-        items = await asyncio.wait_for(asyncio.to_thread(footage.list_drive_folder, url, project_dir(project_id)), timeout=90)
+        r = await asyncio.wait_for(asyncio.to_thread(links.resolve, url, project_dir(project_id)), timeout=90)
     except asyncio.TimeoutError:
-        raise HTTPException(504, "讀取資料夾逾時，請再試一次")
+        raise HTTPException(504, "讀取連結逾時，請再試一次")
+    except links.LinkError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         msg = str(e)
         if "shared" in msg or "empty" in msg or "permission" in msg.lower() or "403" in msg:
-            raise HTTPException(400, "打不開這個資料夾。請把資料夾的分享設定改成「知道連結的使用者」都能檢視，再貼一次。")
-        raise HTTPException(400, f"讀不到資料夾：{msg[:160]}")
-    names = [it["path"] for it in items]
-    media = [n for n in names if Path(n).suffix.lower() in footage.VIDEO_EXT + footage.IMAGE_EXT]
-    videos = sum(1 for n in media if Path(n).suffix.lower() in footage.VIDEO_EXT)
-    return {"ok": True, "files": len(names), "media": len(media), "videos": videos, "photos": len(media) - videos,
-            "names": [Path(n).name for n in media[:8]], "other": len(names) - len(media)}
+            raise HTTPException(400, "打不開這個資料夾。請把分享設定改成「知道連結的使用者」都能檢視，再貼一次。")
+        log.warning("link check failed for %s: %s", links.provider(url), msg[:200])
+        raise HTTPException(400, f"讀不到這個連結：{msg[:160]}")
+    items = r["items"]
+    zipped = any(it.get("zip") for it in items)
+    media = [it for it in items if it.get("zip") or Path(it["path"]).suffix.lower() in footage.VIDEO_EXT + footage.IMAGE_EXT]
+    videos = sum(1 for it in media if Path(it["path"]).suffix.lower() in footage.VIDEO_EXT)
+    return {"ok": True, "provider": r["provider"], "label": r["label"], "files": len(items), "media": len(media), "videos": videos,
+            "photos": len(media) - videos - (1 if zipped else 0), "folder_zip": zipped,
+            "names": [Path(it["path"]).name for it in media[:8]], "other": len(items) - len(media)}
 
 
 @app.post("/api/projects/{project_id}/analyze")
@@ -710,10 +714,13 @@ async def analyze_project(project_id: str, body: AnalyzeBody, user: User = Curre
     root = project_dir(project_id)
     if body.drive_url.strip():
         try:
-            items = await asyncio.to_thread(footage.list_drive_folder, body.drive_url.strip(), root)
-            await asyncio.to_thread(footage.download_drive, items, root)
+            from .pipeline import links
+            r = await asyncio.to_thread(links.resolve, body.drive_url.strip(), root)
+            res = await asyncio.to_thread(footage.download_link, r["items"], root)
+            if not any(x.startswith("ok") or x.startswith("skip") for x in res):
+                raise RuntimeError("沒有任何檔案下載成功")
         except Exception as e:
-            raise HTTPException(400, f"Drive 資料夾讀不到：{str(e)[:200]}")
+            raise HTTPException(400, f"雲端連結讀不到：{str(e)[:200]}")
     if not _has_footage(root):
         raise HTTPException(400, "還沒有素材：先上傳影片或照片，或貼 Drive 連結")
     store = Store(user.id)

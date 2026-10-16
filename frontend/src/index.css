@@ -1068,3 +1068,9 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .ps-cv-tag { position: absolute; right: 6px; top: 6px; font-style: normal; font-size: 7.5px; font-weight: 800; background: rgba(255,255,255,.92); color: #1F6F72; padding: 1px 5px; border-radius: 999px; }
 .ps-cv-tag.hot { background: var(--brand); color: #fff; }
 .ps-cover.rich em { white-space: nowrap; max-width: 100%; }
+
+.src-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.src-tabs a { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
+.src-tabs a span { display: flex; flex-direction: column; min-width: 0; } .src-tabs a b { color: var(--text); font-size: 14px; } .src-tabs a small { font-size: 11.5px; }
+.src-tabs a.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+@media (max-width: 760px) { .src-tabs a { padding: 10px; } .src-tabs a small { display: none; } }

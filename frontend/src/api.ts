@@ -21,7 +21,7 @@ export type CreditsSummary = {
 }
 export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null; custom?: boolean }
 export type CreditState = { balance: number; free_project: boolean; in_free: boolean; free_revisions_left: number | null; exports: number }
-export type DriveCheck = { ok: boolean; files: number; media: number; videos: number; photos: number; names: string[]; other: number }
+export type DriveCheck = { ok: boolean; provider: string; label: string; folder_zip?: boolean; files: number; media: number; videos: number; photos: number; names: string[]; other: number }
 export type Shot = { n: number; clip: number; t: number; dur: number; shot: string; role: 'hook' | 'feature' | 'price' | 'cta' }
 export type Estimate = { first_video_points: number; revision_points: number; two_revisions_points: number; balance: number; enough_first: boolean; enough_two: boolean; short_first: number; short_two: number }
 export type Analysis = {

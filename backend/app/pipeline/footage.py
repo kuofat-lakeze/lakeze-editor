@@ -68,16 +68,42 @@ def list_drive_folder(url: str, root: Path) -> list[dict]:
 
 
 def _dl(item: dict, root: Path) -> str:
+    """Download one resolved item (Google / Dropbox / iCloud / OneDrive / direct). Folder archives
+    (Dropbox) are unpacked: only photos and videos are kept."""
     dest = root / "raw" / item["path"]
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists() and dest.stat().st_size > 1024:
+    if dest.exists() and dest.stat().st_size > 1024 and not item.get("zip"):
         return f"skip {item['path']}"
-    subprocess.run(["curl", "-sS", "-L", "--retry", "4", "-o", str(dest), DRIVE_DL.format(id=item["id"])],
-                   check=True, timeout=3600)
+    url = item.get("url") or DRIVE_DL.format(id=item["id"])
+    subprocess.run(["curl", "-sS", "-L", "--retry", "4", "-A", "Mozilla/5.0", "-o", str(dest), url], check=True, timeout=3600)
     if dest.stat().st_size < 1024:  # HTML error page, not media
         dest.unlink()
         raise RuntimeError(f"download failed: {item['path']}")
+    head = dest.read_bytes()[:512].lower()
+    if b"<html" in head or b"<!doctype html" in head:
+        dest.unlink()
+        raise RuntimeError(f"download failed (got a web page, link may need sign-in): {item['path']}")
+    if item.get("zip"):
+        import zipfile
+        n = 0
+        with zipfile.ZipFile(dest) as z:
+            for info in z.infolist():
+                name = Path(info.filename)
+                if info.is_dir() or name.name.startswith(".") or name.suffix.lower() not in VIDEO_EXT + IMAGE_EXT:
+                    continue
+                out = root / "raw" / "dropbox" / name.name
+                out.parent.mkdir(parents=True, exist_ok=True)
+                with z.open(info) as src, open(out, "wb") as f:
+                    while chunk := src.read(1 << 20):
+                        f.write(chunk)
+                n += 1
+        dest.unlink()
+        return f"ok {n} files from folder"
     return f"ok {item['path']} {dest.stat().st_size // 2**20}MB"
+
+
+def download_link(items: list[dict], root: Path, parallel: int = 4) -> list[str]:
+    return download_drive(items, root, parallel)
 
 
 def download_drive(items: list[dict], root: Path, parallel: int = 4) -> list[str]:

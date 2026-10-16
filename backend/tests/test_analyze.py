@@ -188,7 +188,7 @@ def test_drive_check(client, monkeypatch):
     c, holder = client
     u = asyncio.run(_user()); holder["u"] = u
     pid = asyncio.run(_project(u.id))
-    assert c.post(f"/api/projects/{pid}/drive/check", json={"url": "https://drive.google.com/file/d/abc/view"}).status_code == 400
+    assert c.post(f"/api/projects/{pid}/drive/check", json={"url": "not a url"}).status_code == 400
     from app.pipeline import footage as F
     monkeypatch.setattr(F, "list_drive_folder", lambda url, root: [{"id": "1", "path": "a.MOV"}, {"id": "2", "path": "sub/b.jpg"}, {"id": "3", "path": "notes.txt"}])
     r = c.post(f"/api/projects/{pid}/drive/check", json={"url": "https://drive.google.com/drive/folders/XYZ_1?usp=sharing"})
@@ -196,3 +196,39 @@ def test_drive_check(client, monkeypatch):
     monkeypatch.setattr(F, "list_drive_folder", lambda url, root: (_ for _ in ()).throw(ValueError("folder is empty or not shared publicly")))
     r = c.post(f"/api/projects/{pid}/drive/check", json={"url": "https://drive.google.com/drive/folders/XYZ"})
     assert r.status_code == 400 and "知道連結的使用者" in r.json()["detail"]
+
+
+def test_link_providers(tmp_path: Path, monkeypatch):
+    from app.pipeline import links as L
+    assert [L.provider(u) for u in ["https://drive.google.com/drive/folders/x", "https://www.dropbox.com/scl/fi/abc/IMG_1.MOV?rlkey=k&dl=0",
+            "https://www.icloud.com/iclouddrive/0aBc#clip", "https://1drv.ms/f/s!abc", "https://cdn.example.com/a.mp4"]] == ["google", "dropbox", "icloud", "onedrive", "direct"]
+    r = L.resolve("https://www.dropbox.com/scl/fi/abc/IMG_1.MOV?rlkey=k&dl=0", tmp_path)
+    assert r["items"][0]["path"] == "IMG_1.MOV" and "dl=1" in r["items"][0]["url"] and "rlkey=k" in r["items"][0]["url"]
+    r = L.resolve("https://www.dropbox.com/scl/fo/xyz/AAA?rlkey=k&dl=0", tmp_path)
+    assert r["items"][0]["zip"] and "dl=1" in r["items"][0]["url"]
+    assert json.loads((tmp_path / "sheets" / "drive.json").read_text())[0]["zip"] is True
+    class H:
+        status_code = 200; headers = {"content-type": "video/mp4", "content-length": "123"}; url = "https://cdn.example.com/v/beach"
+    monkeypatch.setattr(L.requests, "head", lambda *a, **k: H())
+    r = L.resolve("https://cdn.example.com/v/beach", tmp_path)
+    assert r["items"][0]["path"] == "beach.mp4" and r["provider"] == "direct"
+    H.headers = {"content-type": "text/html"}
+    import pytest
+    with pytest.raises(L.LinkError):
+        L.resolve("https://example.com/page", tmp_path)
+
+
+def test_dropbox_zip_unpacked(tmp_path: Path, monkeypatch):
+    import subprocess as SP
+    import zipfile
+    from app.pipeline import footage as F
+    src = tmp_path / "src.zip"
+    with zipfile.ZipFile(src, "w") as z:
+        z.writestr("trip/a.mov", b"m" * 4000); z.writestr("trip/b.jpg", b"j" * 4000); z.writestr("trip/notes.txt", b"t" * 4000); z.writestr("__MACOSX/._a.mov", b"x")
+    def fake_run(cmd, **kw):
+        out = Path(cmd[cmd.index("-o") + 1]); out.write_bytes(src.read_bytes())
+    monkeypatch.setattr(F.subprocess, "run", fake_run)
+    root = tmp_path / "p"; (root / "raw").mkdir(parents=True)
+    res = F.download_link([{"id": "dropbox", "path": "dropbox_folder.zip", "url": "https://x?dl=1", "zip": True}], root)
+    assert res == ["ok 2 files from folder"]
+    assert sorted(p.name for p in (root / "raw" / "dropbox").iterdir()) == ["a.mov", "b.jpg"] and not (root / "raw" / "dropbox_folder.zip").exists()
