@@ -444,6 +444,29 @@ async def reject_order(order_id: str, admin: User = Admin):
         return {"order": _order_dict(o)}
 
 
+
+MIN_MEASURED_PROJECTS = 3   # below this the pricing page keeps the estimate
+
+
+async def measured_video_cost(days: int = 90) -> dict:
+    """Real variable cost of one finished video: API cost (Claude + ElevenLabs) per project that exported
+    at least once, over the last `days`. Hosting (Railway) is a fixed monthly cost and isn't spread here."""
+    since = now() - timedelta(days=days)
+    async with Session() as s:
+        rows = (await s.execute(select(Usage.project_id, func.sum(Usage.cost_usd), Project.exports)
+                                .join(Project, Project.id == Usage.project_id)
+                                .where(Usage.created_at >= since, Project.exports > 0)
+                                .group_by(Usage.project_id, Project.exports))).all()
+    costs = sorted((c or 0) * TWD_PER_USD for _, c, _ in rows)
+    n = len(costs)
+    exports = sum(e or 0 for _, _, e in rows)
+    return {"projects": n, "days": days, "exports": exports,
+            "avg_twd": round(sum(costs) / n) if n else None,
+            "median_twd": round(costs[n // 2] if n % 2 else (costs[n // 2 - 1] + costs[n // 2]) / 2) if n else None,
+            "per_export_twd": round(sum(costs) / exports) if exports else None,
+            "exports_per_video": round(exports / n, 1) if n else None,
+            "enough": n >= MIN_MEASURED_PROJECTS}
+
 # ---- API 成本明細 -----------------------------------------------------------------------------------
 COST_GROUPS = [
     ("claude", "Claude（剪輯師 AI）", "#D97757"),
@@ -539,6 +562,7 @@ async def costs(days: int = 30, _: User = Admin):
             "revenue_twd": int(revenue), "margin_pct": round((revenue - total * T) / (total * T) * 100) if total else None,
             "groups": out_groups,
             "railway": {k: v for k, v in rw.items() if k not in ("items", "daily")},
+            "per_video": await measured_video_cost(max(days, 30)),
             "claude_tokens": {**{k: v for k, v in tokens.items() if not k.startswith("usd")},
                               **{k: round(v * T, 1) for k, v in tokens.items() if k.startswith("usd")}},
             "daily": [{"date": d["date"], **{g: round(d[g] * T, 1) for g in groups}} for d in daily.values()],
@@ -557,8 +581,14 @@ async def pricing_preview(point_twd: float | None = None, _: User = Admin):
     p = pricing.POINT_TWD if point_twd is None else point_twd
     if not POINT_TWD_RANGE[0] <= p <= POINT_TWD_RANGE[1]:
         raise HTTPException(400, f"每點價格要在 NT${POINT_TWD_RANGE[0]:g}～{POINT_TWD_RANGE[1]:g} 之間")
-    return {**pricing.margins(p), "current_point_twd": pricing.POINT_TWD, "default_point_twd": pricing.DEFAULT_POINT_TWD,
-            "current": pricing.margins()["rows"]}
+    return await _pricing_view(p)
+
+
+async def _pricing_view(p: float) -> dict:
+    m = await measured_video_cost()
+    vc = m["avg_twd"] if m["enough"] else None
+    return {**pricing.margins(p, vc), "current_point_twd": pricing.POINT_TWD, "default_point_twd": pricing.DEFAULT_POINT_TWD,
+            "current": pricing.margins(None, vc)["rows"], "measured": m, "cost_source": "measured" if vc else "estimate"}
 
 
 class PointPriceBody(BaseModel):
@@ -573,5 +603,4 @@ async def set_point_price(body: PointPriceBody, admin: User = Admin):
     await set_setting("point_twd", str(p))
     pricing.apply_point_price(p)
     log.info("point price set to NT$%s by %s", p, admin.email)
-    return {**pricing.margins(), "current_point_twd": pricing.POINT_TWD, "default_point_twd": pricing.DEFAULT_POINT_TWD,
-            "current": pricing.margins()["rows"]}
+    return await _pricing_view(p)

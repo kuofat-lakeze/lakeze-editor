@@ -27,6 +27,7 @@ export type PayMethods = { card: boolean; transfer: boolean; test: boolean; note
 export type CostItem = { id: string; label: string; usd: number; twd: number; units: number; unit: string; calls: number; pct: number }
 export type CostGroup = { id: string; label: string; color: string; usd: number; twd: number; pct: number; items: CostItem[] }
 export type Costs = { days: number; usd: number; twd: number; twd_per_usd: number; exports: number; per_export_twd: number | null; revenue_twd: number; margin_pct: number | null
+  per_video?: MeasuredCost
   railway?: { ok: boolean; error?: string; usd: number; usage_usd: number; month_estimate_usd: number | null; month_bill_usd: number; plan_fee_usd: number; floor_usd?: number; cycle_start?: string | null; cycle_end?: string | null }
   groups: CostGroup[]; claude_tokens: { in: number; out: number; cache_read: number; usd_in: number; usd_out: number; usd_cache_read: number; usd_cache_write: number }
   daily: ({ date: string } & Record<string, number | string>)[]; top_projects: { id: string; name: string; email: string; twd: number; by_group: Record<string, number> }[]; top_users: { id: string; email: string; twd: number }[] }
@@ -55,7 +56,8 @@ export type Subscription = { id: string; label: string; who: string; desc: strin
 export type MySubscription = { id: string; label: string; points: number; videos: number; storage_gb: number; features: string[]; period_start: string | null; renews_at: string | null }
 export type Tier = { id: string; label: string; who: string; features?: string[]; voice_seconds?: number }
 export type PriceRow = { id: string; label: string; points: number; twd: number; cost_twd: number; per_video_twd: number; margin_pct: number | null }
-export type PricePreview = { point_twd: number; current_point_twd: number; default_point_twd: number; signup_points: number; signup_cost_twd: number
+export type MeasuredCost = { projects: number; days: number; exports: number; avg_twd: number | null; median_twd: number | null; per_export_twd: number | null; exports_per_video: number | null; enough: boolean }
+export type PricePreview = { measured?: MeasuredCost; cost_source?: 'measured' | 'estimate'; video_cost_twd?: number; estimated_video_cost_twd?: number; point_twd: number; current_point_twd: number; default_point_twd: number; signup_points: number; signup_cost_twd: number
   rows: PriceRow[]; current: PriceRow[]; packs: { id: string; points: number; twd: number }[] }
 export type Pricing = { point_twd: number; menu: { item: string; points: number }[]; free_revision_turns: number; packs: Pack[]; provider_configured: boolean; note: string
   first_video_points: number; revision_points: number; first_video_twd: number; revision_twd: number; subscriptions: Subscription[]; storage_plans: StoragePlan[]

@@ -361,3 +361,24 @@ def test_point_price_setting(client):
         assert asyncio.run(D.get_setting("point_twd")) == "5.0"
     finally:
         P.apply_point_price(P.DEFAULT_POINT_TWD)
+
+
+def test_pricing_uses_measured_cost_per_video(client):
+    """Once 3 projects have exported, margins use their real average cost instead of the estimate."""
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())   # one exported project (A1, $3 usage)
+    holder["u"] = admin
+    r = c.get("/api/admin/pricing").json()
+    assert r["cost_source"] == "estimate" and r["measured"]["projects"] == 1 and not r["measured"]["enough"]
+
+    async def more():
+        async with D.Session() as s:
+            for i in range(2):
+                p = D.Project(user_id=a.id, name=f"m{i}", exports=3); s.add(p); await s.commit()
+                s.add(D.Usage(user_id=a.id, project_id=p.id, kind="claude_tokens", units=1, cost_usd=3.0)); await s.commit()
+    asyncio.run(more())
+    r = c.get("/api/admin/pricing").json()
+    assert r["cost_source"] == "measured" and r["measured"]["avg_twd"] == 3 * P.TWD_PER_USD == r["video_cost_twd"]
+    assert r["rows"][0]["cost_twd"] == 96 and r["rows"][0]["margin_pct"] == round((350 - 96) / 96 * 100)
+    d = c.get("/api/admin/costs?days=30").json()
+    assert d["per_video"]["projects"] == 3 and d["per_video"]["avg_twd"] == 96

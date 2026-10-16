@@ -191,12 +191,13 @@ def apply_point_price(point_twd: float) -> None:
 apply_point_price(DEFAULT_POINT_TWD)
 
 
-def margins(point_twd: float | None = None) -> dict:
+def margins(point_twd: float | None = None, video_cost_twd: float | None = None) -> dict:
     """What each way of buying earns at a given point price (default: the current one), for the
-    dashboard's pricing page. margin_pct = (price − cost) / cost."""
+    dashboard's pricing page. margin_pct = (price − cost) / cost. video_cost_twd: the measured
+    variable cost of one finished video (from usage records); without it the COST_TWD estimate."""
     p = POINT_TWD if point_twd is None else float(point_twd)
     pts = FIRST_VIDEO_POINTS + 2 * REVISION_POINTS
-    cost = FIRST_VIDEO_COST + 2 * REVISION_COST
+    cost = video_cost_twd if video_cost_twd else FIRST_VIDEO_COST + 2 * REVISION_COST
     rows = [{"id": "payg", "label": "單次購買 · 一支含 2 輪修改", "points": pts, "twd": round(pts * p), "cost_twd": round(cost),
              "per_video_twd": round(pts * p)}]
     for k, (v, r, gb) in SUB_SHAPE.items():
@@ -206,11 +207,13 @@ def margins(point_twd: float | None = None) -> dict:
             sb = _sub(v, r, gb, SUB_DISCOUNT[k])
         finally:
             globals()["POINT_TWD"] = saved
+        sub_cost = round(v * cost + gb * STORAGE_GB_COST_TWD) if video_cost_twd else sb["cost_twd"]
         rows.append({"id": k, "label": f"{SUBSCRIPTIONS[k]['label']} · 每月 {v} 支", "points": sb["points"], "twd": sb["twd"],
-                     "cost_twd": sb["cost_twd"], "per_video_twd": sb["per_video_twd"]})
+                     "cost_twd": sub_cost, "per_video_twd": sb["per_video_twd"]})
     for x in rows:
         x["margin_pct"] = round((x["twd"] - x["cost_twd"]) / x["cost_twd"] * 100) if x["cost_twd"] else None
-    return {"point_twd": p, "signup_points": SIGNUP_POINTS, "signup_cost_twd": round(SIGNUP_POINTS * cost / pts),
+    return {"point_twd": p, "signup_points": SIGNUP_POINTS, "signup_cost_twd": round(SIGNUP_POINTS * cost / pts), "video_cost_twd": round(cost),
+            "estimated_video_cost_twd": round(FIRST_VIDEO_COST + 2 * REVISION_COST),
             "rows": rows, "packs": [{"id": k, "points": v["points"], "twd": int(round(v["points"] * p))} for k, v in PACKS.items()]}
 
 

@@ -429,7 +429,8 @@ function CostDrawer({ days: d0, onClose, onOpenUser }: { days: number; onClose: 
           <>
             <div className="dr-kpis">
               <div><span className="muted small">總成本</span><b>{nt(c.twd)}</b><small className="muted">US${c.usd}</small></div>
-              <div><span className="muted small">每支影片</span><b>{c.per_export_twd != null ? nt(c.per_export_twd) : '—'}</b><small className="muted">{c.exports} 次輸出</small></div>
+              <div><span className="muted small">每支完成影片</span><b>{c.per_video?.avg_twd != null ? nt(c.per_video.avg_twd) : '—'}</b><small className="muted">{c.per_video?.projects ? `${c.per_video.projects} 個專案平均 · 每支約輸出 ${c.per_video.exports_per_video} 次 · 不含主機` : '還沒有完成的影片'}</small></div>
+              <div><span className="muted small">每次輸出</span><b>{c.per_export_twd != null ? nt(c.per_export_twd) : '—'}</b><small className="muted">{c.exports} 次輸出（第一版、每輪修改各算一次）</small></div>
               <div className={c.margin_pct != null && c.margin_pct >= 0 ? 'good' : 'bad'}><span className="muted small">營收 / 毛利率</span><b>{nt(c.revenue_twd)}</b><small className="muted">{c.margin_pct == null ? '—' : `${c.margin_pct}%`}</small></div>
             </div>
             <div className="cost-stack">{c.groups.filter(g => g.twd > 0).map(g => <i key={g.id} style={{ width: `${g.pct}%`, background: g.color }} title={`${g.label} ${g.pct}%`} />)}</div>
@@ -526,7 +527,12 @@ function PricingPanel({ onSaved }: { onSaved: () => void }) {
     <div className="pp">
       <section className="card pp-set">
         <div className="pp-head">
-          <div><b>1 點值多少錢</b><div className="muted small">一支影片（含封面與 2 輪修改）固定 100 點；這裡只改每點的台幣價格，毛利率跟著變。</div></div>
+          <div><b>1 點值多少錢</b><div className="muted small">一支影片（含封面與 2 輪修改）固定 100 點；這裡只改每點的台幣價格，毛利率跟著變。</div>
+            <div className={`pp-src ${cur.cost_source === 'measured' ? 'real' : ''}`}>
+              {cur.cost_source === 'measured' && cur.measured
+                ? <>成本依據：<b>實測</b>近 {cur.measured.days} 天 {cur.measured.projects} 支完成影片，平均每支 <b>{twd(cur.measured.avg_twd ?? 0)}</b>（中位數 {twd(cur.measured.median_twd ?? 0)}，不含主機月費）</>
+                : <>成本依據：<b>估算</b>每支 {twd(cur.estimated_video_cost_twd ?? 0)}。完成的影片滿 3 支後，會自動改用實測成本{cur.measured?.projects ? `（目前 ${cur.measured.projects} 支，平均 ${twd(cur.measured.avg_twd ?? 0)}）` : ''}</>}
+            </div></div>
           <span className="pp-now">目前 <b>NT${cur.current_point_twd}</b> / 點</span>
         </div>
         <div className="pp-input">

@@ -1399,3 +1399,7 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .pl-more summary::before { content: "▸ "; } .pl-more[open] summary::before { content: "▾ "; }
 .pl-more-body { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .pl-rules { margin: 0; padding-left: 18px; line-height: 1.7; }
+.pp-src { margin-top: 8px; font-size: 12.5px; padding: 6px 10px; border-radius: 9px; background: #FFF4E5; color: #8A5300; display: inline-block; }
+.pp-src.real { background: #E4F5EC; color: #1E7A4C; }
+.dr-kpis { grid-template-columns: repeat(2, 1fr); }
+.cost-drawer .dr-kpis { grid-template-columns: repeat(2, 1fr); }
