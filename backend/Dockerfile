@@ -7,7 +7,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 ENV DATA_DIR=/data PYTHONUNBUFFERED=1 PORT=8000
-VOLUME ["/data"]
+# No VOLUME instruction: Railway rejects it (mount a Railway Volume at /data instead; docker-compose declares its own).
 EXPOSE 8000
 # $PORT lets platforms like Railway pick the port.
 CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --timeout-keep-alive 75

@@ -47,11 +47,11 @@ Railway 沒有 Claude 連接器，但它自己有 GitHub 整合：連上 repo �
 
 磁碟控制：`RAW_RETENTION_DAYS`（預設 7）天沒動的專案會自動刪掉原始素材與中間檔，只留成品、封面與對話；用量大時再把成品搬到 Storage Buckets。
 
-**全自動版**：有 Railway token 時，上面 1–4 步可以一行跑完（需要 `railway` CLI 與 `jq`）：
+**全自動版**：有 Railway workspace token 時，上面 1–4 步可以一行跑完（只需要 `curl`、`jq`、`openssl`，直接打 Railway GraphQL，不需要 CLI 登入）：
 ```bash
 RAILWAY_TOKEN=... ANTHROPIC_API_KEY=... ELEVENLABS_API_KEY=... ADMIN_EMAILS=you@example.com ./deploy/railway_setup.sh
 ```
-腳本會建專案、兩個 service（從 GitHub repo、各自的 Root Directory）、變數、`/data` 磁碟、公開網址並觸發部署，最後印出網址。
+腳本會建專案、兩個 service（從 GitHub repo、各自的 Root Directory、健康檢查）、變數、`/data` 磁碟、公開網址並觸發部署，最後印出網址；可重複執行（已存在的部分會略過）。注意：Railway 已棄用 `railway.json`，部署設定都由腳本直接設定；Dockerfile 不能有 `VOLUME` 指令；frontend 的 nginx 用 `RESOLVER=[fd12::10]` 在執行期解析 `backend.railway.internal`。
 
 ## 上線 B：自己的 Linux 主機 + 網域（成本固定、磁碟便宜）
 
