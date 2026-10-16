@@ -428,3 +428,95 @@ async def reject_order(order_id: str, admin: User = Admin):
             o.note = f"rejected by {admin.email}"
             await s.commit()
         return {"order": _order_dict(o)}
+
+
+# ---- API 成本明細 -----------------------------------------------------------------------------------
+COST_GROUPS = [
+    ("claude", "Claude（剪輯師 AI）", "#D97757"),
+    ("voice", "ElevenLabs 旁白", "#1B7AC3"),
+    ("music", "ElevenLabs 配樂與音效", "#46B9BD"),
+    ("stt", "語音辨識", "#7B3FE4"),
+]
+
+
+def _cost_item(kind: str, meta: dict) -> tuple[str, str, str]:
+    """(group, item id, item label) for one usage row."""
+    if kind == "claude_tokens":
+        return ("claude", "analyze", "先解析素材") if meta.get("analyze") else ("claude", "chat", "剪輯對話與工具判斷")
+    if kind == "elevenlabs_tts_chars":
+        return "voice", "tts", "旁白生成（含自動重錄）"
+    if kind == "elevenlabs_music_sec":
+        return "music", "music", "配樂"
+    if kind == "elevenlabs_sfx_sec":
+        return "music", "sfx", "音效"
+    if kind == "elevenlabs_stt_sec":
+        return ("stt", "voice_input", "語音輸入（用說的打字）") if meta.get("stt") == "voice_input" else ("stt", "check", "旁白核對與字幕對時")
+    return "other", kind, kind
+
+
+UNIT = {"claude_tokens": "tokens", "elevenlabs_tts_chars": "字", "elevenlabs_music_sec": "秒", "elevenlabs_sfx_sec": "秒", "elevenlabs_stt_sec": "秒"}
+CLAUDE_USD = {"in": 4.0, "out": 20.0, "cache_read": 0.20}   # per million tokens, as in agent/runner.PRICE
+
+
+@router.get("/costs")
+async def costs(days: int = 30, _: User = Admin):
+    days = max(1, min(365, days))
+    ref = now()
+    since = ref - timedelta(days=days)
+    async with Session() as s:
+        rows = (await s.execute(select(Usage, Project.name, User.email).join(Project, Project.id == Usage.project_id, isouter=True)
+                                .join(User, User.id == Usage.user_id, isouter=True).where(Usage.created_at >= since))).all()
+        exports = (await s.execute(select(func.count(CreditTx.id)).where(CreditTx.kind == "charge", CreditTx.reason == "export_video",
+                                                                       CreditTx.created_at >= since))).scalar() or 0
+        revenue = (await s.execute(select(func.coalesce(func.sum(CreditTx.amount_twd), 0)).where(CreditTx.kind == "purchase",
+                                                                                                CreditTx.created_at >= since))).scalar() or 0
+    groups: dict[str, dict] = {g: {"id": g, "label": l, "color": c, "usd": 0.0, "items": {}} for g, l, c in COST_GROUPS}
+    groups["other"] = {"id": "other", "label": "其他", "color": "#B7BCC6", "usd": 0.0, "items": {}}
+    tokens = {"in": 0, "out": 0, "cache_read": 0, "usd_in": 0.0, "usd_out": 0.0, "usd_cache_read": 0.0, "usd_cache_write": 0.0}
+    keys = [(since + timedelta(days=i + 1)).date().isoformat() for i in range(days)]
+    daily = {k: {"date": k, **{g: 0.0 for g in groups}} for k in keys}
+    by_proj: dict[str, dict] = {}
+    by_user: dict[str, dict] = {}
+    for u, pname, email in rows:
+        meta = json.loads(u.meta or "{}")
+        g, iid, ilabel = _cost_item(u.kind, meta)
+        usd = u.cost_usd or 0.0
+        grp = groups[g]
+        grp["usd"] += usd
+        it = grp["items"].setdefault(iid, {"id": iid, "label": ilabel, "usd": 0.0, "units": 0.0, "unit": UNIT.get(u.kind, ""), "calls": 0})
+        it["usd"] += usd; it["units"] += u.units or 0; it["calls"] += 1
+        if u.kind == "claude_tokens":
+            i_, o_, cr = int(meta.get("in") or 0), int(meta.get("out") or 0), int(meta.get("cache_read") or 0)
+            tokens["in"] += i_; tokens["out"] += o_; tokens["cache_read"] += cr
+            a, b, c = i_ * CLAUDE_USD["in"] / 1e6, o_ * CLAUDE_USD["out"] / 1e6, cr * CLAUDE_USD["cache_read"] / 1e6
+            tokens["usd_in"] += a; tokens["usd_out"] += b; tokens["usd_cache_read"] += c
+            tokens["usd_cache_write"] += max(0.0, usd - a - b - c)
+        k = _day(u.created_at)
+        if k in daily:
+            daily[k][g] += usd
+        if u.project_id:
+            p = by_proj.setdefault(u.project_id, {"id": u.project_id, "name": pname or u.project_id, "email": email, "usd": 0.0, "by_group": {}})
+            p["usd"] += usd; p["by_group"][g] = p["by_group"].get(g, 0.0) + usd
+        us = by_user.setdefault(u.user_id, {"id": u.user_id, "email": email, "usd": 0.0})
+        us["usd"] += usd
+    total = sum(g["usd"] for g in groups.values())
+    T = TWD_PER_USD
+
+    def fmt_group(g):
+        items = sorted(g["items"].values(), key=lambda x: -x["usd"])
+        return {"id": g["id"], "label": g["label"], "color": g["color"], "usd": round(g["usd"], 4), "twd": round(g["usd"] * T),
+                "pct": round(g["usd"] / total * 100, 1) if total else 0,
+                "items": [{**it, "usd": round(it["usd"], 4), "twd": round(it["usd"] * T, 1), "units": round(it["units"], 1),
+                           "pct": round(it["usd"] / g["usd"] * 100, 1) if g["usd"] else 0} for it in items]}
+    out_groups = [fmt_group(g) for g in groups.values() if g["usd"] > 0 or g["id"] != "other"]
+    out_groups.sort(key=lambda g: -g["usd"])
+    return {"days": days, "usd": round(total, 2), "twd": round(total * T), "twd_per_usd": T,
+            "exports": exports, "per_export_twd": round(total * T / exports) if exports else None,
+            "revenue_twd": int(revenue), "margin_pct": round((revenue - total * T) / (total * T) * 100) if total else None,
+            "groups": out_groups,
+            "claude_tokens": {**{k: v for k, v in tokens.items() if not k.startswith("usd")},
+                              **{k: round(v * T, 1) for k, v in tokens.items() if k.startswith("usd")}},
+            "daily": [{"date": d["date"], **{g: round(d[g] * T, 1) for g in groups}} for d in daily.values()],
+            "top_projects": [{**p, "twd": round(p["usd"] * T), "by_group": {k: round(v * T) for k, v in p["by_group"].items()}}
+                             for p in sorted(by_proj.values(), key=lambda x: -x["usd"])[:10]],
+            "top_users": [{**x, "twd": round(x["usd"] * T)} for x in sorted(by_user.values(), key=lambda x: -x["usd"])[:10]]}

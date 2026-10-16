@@ -24,6 +24,11 @@ export type CreditState = { balance: number; free_project: boolean; in_free: boo
 export type DriveCheck = { ok: boolean; provider: string; label: string; folder_zip?: boolean; files: number; media: number; videos: number; photos: number; names: string[]; other: number }
 export type Order = { id: string; item: string; kind: 'pack' | 'sub'; label: string; points: number; amount_twd: number; method: string; status: 'pending' | 'reported' | 'paid' | 'failed' | 'cancelled'; transfer_ref: string; created_at: string; paid_at: string | null; email?: string; user_id?: string }
 export type PayMethods = { card: boolean; transfer: boolean; test: boolean; note: string }
+export type CostItem = { id: string; label: string; usd: number; twd: number; units: number; unit: string; calls: number; pct: number }
+export type CostGroup = { id: string; label: string; color: string; usd: number; twd: number; pct: number; items: CostItem[] }
+export type Costs = { days: number; usd: number; twd: number; twd_per_usd: number; exports: number; per_export_twd: number | null; revenue_twd: number; margin_pct: number | null
+  groups: CostGroup[]; claude_tokens: { in: number; out: number; cache_read: number; usd_in: number; usd_out: number; usd_cache_read: number; usd_cache_write: number }
+  daily: ({ date: string } & Record<string, number | string>)[]; top_projects: { id: string; name: string; email: string; twd: number; by_group: Record<string, number> }[]; top_users: { id: string; email: string; twd: number }[] }
 export type Shot = { n: number; clip: number; t: number; dur: number; shot: string; role: 'hook' | 'feature' | 'price' | 'cta' }
 export type Estimate = { first_video_points: number; revision_points: number; two_revisions_points: number; balance: number; enough_first: boolean; enough_two: boolean; short_first: number; short_two: number }
 export type Analysis = {
@@ -144,6 +149,7 @@ export const api = {
     grant: (id: string, delta: number, reason: string, amount_twd: number) =>
       post(`/api/admin/users/${id}/credits`, { delta, reason, amount_twd }).then(j<{ balance: number }>),
     patch: (id: string, body: Record<string, unknown>) => post(`/api/admin/users/${id}`, body).then(j<{ ok: boolean }>),
+    costs: (days = 30) => fetch(`/api/admin/costs?days=${days}`).then(j<Costs>),
     orders: (status = '') => fetch(`/api/admin/orders?status=${status}`).then(j<Order[]>),
     approveOrder: (id: string) => post(`/api/admin/orders/${id}/approve`, {}).then(j<{ order: Order }>),
     rejectOrder: (id: string) => post(`/api/admin/orders/${id}/reject`, {}).then(j<{ order: Order }>),

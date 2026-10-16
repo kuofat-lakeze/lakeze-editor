@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, type Order, type AdminUser, type AdminUserDetail, type Dashboard, type DashRow, type Me, type Stage } from './api'
+import { api, type Costs, type Order, type AdminUser, type AdminUserDetail, type Dashboard, type DashRow, type Me, type Stage } from './api'
 import logo from './assets/logo.png'
 import { MiaoMark } from './Logo'
 
@@ -23,6 +23,7 @@ export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void })
   const [dash, setDash] = useState<Dashboard | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [openId, setOpenId] = useState<string | null>(null)
+  const [costsOpen, setCostsOpen] = useState(false)
   const reloadUsers = () => api.admin.users().then(setUsers)
   useEffect(() => { api.admin.dashboard(days).then(setDash) }, [days])
   useEffect(() => { reloadUsers() }, [])
@@ -47,17 +48,18 @@ export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void })
         <a className="small" onClick={onLogout}>登出</a>
       </header>
       <main className="dash-main">
-        {tab === 'overview' && (dash ? <Overview d={dash} onOpen={setOpenId} /> : <div className="center muted">載入中…</div>)}
+        {tab === 'overview' && (dash ? <Overview d={dash} onOpen={setOpenId} onCosts={() => setCostsOpen(true)} /> : <div className="center muted">載入中…</div>)}
         {tab === 'users' && <Users users={users} stages={dash?.stages} onOpen={setOpenId} />}
         {tab === 'orders' && <Orders onOpen={setOpenId} onChanged={() => { reloadUsers(); api.admin.dashboard(days).then(setDash) }} />}
       </main>
+      {costsOpen && <CostDrawer days={days} onClose={() => setCostsOpen(false)} onOpenUser={id => { setCostsOpen(false); setOpenId(id) }} />}
       {openId && <UserDrawer id={openId} onClose={() => setOpenId(null)} onChanged={() => { reloadUsers(); api.admin.dashboard(days).then(setDash) }} />}
     </div>
   )
 }
 
 /* ---------------- overview ---------------- */
-function Overview({ d, onOpen }: { d: Dashboard; onOpen: (id: string) => void }) {
+function Overview({ d, onOpen, onCosts }: { d: Dashboard; onOpen: (id: string) => void; onCosts: () => void }) {
   const p = d.period, q = d.previous, t = d.totals
   const maxRev = Math.max(1, ...d.daily.map(x => x.revenue_twd))
   const maxPts = Math.max(1, ...d.daily.map(x => Math.max(x.points_used + x.points_waived, x.cost_twd / d.point_twd)))
@@ -72,7 +74,7 @@ function Overview({ d, onOpen }: { d: Dashboard; onOpen: (id: string) => void })
         <Kpi label="訂閱中" v={t.subscribers} sub={`MRR ${twd(t.mrr_twd)}`} />
         <Kpi label={`${d.days} 天營收`} v={twd(p.revenue_twd)} sub={`累積 ${twd(t.revenue_twd)}`} delta={pct(p.revenue_twd, q.revenue_twd)} />
         <Kpi label={`${d.days} 天點數消耗`} v={`${p.points_used.toLocaleString()} 點`} sub={`免費額度 ${p.points_waived} 點 · 售出 ${p.points_sold} 送出 ${p.points_granted}`} delta={pct(p.points_used, q.points_used)} />
-        <Kpi label={`${d.days} 天 API 成本`} v={twd(p.cost_twd)} sub={p.margin_pct == null ? '尚無成本' : `毛利率（對成本）${p.margin_pct}%`} delta={pct(p.cost_twd, q.cost_twd)} bad />
+        <Kpi label={`${d.days} 天 API 成本`} v={twd(p.cost_twd)} sub={p.margin_pct == null ? '尚無成本' : `毛利率（對成本）${p.margin_pct}%`} delta={pct(p.cost_twd, q.cost_twd)} bad onClick={onCosts} />
         <Kpi label={`${d.days} 天影片輸出`} v={p.exports} sub={`累積 ${t.exports} 支 · 未用點數 ${t.points_outstanding.toLocaleString()} 點`} delta={pct(p.exports, q.exports)} />
       </section>
       <section className="dash-row two">
@@ -126,10 +128,11 @@ function Overview({ d, onOpen }: { d: Dashboard; onOpen: (id: string) => void })
   )
 }
 
-function Kpi({ label, v, sub, delta, bad }: { label: string; v: number | string; sub: string; delta?: number; bad?: boolean }) {
+function Kpi({ label, v, sub, delta, bad, onClick }: { label: string; v: number | string; sub: string; delta?: number; bad?: boolean; onClick?: () => void }) {
   const good = delta === undefined ? null : bad ? delta <= 0 : delta >= 0
   return (
-    <div className="dkpi card">
+    <div className={`dkpi card ${onClick ? 'click' : ''}`} onClick={onClick} role={onClick ? 'button' : undefined}>
+      {onClick && <span className="dkpi-more">看明細 →</span>}
       <span className="muted small">{label}</span>
       <b>{typeof v === 'number' ? v.toLocaleString() : v}</b>
       <span className="dkpi-sub">{delta !== undefined && <em className={good ? 'up' : 'down'}>{delta > 0 ? '+' : ''}{delta}%</em>}<span className="muted small">{sub}</span></span>
@@ -398,6 +401,84 @@ function Orders({ onOpen, onChanged }: { onOpen: (id: string) => void; onChanged
           </tbody>
         </table>
       </div>
+    </>
+  )
+}
+
+/* ---------------- API 成本明細 ---------------- */
+const nt = (n: number) => `NT$${n >= 100 ? Math.round(n).toLocaleString() : n.toFixed(1)}`
+function CostDrawer({ days: d0, onClose, onOpenUser }: { days: number; onClose: () => void; onOpenUser: (id: string) => void }) {
+  const [days, setDays] = useState(d0)
+  const [c, setC] = useState<Costs | null>(null)
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  useEffect(() => { setC(null); api.admin.costs(days).then(setC) }, [days])
+  useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
+  const maxDay = c ? Math.max(1, ...c.daily.map(x => c.groups.reduce((a, g) => a + Number(x[g.id] ?? 0), 0))) : 1
+  const tk = c?.claude_tokens
+  return (
+    <>
+      <div className="scrim" onClick={onClose} />
+      <aside className="drawer cost-drawer">
+        <div className="dr-head"><div><div className="dr-email">API 成本明細</div><div className="muted small">點大項看細項 · 1 美元以 NT${c?.twd_per_usd ?? 32} 計</div></div>
+          <div className="dnav mini">{[7, 30, 90].map(x => <a key={x} className={days === x ? 'on' : ''} onClick={() => setDays(x)}>{x} 天</a>)}</div><a className="dr-close" onClick={onClose}>✕</a></div>
+        {!c ? <div className="center muted">載入中…</div> : (
+          <>
+            <div className="dr-kpis">
+              <div><span className="muted small">總成本</span><b>{nt(c.twd)}</b><small className="muted">US${c.usd}</small></div>
+              <div><span className="muted small">每支影片</span><b>{c.per_export_twd != null ? nt(c.per_export_twd) : '—'}</b><small className="muted">{c.exports} 次輸出</small></div>
+              <div className={c.margin_pct != null && c.margin_pct >= 0 ? 'good' : 'bad'}><span className="muted small">營收 / 毛利率</span><b>{nt(c.revenue_twd)}</b><small className="muted">{c.margin_pct == null ? '—' : `${c.margin_pct}%`}</small></div>
+            </div>
+            <div className="cost-stack">{c.groups.filter(g => g.twd > 0).map(g => <i key={g.id} style={{ width: `${g.pct}%`, background: g.color }} title={`${g.label} ${g.pct}%`} />)}</div>
+            <div className="cost-groups">
+              {c.groups.map(g => {
+                const isOpen = open[g.id] ?? true
+                return (
+                  <div key={g.id} className="cost-g card">
+                    <button className="cg-head" onClick={() => setOpen(o => ({ ...o, [g.id]: !isOpen }))}>
+                      <i className="cg-dot" style={{ background: g.color }} /><b>{g.label}</b><span className="muted small">{g.pct}%</span>
+                      <span className="spacer" /><b className="cg-amt">{nt(g.twd)}</b><span className="cg-chev">{isOpen ? '▾' : '▸'}</span>
+                    </button>
+                    {isOpen && (
+                      <div className="cg-items">
+                        {g.items.length === 0 && <div className="muted small">這段期間沒有用到</div>}
+                        {g.items.map(it => (
+                          <div key={it.id} className="cg-item">
+                            <div className="cgi-top"><span>{it.label}</span><b>{nt(it.twd)}</b></div>
+                            <div className="cgi-bar"><i style={{ width: `${it.pct}%`, background: g.color }} /></div>
+                            <div className="muted small">{Math.round(it.units).toLocaleString()} {it.unit} · {it.calls} 次 · 占{g.label.replace(/（.*）/, '')} {it.pct}%{it.calls ? ` · 平均每次 ${nt(it.twd / it.calls)}` : ''}</div>
+                          </div>))}
+                        {g.id === 'claude' && tk && (tk.in + tk.out) > 0 && (
+                          <div className="cg-tokens">
+                            <div className="muted small">token 組成</div>
+                            {[['輸入', tk.in, tk.usd_in], ['輸出', tk.out, tk.usd_out], ['快取讀取', tk.cache_read, tk.usd_cache_read], ['快取寫入', null, tk.usd_cache_write]].map(([l, n, v]) => (
+                              <div key={l as string} className="cgt-row"><span>{l}</span><span className="muted small">{n != null ? `${(Number(n) / 1e6).toFixed(2)}M tokens` : ''}</span><b>{nt(Number(v))}</b></div>))}
+                          </div>)}
+                      </div>)}
+                  </div>)
+              })}
+            </div>
+            <div className="card">
+              <div className="chart-h"><b>每日成本</b><span className="muted small">依大項堆疊</span></div>
+              <div className="cost-daily">{c.daily.map(x => (
+                <div key={x.date} className="cd-col" title={`${x.date} ${nt(c.groups.reduce((a, g) => a + Number(x[g.id] ?? 0), 0))}`}>
+                  {c.groups.map(g => <i key={g.id} style={{ height: `${Number(x[g.id] ?? 0) / maxDay * 100}%`, background: g.color }} />)}
+                </div>))}</div>
+            </div>
+            <div className="card dr-sec">
+              <b>成本最高的專案</b>
+              <table><tbody>{c.top_projects.map(p => (
+                <tr key={p.id}><td>{p.name}<div className="muted small">{p.email}</div></td>
+                  <td><div className="cost-mini">{c.groups.map(g => p.by_group[g.id] ? <i key={g.id} style={{ flex: p.by_group[g.id], background: g.color }} /> : null)}</div></td>
+                  <td className="r"><b>{nt(p.twd)}</b></td></tr>))}
+                {c.top_projects.length === 0 && <tr><td className="muted small">沒有資料</td></tr>}</tbody></table>
+            </div>
+            <div className="card dr-sec">
+              <b>成本最高的用戶</b>
+              <table><tbody>{c.top_users.map(u => <tr key={u.id} onClick={() => onOpenUser(u.id)} style={{ cursor: 'pointer' }}><td>{u.email}</td><td className="r"><b>{nt(u.twd)}</b></td></tr>)}</tbody></table>
+            </div>
+          </>
+        )}
+      </aside>
     </>
   )
 }

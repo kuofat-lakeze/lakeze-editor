@@ -312,3 +312,25 @@ def test_owner_narration_upload(client, monkeypatch, tmp_path: Path):
     assert (D.project_dir(p) / "work" / "vo" / "MY.wav").exists()
     assert c.post(f"/api/projects/{p}/narration", files={"audio": ("n.webm", clip.read_bytes(), "audio/webm")}).json()["key"] == "MY2"
     assert c.post(f"/api/projects/{p}/narration", files={"audio": ("n.webm", b"", "audio/webm")}).status_code == 400
+
+
+def test_cost_breakdown(client):
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())   # seeds one claude_tokens row of $3
+    async def more():
+        async with D.Session() as s:
+            p = (await s.execute(D.select(D.Project).where(D.Project.user_id == a.id))).scalar_one()
+            s.add_all([D.Usage(user_id=a.id, project_id=p.id, kind="claude_tokens", units=10, cost_usd=1.0, meta='{"analyze": true, "in": 1000, "out": 10}'),
+                       D.Usage(user_id=a.id, project_id=p.id, kind="elevenlabs_tts_chars", units=500, cost_usd=0.11, meta="{}"),
+                       D.Usage(user_id=a.id, project_id=p.id, kind="elevenlabs_music_sec", units=40, cost_usd=0.4, meta="{}"),
+                       D.Usage(user_id=a.id, project_id=p.id, kind="elevenlabs_stt_sec", units=10, cost_usd=0.001, meta='{"stt": "voice_input"}')])
+            await s.commit()
+    asyncio.run(more())
+    holder["u"] = admin
+    d = c.get("/api/admin/costs?days=30").json()
+    g = {x["id"]: x for x in d["groups"]}
+    assert d["usd"] == round(3 + 1 + 0.11 + 0.4 + 0.001, 2) and g["claude"]["usd"] == 4.0 and d["groups"][0]["id"] == "claude"
+    assert {i["id"] for i in g["claude"]["items"]} == {"chat", "analyze"} and g["voice"]["items"][0]["units"] == 500
+    assert g["stt"]["items"][0]["id"] == "voice_input" and g["music"]["items"][0]["unit"] == "秒"
+    assert d["claude_tokens"]["in"] == 1000 and d["top_projects"][0]["name"] == "A1" and len(d["daily"]) == 30
+    assert d["per_export_twd"] is not None and d["revenue_twd"] == 700
