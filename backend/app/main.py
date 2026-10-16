@@ -19,6 +19,7 @@ from .admin import router as admin_router
 from .agent.runner import TurnRunner
 from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
 from .db import Asset, CreditTx, Message, Project, Session, Store, Usage, User, add_credits, asset_dict, balance, init_db
+from .pipeline import eleven
 from .pipeline.fonts import ensure_fonts
 from .storage import project_dir, safe_join
 
@@ -381,6 +382,43 @@ async def asset_file(project_id: str, asset_id: str, user: User = CurrentUser):
         raise HTTPException(404)
     p = safe_join(project_dir(project_id), a.rel_path)
     return FileResponse(p, filename=p.name)
+
+
+_voices_cache: dict = {"at": 0.0, "data": []}
+
+
+@app.get("/api/voices")
+async def voices(user: User = CurrentUser):
+    """Voices the UI offers up front: configured presets first, then Taiwanese-accent voices from the
+    Voice Library, each with a preview clip. Cached for an hour."""
+    import time
+    if time.time() - _voices_cache["at"] < 3600 and _voices_cache["data"]:
+        return _voices_cache["data"]
+    out = [dict(v) for v in config.VOICE_PRESETS]
+    try:
+        found = await asyncio.to_thread(eleven.search_voices, "", "zh", "taiwanese", 12)
+    except Exception as e:
+        log.warning("voice search failed: %s", e)
+        found = []
+    by_id = {v["voice_id"]: v for v in found}
+    for v in out:
+        if not v.get("preview_url"):
+            if v["voice_id"] in by_id:
+                v["preview_url"] = by_id[v["voice_id"]].get("preview_url")
+            else:
+                try:
+                    v["preview_url"] = (await asyncio.to_thread(eleven.voice_info, v["voice_id"])).get("preview_url")
+                except Exception:
+                    v["preview_url"] = None
+    seen = {v["voice_id"] for v in out}
+    for v in found:
+        if v["voice_id"] not in seen and len(out) < 6:
+            name, _, tail = v["name"].partition(" - ")  # "Kuo Yu - Taiwan Mandarin Narrator" → name + tagline
+            out.append({"voice_id": v["voice_id"], "name": name.strip(), "gender": v.get("gender"),
+                        "description": (tail or v.get("description") or "")[:40], "preview_url": v.get("preview_url")})
+            seen.add(v["voice_id"])
+    _voices_cache.update(at=time.time(), data=out)
+    return out
 
 
 class ClientLog(BaseModel):

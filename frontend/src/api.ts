@@ -2,6 +2,7 @@ export type Asset = { id: string; kind: 'video' | 'audio' | 'image' | 'file'; na
 export type Part = { type: 'text'; text: string } | { type: 'tool'; name: string }
 export type Msg = { id: number | string; role: 'user' | 'assistant'; parts: Part[]; created_at: string; assets?: Asset[] }
 export type Project = { id: string; name: string; updated_at?: string }
+export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null }
 export type CreditState = { balance: number; free_project: boolean; in_free: boolean; free_revisions_left: number | null; exports: number }
 export type ProjectDetail = Project & { messages: Msg[]; assets: Asset[]; running: boolean; credits: CreditState }
 export type Me = { id: string; email: string; is_admin: boolean; balance: number; free_project_id: string | null }
@@ -34,6 +35,7 @@ export const api = {
   send: (id: string, text: string) => post(`/api/projects/${id}/messages`, { text }).then(j<{ ok: boolean }>),
   cancel: (id: string) => post(`/api/projects/${id}/cancel`, {}),
   pricing: () => fetch('/api/pricing').then(j<Pricing>),
+  voices: () => fetch('/api/voices').then(j<Voice[]>),
   credits: () => fetch('/api/credits').then(j<{ balance: number; ledger: Ledger[] }>),
   checkout: (pack: string) => fetch(`/api/checkout/${pack}`).then(j<{ url: string }>),
   admin: {

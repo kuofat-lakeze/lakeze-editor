@@ -43,16 +43,35 @@ def subscription() -> dict:
 
 
 def search_voices(query: str = "", language: str = "zh", accent: str = "", page_size: int = 20) -> list[dict]:
+    """Voice Library search. The library labels Taiwanese voices with accent "taiwan mandarin" and the
+    accent filter is exact, so "taiwanese"/"taiwan" are turned into a text search + accent substring filter."""
     params = {"page_size": page_size, "language": language}
+    want = ""
+    if accent and "taiwan" in accent.lower():
+        want, accent = "taiwan", ""
+        query = query or "taiwan"
     if query:
         params["search"] = query
     if accent:
         params["accent"] = accent
     r = requests.get(f"{BASE}/shared-voices", headers=_headers(), params=params, timeout=60)
     r.raise_for_status()
-    return [{"voice_id": v["voice_id"], "name": v["name"], "gender": v.get("gender"), "age": v.get("age"),
-             "accent": v.get("accent"), "use_case": v.get("use_case"),
-             "description": (v.get("description") or "")[:120]} for v in r.json().get("voices", [])]
+    out = [{"voice_id": v["voice_id"], "name": v["name"], "gender": v.get("gender"), "age": v.get("age"),
+            "accent": v.get("accent"), "use_case": v.get("use_case"), "preview_url": v.get("preview_url"),
+            "description": (v.get("description") or "")[:120]} for v in r.json().get("voices", [])]
+    if want:
+        out = [v for v in out if want in (v.get("accent") or "").lower()]
+    return out
+
+
+def voice_info(voice_id: str) -> dict:
+    """A voice in the account's library (or a public one): name, labels, preview_url."""
+    r = requests.get(f"{BASE}/voices/{voice_id}", headers=_headers(), timeout=30)
+    r.raise_for_status()
+    v = r.json()
+    lb = v.get("labels") or {}
+    return {"voice_id": voice_id, "name": v.get("name"), "gender": lb.get("gender"), "accent": lb.get("accent"),
+            "preview_url": v.get("preview_url"), "description": (v.get("description") or "")[:120]}
 
 
 def transcribe(path: Path, language: str = "zho") -> dict:

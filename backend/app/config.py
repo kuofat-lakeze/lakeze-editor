@@ -18,6 +18,11 @@ ANTHROPIC_MODEL = _env("ANTHROPIC_MODEL", "claude-opus-5-5")
 ANTHROPIC_WORKSPACE_ID = _env("ANTHROPIC_WORKSPACE_ID")
 ANTHROPIC_EFFORT = _env("ANTHROPIC_EFFORT", "high")
 ELEVENLABS_API_KEY = _env("ELEVENLABS_API_KEY")
+# Voices offered in the UI before the first message (JSON list of {voice_id, name, gender, description}).
+# Taiwanese-accent voices found live in the Voice Library are appended after these.
+VOICE_PRESETS = json.loads(_env("VOICE_PRESETS_JSON", json.dumps([
+    {"voice_id": "xrDmUzhnE51Df8z38r1M", "name": "Vivian", "gender": "female", "description": "台灣腔女聲，自然、有活力"},
+])))
 # Max parallel ElevenLabs requests (Starter tier allows 3).
 ELEVENLABS_CONCURRENCY = int(_env("ELEVENLABS_CONCURRENCY", "3"))
 ALLOW_SIGNUP = _env("ALLOW_SIGNUP", "true").lower() == "true"

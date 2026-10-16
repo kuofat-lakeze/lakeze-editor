@@ -76,6 +76,7 @@ cd /opt/lakeze-editor && ./deploy/up.sh
 - **免費體驗**：每個帳號的第一個專案，第一版 + 封面 + 4 輪修改免費；第 5 輪起照價目扣點，餘額不足時剪輯師會請用戶儲值，儲值後說「繼續」就接著做。「一輪修改」= 第一版輸出後、真的有動到工具（會扣點的動作）的一個回合；只是問答、確認的回合不算。
 - **儲值包**：NT$500→50、1,000→110、3,000→360、10,000→1,300 點。線上付款接 Lemon Squeezy（`CHECKOUT_URLS`、`LS_VARIANTS`、`LEMONSQUEEZY_WEBHOOK_SECRET`）；沒設定時用戶看到 `TOPUP_NOTE`，管理員在後台手動加點。
 - 價目可用 `PRICING_JSON` 覆寫，不用改程式。
+- 新專案的起始畫面會先讓用戶選旁白聲音（或「不要配音」）；預設清單用 `VOICE_PRESETS_JSON` 設定（`[{"voice_id","name","gender","description"}]`），其後自動補上 Voice Library 裡的台灣腔聲音，各附試聽。
 
 ## 管理後台
 
