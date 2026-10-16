@@ -13,12 +13,24 @@ IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif")
 STILL_SECONDS = 5.0
 
 
+def heic_to_jpeg(src: Path, dest: Path) -> Path:
+    """iPhone photos arrive as HEIC when the phone is set to 'high efficiency'. Honour EXIF rotation."""
+    from PIL import Image, ImageOps
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    with Image.open(src) as im:
+        ImageOps.exif_transpose(im).convert("RGB").save(dest, "JPEG", quality=92)
+    return dest
+
+
 def still_to_clip(img: Path, dest: Path, seconds: float = STILL_SECONDS) -> Path:
     """A photo becomes a short vertical clip with a slow push-in, so the cut can treat it like footage.
     Cover-fit to 1080x1920 (portrait is what every export uses), 30 fps, no audio."""
     if dest.exists():
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if img.suffix.lower() in (".heic", ".heif"):   # ffmpeg can't read HEIC; decode it with pillow-heif first
+        img = heic_to_jpeg(img, dest.with_suffix(".jpg"))
     frames = int(seconds * 30)
     vf = ("scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,"
           f"zoompan=z='min(zoom+0.0006,1.12)':d={frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30,"
@@ -102,7 +114,7 @@ def probe_footage(root: Path) -> list[dict]:
         except Exception as e:  # unreadable file: keep going, report it
             msg = str(e)[:120]
             if photo and p.suffix.lower() in (".heic", ".heif"):
-                msg = "HEIC 讀不了，請在手機相簿分享時選「最相容」或改存 JPG"
+                msg = f"這張 HEIC 讀不了（{msg[:60]}），請改存 JPG 再上傳"
             rows.append({"n": n, "path": rel, "error": msg, **({"photo": True} if photo else {})})
             continue
         rows.append({"n": n, "path": rel, "dur": round(info["duration"], 1),

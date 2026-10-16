@@ -11,3 +11,5 @@ bcrypt>=4.1
 requests>=2.32
 gdown>=5.2
 opencc-python-reimplemented>=0.1.7
+pillow>=10.3
+pillow-heif>=0.16   # iPhone HEIC photos → JPEG before they become clips

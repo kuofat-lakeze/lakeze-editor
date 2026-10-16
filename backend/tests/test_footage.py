@@ -29,3 +29,18 @@ def test_photo_becomes_clip(tmp_path: Path, monkeypatch):
     assert ".stills/IMG_1.mp4" in index and "DJI_1.mp4" in index
     # a second probe reuses the rendered still and doesn't list it twice
     assert len(footage.probe_footage(root)) == 2
+
+
+def test_heic_photo(tmp_path: Path, monkeypatch):
+    pytest.importorskip("pillow_heif")
+    from PIL import Image
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    root = tmp_path
+    for d in ("raw", "sheets/thumbs"):
+        (root / d).mkdir(parents=True)
+    Image.new("RGB", (800, 600), (230, 120, 40)).save(root / "raw/IMG_7.HEIC", format="HEIF")
+    monkeypatch.setattr(footage, "_thumb", lambda *a, **k: None)
+    rows = footage.probe_footage(root)
+    assert rows[0]["photo"] and "error" not in rows[0] and rows[0]["w"] == 1080
+    assert (root / "raw/.stills/IMG_7.jpg").exists() and (root / "raw/.stills/IMG_7.mp4").exists()

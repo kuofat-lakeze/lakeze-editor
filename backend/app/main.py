@@ -1055,4 +1055,9 @@ async def client_log(body: ClientLog, user: User = CurrentUser):
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "model": config.ANTHROPIC_MODEL, "elevenlabs": bool(config.ELEVENLABS_API_KEY)}
+    """Liveness plus the pieces a customer's edit depends on: ffmpeg, the CJK fonts, the voice API, HEIC decoding."""
+    import importlib.util
+    import shutil
+    fonts = config.FONTS_DIR.exists() and any(f.stat().st_size > 100_000 for f in config.FONTS_DIR.glob("*.otf"))
+    return {"ok": True, "model": config.ANTHROPIC_MODEL, "elevenlabs": bool(config.ELEVENLABS_API_KEY),
+            "ffmpeg": shutil.which("ffmpeg") is not None, "fonts": fonts, "heic": importlib.util.find_spec("pillow_heif") is not None}
