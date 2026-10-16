@@ -134,7 +134,8 @@ function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, project
   { projectId: string; version: number | null; hasFinal: boolean; onClose: () => void; onCreated: () => void; projectName: string }) {
   const [promo, setPromo] = useState('')
   const [copied, setCopied] = useState<'link' | 'promo' | null>(null)
-  const [follow, setFollow] = useState(hasFinal && version === null)
+  const [follow, setFollow] = useState(true)   // default on: one link that always shows the latest final cut
+  const [tweak, setTweak] = useState(false)
   const [download, setDownload] = useState(true)
   const [days, setDays] = useState<string>('0')
   const [note, setNote] = useState('')
@@ -159,14 +160,7 @@ function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, project
         <div className="modal-head"><h3>分享給朋友</h3><a onClick={onClose}>✕</a></div>
         {!made ? (
           <>
-            <p className="muted small">朋友不用登入，用連結就能在手機上看影片、下載封面、留反饋給你。頁面最後會邀請他也來免費試做一支。</p>
-            <label className="opt"><input type="checkbox" checked={download} onChange={e => setDownload(e.target.checked)} /> 允許下載</label>
-            {hasFinal && <label className="opt"><input type="checkbox" checked={follow} onChange={e => setFollow(e.target.checked)} /> 跟著最終版（之後改最終版，同一條連結會自動更新）</label>}
-            <label className="opt">連結有效期
-              <select value={days} onChange={e => setDays(e.target.value)}>
-                <option value="0">永久</option><option value="7">7 天</option><option value="30">30 天</option><option value="90">90 天</option>
-              </select>
-            </label>
+            <p className="muted small share-lead">朋友不用登入，點開就能看。都幫你設定好了，寫一句話（或用預設的）就能分享。</p>
             <div className="note-box">
               <div className="note-h">
                 <b>給朋友的一句話</b>
@@ -184,7 +178,36 @@ function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, project
               </div>
               <div className="note-dots" aria-hidden="true">{NOTE_PRESETS.map((_, i) => <i key={i} className={!changed && i === preset ? 'on' : ''} onClick={() => { setPreset(i); if (edited) setNote(NOTE_PRESETS[i]) }} />)}</div>
             </div>
-            <button className="btn primary block" disabled={busy} onClick={create}>產生連結</button>
+            <div className={`share-opts ${tweak ? 'open' : ''}`}>
+              <button type="button" className="so-sum" onClick={() => setTweak(t => !t)} aria-expanded={tweak}>
+                <span className="so-chips">
+                  <em className="on">✓ {follow ? '永遠最新版' : `只給 v${version ?? '最新'}`}</em>
+                  <em className={download ? 'on' : ''}>{download ? '✓ 可下載' : '只能看'}</em>
+                  <em className="on">{days === '0' ? '✓ 永久有效' : `${days} 天後失效`}</em>
+                </span>
+                <span className="small so-tog">{tweak ? '收起' : '調整'}</span>
+              </button>
+              {tweak && (
+                <div className="so-body">
+                  <label className="so-row">
+                    <input type="checkbox" checked={follow} onChange={e => setFollow(e.target.checked)} />
+                    <span><b>跟著最終版</b><small>{follow
+                      ? (hasFinal ? '之後你改了最終版，朋友點同一條連結就會看到新的，不用重傳。' : '還沒標最終版前會顯示最新一版；之後標了最終版，同一條連結會自動換過去。')
+                      : `朋友只會看到 v${version ?? '最新'} 這一版，之後修改不會影響這條連結。`}</small></span>
+                  </label>
+                  <label className="so-row">
+                    <input type="checkbox" checked={download} onChange={e => setDownload(e.target.checked)} />
+                    <span><b>允許下載</b><small>{download ? '朋友可以存影片和封面，方便他再轉發。' : '朋友只能線上看，不能存檔。'}</small></span>
+                  </label>
+                  <div className="so-row">
+                    <span><b>有效期</b><small>{days === '0' ? '連結一直有效，隨時可在「分享連結」停用。' : `${days} 天後自動失效。`}</small></span>
+                    <div className="so-seg">{[['0', '永久'], ['7', '7 天'], ['30', '30 天']].map(([v, l]) => <a key={v} className={days === v ? 'on' : ''} onClick={() => setDays(v)}>{l}</a>)}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <button className="btn primary block lg share-go" disabled={busy} onClick={create}>{busy ? '產生中…' : '產生連結，分享出去 →'}</button>
+            <div className="muted small" style={{ textAlign: 'center' }}>下一步可以直接發到 Facebook、LINE，或複製連結。</div>
           </>
         ) : (
           <>
