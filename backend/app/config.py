@@ -13,6 +13,9 @@ FONTS_DIR = DATA_DIR / "fonts"
 DATABASE_URL = _env("DATABASE_URL", f"sqlite+aiosqlite:///{DATA_DIR}/lakeze.db")
 SECRET_KEY = _env("SECRET_KEY", "dev-secret-change-me")
 ANTHROPIC_MODEL = _env("ANTHROPIC_MODEL", "claude-opus-5-5")
+# Required when ANTHROPIC_API_KEY is an organization-scoped user key (sk-ant-usr-…): the API then
+# demands an `anthropic-workspace-id` header. Leave empty for workspace-scoped keys.
+ANTHROPIC_WORKSPACE_ID = _env("ANTHROPIC_WORKSPACE_ID")
 ANTHROPIC_EFFORT = _env("ANTHROPIC_EFFORT", "high")
 ELEVENLABS_API_KEY = _env("ELEVENLABS_API_KEY")
 # Max parallel ElevenLabs requests (Starter tier allows 3).

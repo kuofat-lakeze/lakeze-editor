@@ -35,7 +35,7 @@ Railway 沒有 Claude 連接器，但它自己有 GitHub 整合：連上 repo �
 1. railway.com → 升級 workspace 到 Pro → New Project → Deploy from GitHub repo → 選 `lakeze-editor`。
 2. 第一個 service 改名 **`backend`**（名稱就是內網主機名）：
    - Settings → Source → Root Directory：`backend`
-   - Variables：`ANTHROPIC_API_KEY`、`ELEVENLABS_API_KEY`、`SECRET_KEY`（`openssl rand -hex 32`）、`ADMIN_EMAILS`（你的 email）、**`PORT=8000`**
+   - Variables：`ANTHROPIC_API_KEY`、`ELEVENLABS_API_KEY`、`SECRET_KEY`（`openssl rand -hex 32`）、`ADMIN_EMAILS`（你的 email）、**`PORT=8000`**；若 Anthropic key 是組織層級的使用者金鑰（`sk-ant-usr-…`），再加 `ANTHROPIC_WORKSPACE_ID`（Console → Workspaces 的 `wrkspc_…` id），否則 API 會回「not scoped to a workspace」
    - Settings → Volumes → Add Volume → Mount path `/data`
    - Settings → Networking → 不要產生公開網域（只走內網）
 3. 再 New → GitHub Repo 加第二個 service，改名 **`frontend`**：

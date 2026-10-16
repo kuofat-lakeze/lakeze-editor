@@ -64,6 +64,10 @@ fi
 ME=$(api "$BASE/api/me"); say "me: $ME"
 check admin_signup "$(echo "$ME" | jq -r '.is_admin==true')" "$ME"
 echo "$ME" > "$OUT/me.json"
+if [ "$(echo "$ME" | jq -r '.free_project_id')" != null ]; then  # re-run: give the account a fresh free trial
+  UID_=$(echo "$ME" | jq -r .id)
+  say "free trial already used → admin reset: $(api -X POST "$BASE/api/admin/users/$UID_" -d '{"reset_free_project":true}')"
+fi
 
 # ---- 2. project + first turn --------------------------------------------------------------------------------
 P=$(api -X POST "$BASE/api/projects" -d "$(jq -cn --arg n "$PROJECT_NAME" '{name:$n}')"); say "project: $P"

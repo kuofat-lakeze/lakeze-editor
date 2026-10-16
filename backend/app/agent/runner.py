@@ -40,7 +40,8 @@ class TurnRunner:
         """store: object with async load_messages(), save_message(role, content), add_asset(...),
         record_usage(...) — implemented in app.db."""
         self.project_id, self.root, self.store, self.emit = project_id, root, store, emit
-        self.client = anthropic.AsyncAnthropic()
+        self.client = anthropic.AsyncAnthropic(
+            default_headers={"anthropic-workspace-id": config.ANTHROPIC_WORKSPACE_ID} if config.ANTHROPIC_WORKSPACE_ID else None)
         self.ctx = ToolContext(root=root, add_asset=self._add_asset_sync, record_usage=self._usage_sync)
         self._loop: asyncio.AbstractEventLoop | None = None  # set in run()
         self.cancelled = False

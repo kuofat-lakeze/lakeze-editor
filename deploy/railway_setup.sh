@@ -77,8 +77,9 @@ make_service() {
 }
 
 echo "== backend service"
-BACKEND_VARS=$(jq -cn --arg a "$ANTHROPIC_API_KEY" --arg el "$ELEVENLABS_API_KEY" --arg sk "$SECRET_KEY" --arg ad "$ADMIN_EMAILS" --arg tn "${TOPUP_NOTE:-}" \
-  '{PORT:"8000", ANTHROPIC_API_KEY:$a, ELEVENLABS_API_KEY:$el, SECRET_KEY:$sk, ADMIN_EMAILS:$ad, DATA_DIR:"/data"} + (if $tn != "" then {TOPUP_NOTE:$tn} else {} end)')
+BACKEND_VARS=$(jq -cn --arg a "$ANTHROPIC_API_KEY" --arg el "$ELEVENLABS_API_KEY" --arg sk "$SECRET_KEY" --arg ad "$ADMIN_EMAILS" --arg tn "${TOPUP_NOTE:-}" --arg ws "${ANTHROPIC_WORKSPACE_ID:-}" \
+  '{PORT:"8000", ANTHROPIC_API_KEY:$a, ELEVENLABS_API_KEY:$el, SECRET_KEY:$sk, ADMIN_EMAILS:$ad, DATA_DIR:"/data"}
+   + (if $tn != "" then {TOPUP_NOTE:$tn} else {} end) + (if $ws != "" then {ANTHROPIC_WORKSPACE_ID:$ws} else {} end)')
 BACKEND_ID=$(make_service backend backend /api/health "$BACKEND_VARS" | tail -1)
 
 echo "== volume on backend (/data)"
