@@ -726,5 +726,6 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .ps-vhead { display: flex; align-items: center; gap: 6px; font-size: 11px; margin-bottom: 8px; } .ps-vhead b { font-size: 13px; } .ps-vhead small { margin-left: auto; color: var(--muted); font-size: 10px; }
 .ps-pill { font-size: 9px; padding: 2px 7px; border-radius: 999px; background: var(--brand); color: #fff; font-weight: 700; }
 .ps-done .ps-video { max-height: 330px; }
-.packc-price s { margin-left: 8px; font-weight: 400; } .member-tag { margin-left: 8px; font-size: 11px; font-weight: 700; color: var(--brand); background: var(--brand-soft); border-radius: 999px; padding: 1px 8px; vertical-align: 2px; }
+.packc-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.packc-price s { font-weight: 400; } .member-tag { font-size: 11px; font-weight: 700; color: var(--brand); background: var(--brand-soft); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
 .calc-tip.member { background: var(--teal-soft); color: #1F6F72; }
