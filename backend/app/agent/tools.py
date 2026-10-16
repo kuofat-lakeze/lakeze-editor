@@ -57,7 +57,7 @@ TOOLS: list[dict] = [
      "input_schema": {"type": "object", "additionalProperties": False, "properties": {}}},
     {"name": "sample_frames", "description": "把指定片段的指定秒數畫面放大拼成一張圖，用來細看某個鏡頭。最多 12 格。",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["samples"],
-                      "properties": {"samples": {"type": "array", "maxItems": 12, "items": {
+                      "properties": {"samples": {"type": "array", "description": "最多 12 格", "items": {
                           "type": "object", "additionalProperties": False, "required": ["clip", "t"],
                           "properties": {"clip": {"type": "integer"}, "t": {"type": "number"}}}}}}},
     {"name": "build_cut", "description": "依片段清單剪出無聲畫面 base.mp4（1080x1920/30fps），回傳分鏡圖與一支預覽影片。總長建議 36–37 秒。",
@@ -80,7 +80,7 @@ TOOLS: list[dict] = [
                                      "deliver": {"type": "boolean"}}}},
     {"name": "generate_music", "description": "用 ElevenLabs Music 生成配樂（扣點數）。回傳 mp3 試聽卡片。",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["prompt", "seconds"],
-                      "properties": {"prompt": {"type": "string"}, "seconds": {"type": "integer", "minimum": 10, "maximum": 120},
+                      "properties": {"prompt": {"type": "string"}, "seconds": {"type": "integer", "description": "10–120"},
                                      "name": {"type": "string", "description": "檔名代號，預設 music_v1"}}}},
     {"name": "generate_sfx", "description": "用 ElevenLabs 生成音效（扣點數），例如海浪、冒泡、轉場咻聲。",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["prompt", "seconds", "name"],
@@ -117,7 +117,7 @@ TOOLS: list[dict] = [
     {"name": "make_cover", "description": "做封面（1080x1920）。抽指定畫面並去色帶，標題最多兩行（第一行金、第二行白），價格放在 4:5 安全區。回傳封面卡片與裁切檢查圖。",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["clip", "t", "title"],
                       "properties": {"clip": {"type": "integer"}, "t": {"type": "number"},
-                                     "title": {"type": "array", "items": {"type": "string"}, "maxItems": 2},
+                                     "title": {"type": "array", "items": {"type": "string"}, "description": "最多兩行"},
                                      "super_text": {"type": "string"}, "sub_text": {"type": "string"},
                                      "price_text": {"type": "string"}, "crop_x": {"type": "number"},
                                      "warm": {"type": "boolean"}, "name": {"type": "string"}}}},
@@ -167,7 +167,7 @@ def _probe(inp, ctx):
 
 def _sample(inp, ctx):
     dest = ctx.root / "sheets" / "sample.jpg"
-    footage.sample_frames(ctx.root, inp["samples"], dest)
+    footage.sample_frames(ctx.root, inp["samples"][:12], dest)
     return [_text("畫面如下，標籤為 #片段@秒"), _image(dest)]
 
 
@@ -215,8 +215,9 @@ def _voice(inp, ctx):
 def _music(inp, ctx):
     name = inp.get("name", "music_v1")
     dest = ctx.root / "work" / f"{name}.mp3"
-    eleven.music(inp["prompt"], inp["seconds"], dest)
-    ctx.record_usage("elevenlabs_music_sec", inp["seconds"], {"name": name})
+    seconds = max(10, min(120, int(inp["seconds"])))
+    eleven.music(inp["prompt"], seconds, dest)
+    ctx.record_usage("elevenlabs_music_sec", seconds, {"name": name})
     a = ctx.add_asset(dest, "audio", f"配樂試聽 {name}")
     return [_text(f"配樂 {name} 完成，{ff.duration(dest):.1f}s，卡片 {a['id']}")]
 
@@ -284,7 +285,7 @@ def _export(inp, ctx):
 def _cover(inp, ctx):
     name = inp.get("name", "cover")
     r = cover_mod.make_cover(ctx.root, inp["clip"], inp["t"], ctx.root / "cover" / f"{name}.jpg",
-                             super_text=inp.get("super_text", ""), title=inp.get("title"),
+                             super_text=inp.get("super_text", ""), title=(inp.get("title") or None) and inp["title"][:2],
                              sub_text=inp.get("sub_text", ""), price_text=inp.get("price_text", ""),
                              crop_x=inp.get("crop_x", 0.5), warm=inp.get("warm", False))
     a = ctx.add_asset(r["cover"], "image", f"封面 {name}")

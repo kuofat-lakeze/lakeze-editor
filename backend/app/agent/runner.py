@@ -25,8 +25,10 @@ PRICE = {"input": 4.0, "output": 20.0, "cache_read": 0.20, "cache_write": 5.0}
 Emit = Callable[[dict], Awaitable[None]]
 
 
-def _tools_strict() -> list[dict]:
-    return [{**t, "strict": True} for t in TOOLS]
+def _tools() -> list[dict]:
+    # Not `strict`: the API caps strict schemas at 24 optional parameters and rejects array/number
+    # constraints; our tools have ~33 optionals and every handler defaults missing fields anyway.
+    return TOOLS
 
 
 def _cost(u) -> float:
@@ -111,7 +113,7 @@ class TurnRunner:
             model=config.ANTHROPIC_MODEL, max_tokens=32000,
             system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}]
             + ([] if self._state_as_system else [{"type": "text", "text": f"[點數狀態] {self._state_txt}"}]),
-            tools=_tools_strict(), messages=messages,
+            tools=_tools(), messages=messages,
             thinking={"type": "adaptive", "display": "summarized"},
             output_config={"effort": config.ANTHROPIC_EFFORT},
         )
