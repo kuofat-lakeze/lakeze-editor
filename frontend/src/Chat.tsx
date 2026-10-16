@@ -26,6 +26,8 @@ const CHIPS: Record<Stage, string[]> = {
   revise: ['價格字幕放大一點', '換一張封面畫面', '旁白慢一點', '配樂小聲一點', '第一句換成游泳池畫面'],
 }
 const NO_VOICE = 'none'
+const OB_STEPS = ['給素材', '選風格與聲音', '寫賣點']
+const EXAMPLE_BRIEF = '宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑，結尾請大家點連結查空房。'
 const STYLES = [
   { id: 'travel', name: '旅遊短影音', tag: '預設', desc: '節奏快、前 3 秒就是最強賣點，每句旁白對一個畫面，口語活潑。',
     brief: '風格：旅遊短影音。節奏明快，Hook 放在前 3 秒（地點＋最強賣點），設施快剪每句對一個畫面，旁白口語有活力，配樂 upbeat（tropical house / pop，約 120 BPM），字幕放大重點詞，結尾 CTA 查空房。' },
@@ -87,6 +89,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [picking, setPicking] = useState(false)
   const [pickFail, setPickFail] = useState(false)
   const [style, setStyle] = useState('travel')
+  const [obStep, setObStep] = useState(0)
   const [link, setLink] = useState('')
   const [voices, setVoices] = useState<Voice[]>([])
   const [voice, setVoice] = useState<string | null>(null)   // voice_id, NO_VOICE, or null = not loaded yet
@@ -202,6 +205,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const okUploads = uploads.filter(u => u.status === 'ok').length
   const linkOk = /drive\.google\.com\/drive\/folders\//.test(link)
   const canStart = (linkOk || okUploads > 0) && text.trim().length > 0 && !uploading && voice !== null
+  const obDone = [linkOk || okUploads > 0, voice !== null && obStep >= 1, text.trim().length > 0]
   const start = async () => {
     if (!canStart || running) return
     const st = STYLES.find(x => x.id === style) ?? STYLES[0]
@@ -311,74 +315,107 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
           </div>
         )}
         {stage === 'start' && (
-          <div className="onboard">
-            <div className="ob-intro"><b>三步驟，剪輯師幫你做出影片和封面</b><span className="muted small">第一個專案免費</span></div>
+          <div className="ob-wiz">
+            <div className="ob-prog">
+              {OB_STEPS.map((t, i) => (
+                <a key={t} className={`ob-pn ${i === obStep ? 'on' : ''} ${obDone[i] ? 'done' : ''}`} onClick={() => i <= obStep || obDone[i - 1] ? setObStep(i) : null}>
+                  <i>{obDone[i] && i !== obStep ? '✓' : i + 1}</i><span>{t}</span>
+                </a>
+              ))}
+              <span className="ob-count muted small">第 {obStep + 1} 步，共 3 步 · 第一個專案免費</span>
+            </div>
 
-            <section className={`card step ${linkOk || okUploads > 0 ? 'done' : ''}`}>
-              <div className="step-head"><span className="step-no">1</span><b>給素材</b>
-                <span className="muted small">{linkOk ? 'Drive 連結已就緒' : okUploads > 0 ? `已上傳 ${okUploads} 支` : '貼 Google Drive 資料夾連結，或上傳影片'}</span></div>
-              <div className="step-body">
-                <DropZone onFiles={onFiles} onPick={pick} disabled={uploading} count={okUploads} />
-                {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />}
-                <div className="or"><span>或貼 Google Drive 資料夾連結</span></div>
-                <input className="link" placeholder="https://drive.google.com/drive/folders/…（設為「知道連結的人都能檢視」）" value={link}
-                  onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" />
-                <div className="muted small">素材很多或檔案很大時，Drive 連結最快；手機拍的直接上傳就好。</div>
-              </div>
-            </section>
-
-            <section className="card step done">
-              <div className="step-head"><span className="step-no">2</span><b>選風格與聲音</b>
-                <span className="muted small">{STYLES.find(x => x.id === style)?.name} · {voice === NO_VOICE ? '不要配音' : voices.find(v => v.voice_id === voice)?.name ?? '…'}</span></div>
-              <div className="step-body">
-                <div className="styles">
-                  {STYLES.map(st => (
-                    <div key={st.id} className={`stylec ${style === st.id ? 'sel' : ''}`} onClick={() => setStyle(st.id)}>
-                      <div className="stylec-name">{st.name}{st.tag && <span className="pill">{st.tag}</span>}</div>
-                      <div className="muted small">{st.desc}</div>
+            <div className="ob-main">
+              <section className="card ob-card" key={obStep}>
+                {obStep === 0 && (
+                  <>
+                    <h3>先把素材給剪輯師</h3>
+                    <p className="muted">手機拍的影片、照片都可以，3 到 6 個最剛好。選好就會自動上傳。</p>
+                    <div className={`spot ${!(linkOk || okUploads > 0) ? 'on' : ''}`}>
+                      {!(linkOk || okUploads > 0) && !uploading && <span className="coach">點這裡選影片</span>}
+                      <DropZone onFiles={onFiles} onPick={pick} disabled={uploading} count={okUploads} />
                     </div>
-                  ))}
-                </div>
-                <div className="muted small" style={{ marginTop: 12 }}>旁白聲音</div>
-                <div className="voice-row">
-                  {voices.map(v => (
-                    <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''} ${v.custom ? 'mine' : ''}`} onClick={() => setVoice(v.voice_id)}>
-                      <div className="voice-name">{v.custom && <span className="mine-tag">我的聲音</span>}{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
-                      {v.description && <div className="muted small">{v.description}</div>}
-                      {v.preview_url && <a className="small" onClick={e => { e.stopPropagation(); preview(v) }}>{playing === v.voice_id ? '■ 停止' : '▶ 試聽'}</a>}
-                      {v.custom && me?.voice_trial && <div className="muted small">試用剩 {Math.max(0, Math.round(me.voice_trial.limit - me.voice_trial.used))} 秒，儲值後不限</div>}
-                      {v.custom && <a className="small" onClick={e => { e.stopPropagation(); setCloning(true) }}>重新錄</a>}
+                    {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />}
+                    <details className="ob-alt" open={!!link}>
+                      <summary className="small">素材在 Google Drive？貼資料夾連結</summary>
+                      <input className="link" placeholder="https://drive.google.com/drive/folders/…（設為「知道連結的人都能檢視」）" value={link}
+                        onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" />
+                    </details>
+                    <div className="ob-nav">
+                      <span className="muted small">{linkOk ? 'Drive 連結已就緒' : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : uploading ? '上傳中…' : '還沒有素材'}</span>
+                      <button className={`btn primary ${(linkOk || okUploads > 0) && !uploading ? 'glow' : ''}`} disabled={!(linkOk || okUploads > 0) || uploading} onClick={() => setObStep(1)}>下一步：選風格 →</button>
                     </div>
-                  ))}
-                  {me && !voices.some(v => v.custom) && (
-                    <div className="voice add" onClick={() => setCloning(true)}>
-                      <div className="voice-name">＋ 用自己的聲音生成配音語音{me.voice_trial && <span className="lock-tag">試用 {me.voice_trial.limit} 秒</span>}</div>
-                      <div className="muted small">{me.voice_trial ? `錄 30 秒就能試，先生成 ${me.voice_trial.limit} 秒旁白；儲值後不限` : '錄 30 秒，旁白就是你的聲音'}</div>
-                    </div>)}
-                  <div className={`voice ${voice === NO_VOICE ? 'sel' : ''}`} onClick={() => setVoice(NO_VOICE)}>
-                    <div className="voice-name">不要配音</div>
-                    <div className="muted small">只要配樂＋字幕</div>
-                  </div>
-                  {voice === null && <span className="muted small">載入聲音中…</span>}
-                </div>
-              </div>
-            </section>
-
-            <section className={`card step ${text.trim() ? 'done' : ''}`}>
-              <div className="step-head"><span className="step-no">3</span><b>寫賣點</b><span className="muted small">地點、特色、價格、語氣，想到什麼寫什麼</span></div>
-              <div className="step-body">
-                <textarea rows={4} value={text} onChange={e => setText(e.target.value)}
-                  placeholder={'例：宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑。'} />
-                <div className="chips inline">
-                  {['地點：', '特色：', '價格：平日每人 NT$', '語氣：輕鬆活潑', '不要加「起」'].map(c => (
-                    <a key={c} className="chipbtn" onClick={() => setText(t => (t ? t.replace(/\s*$/, '\n') : '') + c)}>{c}</a>))}
-                </div>
-                <button className="btn primary block start" disabled={!canStart} onClick={start}>
-                  {!(linkOk || okUploads > 0) ? '先給素材（步驟 1）' : !text.trim() ? '寫一點賣點就能開始' : '開始剪輯'}
-                </button>
-                <div className="muted small" style={{ textAlign: 'center' }}>送出後剪輯師會一路做到輸出影片與封面，中途不會停下來問。</div>
-              </div>
-            </section>
+                  </>
+                )}
+                {obStep === 1 && (
+                  <>
+                    <h3>選一個風格和聲音</h3>
+                    <p className="muted">點一下就選好，右邊會看到這個風格大概長什麼樣。之後想換，跟剪輯師說一聲就好。</p>
+                    <div className="styles">
+                      {STYLES.map(st => (
+                        <div key={st.id} className={`stylec ${style === st.id ? 'sel' : ''}`} onClick={() => setStyle(st.id)}>
+                          <div className="stylec-name">{st.name}{st.tag && <span className="pill">{st.tag}</span>}</div>
+                          <div className="muted small">{st.desc}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="muted small" style={{ marginTop: 12 }}>旁白聲音</div>
+                    <div className="voice-row">
+                      {voices.map(v => (
+                        <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''} ${v.custom ? 'mine' : ''}`} onClick={() => setVoice(v.voice_id)}>
+                          <div className="voice-name">{v.custom && <span className="mine-tag">我的聲音</span>}{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
+                          {v.description && <div className="muted small">{v.description}</div>}
+                          {v.preview_url && <a className="small" onClick={e => { e.stopPropagation(); preview(v) }}>{playing === v.voice_id ? '■ 停止' : '▶ 試聽'}</a>}
+                          {v.custom && me?.voice_trial && <div className="muted small">試用剩 {Math.max(0, Math.round(me.voice_trial.limit - me.voice_trial.used))} 秒，儲值後不限</div>}
+                          {v.custom && <a className="small" onClick={e => { e.stopPropagation(); setCloning(true) }}>重新錄</a>}
+                        </div>
+                      ))}
+                      {me && !voices.some(v => v.custom) && (
+                        <div className="voice add" onClick={() => setCloning(true)}>
+                          <div className="voice-name">＋ 用自己的聲音生成配音語音{me.voice_trial && <span className="lock-tag">試用 {me.voice_trial.limit} 秒</span>}</div>
+                          <div className="muted small">{me.voice_trial ? `錄 30 秒就能試，先生成 ${me.voice_trial.limit} 秒旁白；儲值後不限` : '錄 30 秒，旁白就是你的聲音'}</div>
+                        </div>)}
+                      <div className={`voice ${voice === NO_VOICE ? 'sel' : ''}`} onClick={() => setVoice(NO_VOICE)}>
+                        <div className="voice-name">不要配音</div>
+                        <div className="muted small">只要配樂＋字幕</div>
+                      </div>
+                      {voice === null && <span className="muted small">載入聲音中…</span>}
+                    </div>
+                    <div className="ob-nav">
+                      <a className="small" onClick={() => setObStep(0)}>← 上一步</a>
+                      <button className={`btn primary ${voice !== null ? 'glow' : ''}`} disabled={voice === null} onClick={() => setObStep(2)}>下一步：寫賣點 →</button>
+                    </div>
+                  </>
+                )}
+                {obStep === 2 && (
+                  <>
+                    <h3>最後，用一兩句話講賣點</h3>
+                    <p className="muted">地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。</p>
+                    <div className={`spot ${!text.trim() ? 'on' : ''}`}>
+                      {!text.trim() && <span className="coach">在這裡打字</span>}
+                      <textarea rows={5} value={text} onChange={e => setText(e.target.value)} autoFocus
+                        placeholder={'例：宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑。'} />
+                    </div>
+                    <div className="chips inline">
+                      <a className="chipbtn on" onClick={() => setText(EXAMPLE_BRIEF)}>給我範例</a>
+                      {['地點：', '特色：', '價格：平日每人 NT$', '語氣：輕鬆活潑'].map(c => (
+                        <a key={c} className="chipbtn" onClick={() => setText(t => (t ? t.replace(/\s*$/, '\n') : '') + c)}>{c}</a>))}
+                    </div>
+                    <div className="ob-nav">
+                      <a className="small" onClick={() => setObStep(1)}>← 上一步</a>
+                      <div className={`spot inline ${canStart ? 'on' : ''}`}>
+                        {canStart && <span className="coach">按下去就開始</span>}
+                        <button className={`btn primary start ${canStart ? 'glow' : ''}`} disabled={!canStart} onClick={start}>
+                          {!(linkOk || okUploads > 0) ? '先回第 1 步給素材' : !text.trim() ? '寫一點賣點就能開始' : '開始剪輯'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="muted small" style={{ textAlign: 'center' }}>送出後剪輯師會一路做到輸出影片與封面，約 15 分鐘，中途不會停下來問。</div>
+                  </>
+                )}
+              </section>
+              <ObPreview step={obStep} style={style} voiceName={voice === NO_VOICE ? null : voices.find(v => v.voice_id === voice)?.name ?? null} uploads={uploads.filter(u => u.status === 'ok').length} linkOk={linkOk} text={text} />
+            </div>
           </div>
         )}
         {proj.messages.map((m, i) => <Bubble key={m.id} m={m} assets={assetsFor(m, i)} onOpenFiles={() => setTab('files')} />)}
@@ -543,5 +580,56 @@ export function AssetCard({ a, onOpenFiles }: { a: Asset; onOpenFiles?: () => vo
       {a.kind === 'image' && <img src={a.url} alt={a.name} />}
       <div className="asset-meta"><span>{a.name}{mb}</span><a href={a.url} download>下載</a></div>
     </div>
+  )
+}
+
+
+/* Right-hand "this is what you'll get" panel of the onboarding wizard: changes with the step and the choices. */
+function ObPreview({ step, style, voiceName, uploads, linkOk, text }: { step: number; style: string; voiceName: string | null; uploads: number; linkOk: boolean; text: string }) {
+  const st = STYLES.find(x => x.id === style) ?? STYLES[0]
+  const place = (text.match(/^(.{2,12}?)(的|，|、|。)/) || [])[1] || '宜蘭海邊包棟'
+  return (
+    <aside className="ob-prev">
+      <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? '這個風格長這樣' : '上傳好會是這樣'}</span></div>
+      {step === 0 && (
+        <div className="ob-prev-up">
+          {[['DJI_0001.MP4', 'a', '影片'], ['IMG_5540.JPG', 'b', '照片'], ['DJI_0007.MP4', 'c', '影片']].map(([n, c, k], i) => (
+            <div key={n} className={`ps-uqrow ok ${i < Math.max(uploads, linkOk ? 3 : 0) ? 'real' : ''}`} style={{ animationDelay: `${i * .2}s` }}>
+              <span className={`ps-th ${c}`}><i className={k === '照片' ? 'photo' : ''}>{k}</i></span>
+              <span className="ps-uqmain"><span className="ps-uqname">{n}</span><small>完成</small><span className="ps-uqbar"><i style={{ width: '100%' }} /></span></span><em>✓</em>
+            </div>))}
+          <div className="muted small">剪輯師會自己看完每一個，挑最好的畫面。{uploads > 0 && <b> 你已經上傳 {uploads} 個。</b>}</div>
+        </div>
+      )}
+      {step === 1 && (
+        <div className={`ps-video ob-style ${style}`}>
+          <div className="ps-super">{st.id === 'promo' ? '限時優惠 · 只到月底' : st.id === 'premium' ? place : 'KTV · 電動麻將 · 寵物友善'}</div>
+          <div className="ps-headline">{st.id === 'promo' ? <>平日每人<br /><em>NT$1,500</em></> : st.id === 'premium' ? <>海的旁邊<br /><em>一棟只給你們</em></> : <>{place}<br /><em>25米戲水池</em></>}</div>
+          {voiceName && <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /></span><small>{voiceName} 旁白</small></div>}
+          <div className="ps-sub">{st.id === 'promo' ? '現在訂省 NT$500' : st.id === 'premium' ? '慢下來，聽海' : '推開窗就是龜山島海景'}</div>
+          <div className="ps-play" />
+          <div className="ob-style-note">{st.id === 'promo' ? '價格開頭、節奏強' : st.id === 'premium' ? '慢節奏、長鏡頭、少字' : '前 3 秒放最強賣點、快剪'}{voiceName ? '' : ' · 只有配樂與字幕'}</div>
+        </div>
+      )}
+      {step === 2 && (
+        <div className="ob-prev-done">
+          <div className="ps-vhead"><b>v1</b><span className="ps-pill">成品</span><small>影片＋封面</small></div>
+          <div className="ps-result">
+            <div className={`ps-video ob-style ${style}`}>
+              <div className="ps-super">{st.name}</div>
+              <div className="ps-headline">{place}<br /><em>{st.id === 'promo' ? 'NT$1,500' : '25米戲水池'}</em></div>
+              {voiceName && <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /></span><small>{voiceName} 旁白</small></div>}
+              <div className="ps-sub">雙層字幕</div>
+              <div className="ps-play" />
+            </div>
+            <div className="ps-covers">
+              <div className="ps-cover a"><span>封面 A</span><b>{place}</b><em>NT$1,500</em></div>
+              <div className="ps-cover b"><span>封面 B</span><b>25 米<br />戲水池</b><em>平日每人 1,500</em></div>
+            </div>
+          </div>
+          <div className="muted small">做好會自動歸檔到「成品」頁，可以一鍵分享給客戶。</div>
+        </div>
+      )}
+    </aside>
   )
 }
