@@ -324,8 +324,10 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                   {k.id === bestPack.id && <div className="ribbon">剛好夠</div>}
                   <div className="packc-pts">{k.points}<span className="unit">點</span></div>
                   <div className="packc-price">{twd(packPrice(k))}{member && <s className="muted small">{twd(k.twd)}</s>}{member && <span className="member-tag">會員價</span>}</div>
-                  <div className="packc-videos">約可剪 <b>{Math.floor(k.points / FIRST)}</b> 支<span className="muted small">（含封面，每支 {twd(Math.round(FIRST * rate))}）</span></div>
-                  <div className="muted small">或修改 {Math.floor(k.points / REV)} 輪 · 點數不過期{!member && <> · 包月會員 {twd(k.member_twd.sub5)} 起</>}</div>
+                  {k.points >= FIRST + 2 * REV
+                    ? <div className="packc-videos">約可剪 <b>{Math.floor(k.points / (FIRST + 2 * REV))}</b> 支<span className="muted small">（含封面與 2 輪修改）</span></div>
+                    : <div className="packc-videos">補點用<span className="muted small">：約 {Math.floor(k.points / REV)} 輪修改，或補足第一支</span></div>}
+                  <div className="muted small">點數不過期{!member && <> · 包月會員 {twd(k.member_twd.sub5)} 起</>}</div>
                   {(sub ? (k.member_checkout_url?.[sub.id] || k.checkout_url) : k.checkout_url)
                     ? <button className="btn primary block" onClick={() => buy(k.id)}>購買</button>
                     : <button className="btn block" disabled>洽客服開通</button>}
