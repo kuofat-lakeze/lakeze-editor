@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, type Me } from './api'
 import logo from './assets/logo.png'
+import { MiaoLogo } from './Logo'
 
 const STEPS = [
   { n: '1', t: '給素材', d: '貼 Google Drive 連結或上傳影片' },
@@ -26,7 +27,7 @@ export function Login({ onDone, initialMode = 'login', onBack }: { onDone: (m: M
       <aside className="auth-visual">
         <img className="logo" src={logo} alt="Lakeze 人客多" onClick={onBack} style={{ cursor: onBack ? 'pointer' : undefined }} />
         <div className="auth-copy">
-          <h1>秒剪<span className="auth-tag">旅遊短影音自動剪片軟體</span></h1>
+          <h1><MiaoLogo size={64} tagline /></h1>
           <p>給素材和賣點，就能收到有旁白、配樂、雙層字幕的直式影片與封面。第一支免費。</p>
           <ol className="auth-steps">
             {STEPS.map(s => <li key={s.n}><span className="n">{s.n}</span><div><b>{s.t}</b><div className="muted small">{s.d}</div></div></li>)}
