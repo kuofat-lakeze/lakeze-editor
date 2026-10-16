@@ -23,6 +23,21 @@ const CHIPS: Record<Stage, string[]> = {
   revise: ['價格字幕放大一點', '換一張封面畫面', '旁白慢一點', '配樂小聲一點', '第一句換成游泳池畫面'],
 }
 const NO_VOICE = 'none'
+const STYLES = [
+  { id: 'travel', name: '旅遊短影音', tag: '預設', desc: '節奏快、前 3 秒就是最強賣點，每句旁白對一個畫面，口語活潑。',
+    brief: '風格：旅遊短影音。節奏明快，Hook 放在前 3 秒（地點＋最強賣點），設施快剪每句對一個畫面，旁白口語有活力，配樂 upbeat（tropical house / pop，約 120 BPM），字幕放大重點詞，結尾 CTA 查空房。' },
+  { id: 'premium', name: '質感形象', tag: '', desc: '慢節奏長鏡頭，旁白沉穩少字，像品牌形象片。',
+    brief: '風格：質感形象片。節奏放慢、多用空拍與長鏡頭，旁白沉穩、句子短、留白多，配樂鋼琴或 lo-fi 氛圍，字幕精簡，Super title 強調店名與空間名稱，價格低調放在結尾。' },
+  { id: 'promo', name: '促銷活動', tag: '', desc: '價格與優惠放最前面，倒數限時感，CTA 強。',
+    brief: '風格：促銷活動。開頭 3 秒就講優惠與價格，價格用跳數強調，營造限時感（例如「只到月底」），CTA 出現兩次（中段＋結尾），配樂有力、節奏強，字幕用大字與對比色。' },
+]
+const MAX_FILES = 6
+const MAX_FILE_BYTES = 1024 * 2 ** 20  // 1 GB per file (backend MAX_UPLOAD_MB defaults to the same)
+const ClipIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21.4 11.05 12.2 20.25a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 1 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+)
 const fmtMB = (b: number) => `${(b / 2 ** 20).toFixed(b > 100 * 2 ** 20 ? 0 : 1)} MB`
 
 const TOOL_LABEL: Record<string, string> = {
@@ -42,6 +57,8 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
   const [uploads, setUploads] = useState<Up[]>([])
   const [picking, setPicking] = useState(false)
   const [pickFail, setPickFail] = useState(false)
+  const [style, setStyle] = useState('travel')
+  const [link, setLink] = useState('')
   const [voices, setVoices] = useState<Voice[]>([])
   const [voice, setVoice] = useState<string | null>(null)   // voice_id, NO_VOICE, or null = not loaded yet
   const [playing, setPlaying] = useState<string | null>(null)
@@ -77,7 +94,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
   useEffect(() => { reload() }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!proj) return
-    if (firstLoad.current) { firstLoad.current = false; bottom.current?.scrollIntoView(); return }
+    if (firstLoad.current) { firstLoad.current = false; if (proj.messages.length) bottom.current?.scrollIntoView(); return }
     if (atBottom.current) bottom.current?.scrollIntoView({ behavior: 'smooth' }); else setUnseen(true)
   }, [proj, live])
   useEffect(() => {
@@ -127,13 +144,28 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
     es.onerror = () => { es.close(); setRunning(false); reload() }
   }
 
+  const okUploads = uploads.filter(u => u.status === 'ok').length
+  const linkOk = /drive\.google\.com\/drive\/folders\//.test(link)
+  const canStart = (linkOk || okUploads > 0) && text.trim().length > 0 && !uploading && voice !== null
+  const start = async () => {
+    if (!canStart || running) return
+    const st = STYLES.find(x => x.id === style) ?? STYLES[0]
+    const v = voices.find(x => x.voice_id === voice)
+    const parts = [
+      linkOk ? `素材在 ${link.trim()} 。` : `我上傳了 ${okUploads} 支素材。`,
+      text.trim(),
+      st.brief,
+      voice === NO_VOICE ? '不要配音：只要配樂和字幕，賣點用字幕呈現。'
+        : v ? `旁白用 ${v.name}（voice_id ${v.voice_id}），直接做到輸出影片和封面，不用再問我選聲音或確認稿子。` : '',
+    ]
+    api.clientLog('start_project', { style: st.id, voice, link: linkOk, uploads: okUploads })
+    await submit(parts.filter(Boolean).join('\n'))
+  }
   const send = async () => {
-    let t = text.trim(); if (!t || running) return
-    if (proj && proj.messages.length === 0 && voice) {  // first message carries the voice choice made in the UI
-      const v = voices.find(x => x.voice_id === voice)
-      t += voice === NO_VOICE ? '\n\n（不要配音：只要配樂和字幕，賣點用字幕呈現。）'
-        : v ? `\n\n（旁白用 ${v.name}，voice_id ${v.voice_id}，直接做到輸出，不用再問我選聲音。）` : ''
-    }
+    const t = text.trim(); if (!t || running) return
+    await submit(t)
+  }
+  const submit = async (t: string) => {
     setErr(''); setText(''); setNeedCredits(null); atBottom.current = true; turnStart.current = Date.now()
     setProj(p => p && { ...p, messages: [...p.messages, { id: 'tmp', role: 'user', parts: [{ type: 'text', text: t }], created_at: '' }] })
     try { await api.send(projectId, t); setLive(emptyLive()); listen() } catch (e) { setErr((e as Error).message) }
@@ -145,10 +177,13 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
     api.clientLog('files_selected', { n: list.length, files: list.map(f => ({ name: f.name, size: f.size, type: f.type })) })
     if (!list.length) return
     setErr('')
-    setUploads(list.map(f => ({ name: f.name || 'clip', size: f.size, loaded: 0, status: 'wait' })))
+    if (list.length > MAX_FILES) { setErr(`一次最多上傳 ${MAX_FILES} 支影片，這次只會傳前 ${MAX_FILES} 支，其餘請再選一次。`); list.splice(MAX_FILES) }
+    setUploads(list.map(f => ({ name: f.name || 'clip', size: f.size, loaded: 0,
+      status: f.size > MAX_FILE_BYTES ? 'err' : 'wait', error: f.size > MAX_FILE_BYTES ? `超過 1 GB 上限（${fmtMB(f.size)}），請先壓縮，或放到 Google Drive 貼連結` : undefined })))
     let ok = 0
     for (let i = 0; i < list.length; i++) {
       const f = list[i]
+      if (f.size > MAX_FILE_BYTES) { api.clientLog('upload_skipped_too_large', { name: f.name, size: f.size }); continue }
       const patch = (u: Partial<Up>) => setUploads(us => us.map((x, k) => (k === i ? { ...x, ...u } : x)))
       patch({ status: 'up' })
       const t0 = Date.now()
@@ -203,30 +238,70 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
           </div>
         )}
         {stage === 'start' && (
-          <div className="hint card">
-            <b>三步開始</b>
-            <ol>
-              <li>選旁白聲音（可以不要配音）。</li>
-              <li>貼 Google Drive 資料夾連結（設為「知道連結的人都能檢視」）或點 📎 上傳影片。</li>
-              <li>寫賣點：地點、特色、價格、語氣。送出後剪輯師會一路做到輸出影片與封面。</li>
-            </ol>
-            <div className="voices">
-              <div className="small muted">旁白聲音</div>
-              <div className="voice-row">
-                {voices.map(v => (
-                  <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''}`} onClick={() => setVoice(v.voice_id)}>
-                    <div className="voice-name">{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
-                    {v.description && <div className="muted small">{v.description}</div>}
-                    {v.preview_url && <a className="small" onClick={e => { e.stopPropagation(); preview(v) }}>{playing === v.voice_id ? '■ 停止' : '▶ 試聽'}</a>}
-                  </div>
-                ))}
-                <div className={`voice ${voice === NO_VOICE ? 'sel' : ''}`} onClick={() => setVoice(NO_VOICE)}>
-                  <div className="voice-name">不要配音</div>
-                  <div className="muted small">只要配樂＋字幕，賣點用字幕呈現</div>
-                </div>
-                {voice === null && <span className="muted small">載入聲音中…</span>}
+          <div className="onboard">
+            <div className="ob-intro"><b>三步驟，剪輯師幫你做出影片和封面</b><span className="muted small">第一個專案免費</span></div>
+
+            <section className={`card step ${linkOk || okUploads > 0 ? 'done' : ''}`}>
+              <div className="step-head"><span className="step-no">1</span><b>給素材</b>
+                <span className="muted small">{linkOk ? 'Drive 連結已就緒' : okUploads > 0 ? `已上傳 ${okUploads} 支` : '貼 Google Drive 資料夾連結，或上傳影片'}</span></div>
+              <div className="step-body">
+                <input className="link" placeholder="https://drive.google.com/drive/folders/…（設為「知道連結的人都能檢視」）" value={link}
+                  onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" />
+                <div className="or"><span>或</span></div>
+                <label className={`btn block upload-btn ${uploading ? 'busy' : ''}`}>
+                  <ClipIcon /> {uploading ? '上傳中…' : okUploads ? `再上傳（已 ${okUploads} 支）` : '從手機／電腦上傳影片'}
+                  <input type="file" multiple accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading} onClick={pick}
+                    onChange={e => { onFiles(e.target.files); e.target.value = '' }} />
+                </label>
+                <div className="muted small">一次最多 6 支、每支 1 GB 內。素材多的話用 Drive 連結最快。</div>
               </div>
-            </div>
+            </section>
+
+            <section className="card step done">
+              <div className="step-head"><span className="step-no">2</span><b>選風格與聲音</b>
+                <span className="muted small">{STYLES.find(x => x.id === style)?.name} · {voice === NO_VOICE ? '不要配音' : voices.find(v => v.voice_id === voice)?.name ?? '…'}</span></div>
+              <div className="step-body">
+                <div className="styles">
+                  {STYLES.map(st => (
+                    <div key={st.id} className={`stylec ${style === st.id ? 'sel' : ''}`} onClick={() => setStyle(st.id)}>
+                      <div className="stylec-name">{st.name}{st.tag && <span className="pill">{st.tag}</span>}</div>
+                      <div className="muted small">{st.desc}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="muted small" style={{ marginTop: 12 }}>旁白聲音</div>
+                <div className="voice-row">
+                  {voices.map(v => (
+                    <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''}`} onClick={() => setVoice(v.voice_id)}>
+                      <div className="voice-name">{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
+                      {v.description && <div className="muted small">{v.description}</div>}
+                      {v.preview_url && <a className="small" onClick={e => { e.stopPropagation(); preview(v) }}>{playing === v.voice_id ? '■ 停止' : '▶ 試聽'}</a>}
+                    </div>
+                  ))}
+                  <div className={`voice ${voice === NO_VOICE ? 'sel' : ''}`} onClick={() => setVoice(NO_VOICE)}>
+                    <div className="voice-name">不要配音</div>
+                    <div className="muted small">只要配樂＋字幕</div>
+                  </div>
+                  {voice === null && <span className="muted small">載入聲音中…</span>}
+                </div>
+              </div>
+            </section>
+
+            <section className={`card step ${text.trim() ? 'done' : ''}`}>
+              <div className="step-head"><span className="step-no">3</span><b>寫賣點</b><span className="muted small">地點、特色、價格、語氣，想到什麼寫什麼</span></div>
+              <div className="step-body">
+                <textarea rows={4} value={text} onChange={e => setText(e.target.value)}
+                  placeholder={'例：宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑。'} />
+                <div className="chips inline">
+                  {['地點：', '特色：', '價格：平日每人 NT$', '語氣：輕鬆活潑', '不要加「起」'].map(c => (
+                    <a key={c} className="chipbtn" onClick={() => setText(t => (t ? t.replace(/\s*$/, '\n') : '') + c)}>{c}</a>))}
+                </div>
+                <button className="btn primary block start" disabled={!canStart} onClick={start}>
+                  {!(linkOk || okUploads > 0) ? '先給素材（步驟 1）' : !text.trim() ? '寫一點賣點就能開始' : '開始剪輯'}
+                </button>
+                <div className="muted small" style={{ textAlign: 'center' }}>送出後剪輯師會一路做到輸出影片與封面，中途不會停下來問。</div>
+              </div>
+            </section>
           </div>
         )}
         {proj.messages.map((m, i) => <Bubble key={m.id} m={m} assets={assetsFor(m, i)} />)}
@@ -271,7 +346,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
             {IOS && (
               <ol className="small">
                 {CRIOS && <li>改用 <b>Safari</b> 開這個網址（Chrome / Firefox 在 iPhone 上選影片常常失敗）。</li>}
-                <li>一次只選一支影片。</li>
+                <li>一次少選幾支（最多 6 支，每支 1 GB 內）。</li>
                 <li>先到「照片」App 把那支影片從頭播放一次（讓 iCloud 把原檔下載回手機），再回來選。</li>
                 <li>在「照片」App 分享 → 儲存到「檔案」，選檔時改選「瀏覽」從「檔案」App 選。</li>
                 <li>最穩：把影片丟到 Google Drive，貼資料夾連結給我。</li>
@@ -309,20 +384,21 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits }: { project
         <div ref={bottom} />
       </div>
       {unseen && <a className="jump" onClick={jump}>↓ 有新內容</a>}
-      {CHIPS[stage].length > 0 && !uploading && (
+      {stage !== 'start' && CHIPS[stage].length > 0 && !uploading && (
         <div className="chips">
           {CHIPS[stage].map(c => <a key={c} className="chipbtn" onClick={() => setText(t => (t ? t + ' ' : '') + c)}>{c}</a>)}
         </div>
       )}
-      <footer className="composer">
-        <label className="btn icon" title="上傳影片">📎
-          <input type="file" multiple={!IOS} accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading} onClick={pick}
+      {stage !== 'start' && <footer className="composer">
+        <label className={`attach ${uploading ? 'busy' : ''}`} title="上傳影片（一次最多 6 支，每支 1 GB 內）" aria-label="上傳影片">
+          <ClipIcon />
+          <input type="file" multiple accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading} onClick={pick}
             onChange={e => { onFiles(e.target.files); e.target.value = '' }} /></label>
         <textarea value={text} onChange={e => setText(e.target.value)} rows={2}
           placeholder={uploading ? '上傳中，完成後再送出…' : PLACEHOLDER[stage]}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
         <button className="btn primary" onClick={send} disabled={running || uploading || !text.trim()}>送出</button>
-      </footer>
+      </footer>}
     </div>
   )
 }

@@ -28,7 +28,7 @@ ELEVENLABS_CONCURRENCY = int(_env("ELEVENLABS_CONCURRENCY", "3"))
 ALLOW_SIGNUP = _env("ALLOW_SIGNUP", "true").lower() == "true"
 # Cap per-user spend recorded in usage events (USD); 0 disables the cap.
 USER_BUDGET_USD = float(_env("USER_BUDGET_USD", "0"))
-MAX_UPLOAD_MB = int(_env("MAX_UPLOAD_MB", "4096"))
+MAX_UPLOAD_MB = int(_env("MAX_UPLOAD_MB", "1024"))  # per file; the UI enforces the same 1 GB and at most 6 files per pick
 # Delete raw footage and intermediate files of projects idle for this many days (0 = never).
 # Deliverables (out/), thumbnails and the conversation are kept.
 RAW_RETENTION_DAYS = int(_env("RAW_RETENTION_DAYS", "7"))

@@ -45,7 +45,7 @@ Railway 沒有 Claude 連接器，但它自己有 GitHub 整合：連上 repo �
 4. 兩個 service 都 Deploy。打開網址 → 註冊（用 `ADMIN_EMAILS` 裡的 email）→ 側欄會有管理後台。
 5. 之後推 main 自動重新部署。成本看 Railway 的 Usage 頁；app 內的成本看管理後台。
 
-磁碟控制：`RAW_RETENTION_DAYS`（預設 7）天沒動的專案會自動刪掉原始素材與中間檔，只留成品、封面與對話；用量大時再把成品搬到 Storage Buckets。
+上傳限制：每支影片 1 GB 內（`MAX_UPLOAD_MB`），一次最多選 6 支；大量素材請走 Drive 連結。磁碟控制：`RAW_RETENTION_DAYS`（預設 7）天沒動的專案會自動刪掉原始素材與中間檔，只留成品、封面與對話；用量大時再把成品搬到 Storage Buckets。
 
 **全自動版**：有 Railway workspace token 時，上面 1–4 步可以一行跑完（只需要 `curl`、`jq`、`openssl`，直接打 Railway GraphQL，不需要 CLI 登入）：
 ```bash
