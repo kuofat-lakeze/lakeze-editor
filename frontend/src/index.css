@@ -1074,3 +1074,13 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .src-tabs a span { display: flex; flex-direction: column; min-width: 0; } .src-tabs a b { color: var(--text); font-size: 14px; } .src-tabs a small { font-size: 11.5px; }
 .src-tabs a.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 @media (max-width: 760px) { .src-tabs a { padding: 10px; } .src-tabs a small { display: none; } }
+
+/* share dialog: preset note */
+.note-box { display: flex; flex-direction: column; gap: 6px; }
+.note-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .note-h .spacer { flex: 1; } .note-h b { font-size: 14px; }
+.note-tag { font-size: 11px; font-weight: 700; color: var(--muted); background: var(--panel2); border: 1px dashed #C9C3B8; padding: 1px 8px; border-radius: 999px; }
+.note-tag.mine { color: #1F8A8E; background: var(--teal-soft); border: 1px solid transparent; }
+.note-field { position: relative; } .note-field textarea { width: 100%; }
+.note-field.preset textarea { background: var(--panel2); border-style: dashed; cursor: text; } .note-field.preset textarea::placeholder { color: #8C8F96; opacity: 1; }
+.note-pen { position: absolute; right: 10px; bottom: 10px; font-size: 14px; color: var(--muted); pointer-events: none; }
+.note-dots { display: flex; gap: 5px; justify-content: center; } .note-dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); cursor: pointer; transition: width .2s; } .note-dots i.on { width: 16px; background: var(--brand); }

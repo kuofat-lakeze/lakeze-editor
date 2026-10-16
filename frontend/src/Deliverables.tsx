@@ -4,6 +4,15 @@ import { StorageMeter, fmtBytes } from './Storage'
 import { FbIcon, LineIcon, promoText, shareToFacebook, shareToLine } from './share'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+/* 給朋友的一句話: six ready-made lines. Shown in grey as the default; sent as-is unless the user edits. */
+const NOTE_PRESETS = [
+  '剛剪好的新影片，幫我看看哪裡可以更好 🙏',
+  '這是第一版，價格字幕和旁白語氣 OK 嗎？',
+  '開頭 3 秒有沒有抓住你？看完跟我說感覺！',
+  '想用這支來宣傳，你覺得會想訂房嗎？',
+  '封面 A、B 你比較喜歡哪一張？',
+  '用 AI 15 分鐘剪好的，你也可以試試看 😆',
+]
 const sizeOf = (v: { videos: Asset[]; covers: Asset[] }) =>
   [...v.videos, ...v.covers].reduce((a, x) => a + ((x.meta?.size_mb as number | undefined) ?? 0) * 2 ** 20, 0)
 
@@ -129,12 +138,16 @@ function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, project
   const [download, setDownload] = useState(true)
   const [days, setDays] = useState<string>('0')
   const [note, setNote] = useState('')
+  const [preset, setPreset] = useState(() => Math.floor(Math.random() * NOTE_PRESETS.length))
+  const [edited, setEdited] = useState(false)   // false = the grey preset is what will be sent
+  const noteToSend = edited ? note.trim() : NOTE_PRESETS[preset]
+  const changed = edited && note.trim() !== NOTE_PRESETS[preset]
   const [made, setMade] = useState<ShareLink | null>(null)
   const [busy, setBusy] = useState(false)
   const create = async () => {
     setBusy(true)
     try {
-      const m = await api.createShare(projectId, { version: follow ? null : version, allow_download: download, expires_days: Number(days) || null, note })
+      const m = await api.createShare(projectId, { version: follow ? null : version, allow_download: download, expires_days: Number(days) || null, note: noteToSend })
       setMade(m); setPromo(promoText(projectName, `${location.origin}${m.url}`))
     } finally { setBusy(false) }
   }
@@ -154,7 +167,23 @@ function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, project
                 <option value="0">永久</option><option value="7">7 天</option><option value="30">30 天</option><option value="90">90 天</option>
               </select>
             </label>
-            <textarea rows={2} placeholder="給朋友的一句話（選填），例如：這是第一版，幫我看價格和旁白語氣。" value={note} onChange={e => setNote(e.target.value)} />
+            <div className="note-box">
+              <div className="note-h">
+                <b>給朋友的一句話</b>
+                {!changed ? <span className="note-tag">預設訊息 · {edited ? '直接改就好' : '點文字就能改'}</span> : <span className="note-tag mine">已改成你的話</span>}
+                <span className="spacer" />
+                {!changed
+                  ? <a className="small" onClick={() => { const n = (preset + 1) % NOTE_PRESETS.length; setPreset(n); if (edited) setNote(NOTE_PRESETS[n]) }}>↻ 換一句 {preset + 1}/{NOTE_PRESETS.length}</a>
+                  : <a className="small" onClick={() => { setEdited(false); setNote('') }}>還原預設</a>}
+              </div>
+              <div className={`note-field ${edited ? 'edited' : 'preset'}`}>
+                <textarea rows={2} value={edited ? note : ''} placeholder={NOTE_PRESETS[preset]}
+                  onFocus={() => { if (!edited) { setNote(NOTE_PRESETS[preset]); setEdited(true) } }}
+                  onChange={e => { setNote(e.target.value); setEdited(true) }} />
+                {!edited && <span className="note-pen" aria-hidden="true">✎</span>}
+              </div>
+              <div className="note-dots" aria-hidden="true">{NOTE_PRESETS.map((_, i) => <i key={i} className={!changed && i === preset ? 'on' : ''} onClick={() => { setPreset(i); if (edited) setNote(NOTE_PRESETS[i]) }} />)}</div>
+            </div>
             <button className="btn primary block" disabled={busy} onClick={create}>產生連結</button>
           </>
         ) : (
