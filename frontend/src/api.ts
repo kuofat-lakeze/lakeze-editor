@@ -27,7 +27,7 @@ export type PayMethods = { card: boolean; transfer: boolean; test: boolean; note
 export type CostItem = { id: string; label: string; usd: number; twd: number; units: number; unit: string; calls: number; pct: number }
 export type CostGroup = { id: string; label: string; color: string; usd: number; twd: number; pct: number; items: CostItem[] }
 export type Costs = { days: number; usd: number; twd: number; twd_per_usd: number; exports: number; per_export_twd: number | null; revenue_twd: number; margin_pct: number | null
-  railway?: { ok: boolean; error?: string; usd: number; usage_usd: number; month_estimate_usd: number | null; month_bill_usd: number; plan_fee_usd: number }
+  railway?: { ok: boolean; error?: string; usd: number; usage_usd: number; month_estimate_usd: number | null; month_bill_usd: number; plan_fee_usd: number; floor_usd?: number; cycle_start?: string | null; cycle_end?: string | null }
   groups: CostGroup[]; claude_tokens: { in: number; out: number; cache_read: number; usd_in: number; usd_out: number; usd_cache_read: number; usd_cache_write: number }
   daily: ({ date: string } & Record<string, number | string>)[]; top_projects: { id: string; name: string; email: string; twd: number; by_group: Record<string, number> }[]; top_users: { id: string; email: string; twd: number }[] }
 export type Shot = { n: number; clip: number; t: number; dur: number; shot: string; role: 'hook' | 'feature' | 'price' | 'cta' }

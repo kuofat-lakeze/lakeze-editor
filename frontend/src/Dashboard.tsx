@@ -451,9 +451,9 @@ function CostDrawer({ days: d0, onClose, onOpenUser }: { days: number; onClose: 
                         {g.id === 'railway' && c.railway && (
                           <div className="cg-rw">
                             {c.railway.error && <div className="cg-rw-warn">{c.railway.error}</div>}
-                            <div className="cg-rw-row"><span>本月資源用量（預估到月底）</span><b>{c.railway.month_estimate_usd != null ? `US$${c.railway.month_estimate_usd.toFixed(2)}` : '—'}</b></div>
-                            <div className="cg-rw-row"><span>本月 Railway 帳單（預估）</span><b>US${c.railway.month_bill_usd.toFixed(2)}</b></div>
-                            <div className="muted small">Railway 計費方式：Pro 方案月費 US${c.railway.plan_fee_usd} 已內含等額用量；超過才另外收。用量依分鐘計：CPU US$20／vCPU／月、記憶體 US$10／GB／月、對外流量 US$0.05／GB、硬碟 US$0.15／GB／月，建置不收費。每日圖表為期間平均攤提。</div>
+                            <div className="cg-rw-row"><span>本期資源用量（預估到週期結束）</span><b>{c.railway.month_estimate_usd != null ? `US$${c.railway.month_estimate_usd.toFixed(2)}` : '—'}</b></div>
+                            <div className="cg-rw-row"><span>本期 Railway 帳單（預估）</span><b>US${c.railway.month_bill_usd.toFixed(2)}</b></div>
+                            <div className="muted small">Railway 計費方式：Pro 方案月費 US${c.railway.plan_fee_usd} 已內含等額用量；超過才另外收。用量依分鐘計：CPU US$20／vCPU／月、記憶體 US$10／GB／月、對外流量 US$0.05／GB、硬碟 US$0.15／GB／月，建置不收費。這裡逐日計算：每天 = 當天實際用量 ＋ 當天分攤的「月費沒用完的部分」（依 Railway 帳單週期{c.railway.cycle_start ? `（${new Date(c.railway.cycle_start).toLocaleDateString('zh-TW')} 起）` : ''}按小時攤到每一天），一個週期的每日加總正好等於該期帳單。</div>
                           </div>)}
                         {g.id === 'claude' && tk && (tk.in + tk.out) > 0 && (
                           <div className="cg-tokens">

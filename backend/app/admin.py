@@ -104,12 +104,15 @@ async def dashboard(days: int = 30, _: User = Admin):
                 "points_granted": int(granted), "exports": exports, "cost_usd": round(cost, 2), "cost_twd": round(cost * TWD_PER_USD),
                 "signups": signups, "buyers": buyers}
     cur, prev = agg(since, ref + timedelta(seconds=1)), agg(prev_since, since)
-    # Railway hosting is part of the cost: real usage for this window; the previous window is assumed
-    # to have run at the same daily rate (the hosting bill barely moves from month to month).
-    rw_usd = (await railway_cost.cost(days))["usd"]
-    for a in (cur, prev):
-        a["railway_usd"] = round(rw_usd, 2)
-        a["cost_usd"] = round(a["cost_usd"] + rw_usd, 2)
+    # Railway hosting is part of the cost, day by day (both this window and the previous one).
+    rw = await railway_cost.cost(days * 2)
+    rw_day = {x["date"]: x["usd"] for x in rw.get("daily", [])}
+    cur_keys = {(since + timedelta(days=i + 1)).date().isoformat() for i in range(days)}
+    rw_cur = sum(v for k, v in rw_day.items() if k in cur_keys) if rw_day else rw["usd"] / 2
+    rw_prev = sum(v for k, v in rw_day.items() if k not in cur_keys) if rw_day else rw["usd"] / 2
+    for a, v in ((cur, rw_cur), (prev, rw_prev)):
+        a["railway_usd"] = round(v, 2)
+        a["cost_usd"] = round(a["cost_usd"] + v, 2)
         a["cost_twd"] = round(a["cost_usd"] * TWD_PER_USD)
     cur["active_users"] = len(active_users)
     cur["margin_pct"] = round((cur["revenue_twd"] - cur["cost_twd"]) / cur["cost_twd"] * 100) if cur["cost_twd"] else None
@@ -132,8 +135,8 @@ async def dashboard(days: int = 30, _: User = Admin):
             daily[k]["active"].add(t.user_id)
             if t.reason == "export_video":
                 daily[k]["exports"] += 1
-    for v in daily.values():
-        v["cost_twd"] += rw_usd / days * TWD_PER_USD
+    for k, v in daily.items():
+        v["cost_twd"] += (rw_day.get(k, 0.0) if rw_day else rw_cur / days) * TWD_PER_USD
     for uid, kind, c, d in usage:
         k = _day(d)
         if k in daily:
@@ -509,14 +512,15 @@ async def costs(days: int = 30, _: User = Admin):
             p["usd"] += usd; p["by_group"][g] = p["by_group"].get(g, 0.0) + usd
         us = by_user.setdefault(u.user_id, {"id": u.user_id, "email": email, "usd": 0.0})
         us["usd"] += usd
-    # Railway hosting: real per-minute usage from Railway's API (+ the unused part of the plan's included
-    # amount), spread evenly over the days for the chart since the API gives one number per window.
+    # Railway hosting: each day's real usage from Railway's API plus that day's share of the unused part
+    # of the plan fee (see railway_cost).
     rw = await railway_cost.cost(days)
     groups["railway"]["usd"] = rw["usd"]
     for it in rw["items"]:
         groups["railway"]["items"][it["id"]] = dict(it)
-    for d in daily.values():
-        d["railway"] += rw["usd"] / days
+    rw_day = {x["date"]: x["usd"] for x in rw.get("daily", [])}
+    for k, d in daily.items():
+        d["railway"] += rw_day.get(k, 0.0) if rw_day else rw["usd"] / days
     total = sum(g["usd"] for g in groups.values())
     T = TWD_PER_USD
 
@@ -532,7 +536,7 @@ async def costs(days: int = 30, _: User = Admin):
             "exports": exports, "per_export_twd": round(total * T / exports) if exports else None,
             "revenue_twd": int(revenue), "margin_pct": round((revenue - total * T) / (total * T) * 100) if total else None,
             "groups": out_groups,
-            "railway": {k: v for k, v in rw.items() if k != "items"},
+            "railway": {k: v for k, v in rw.items() if k not in ("items", "daily")},
             "claude_tokens": {**{k: v for k, v in tokens.items() if not k.startswith("usd")},
                               **{k: round(v * T, 1) for k, v in tokens.items() if k.startswith("usd")}},
             "daily": [{"date": d["date"], **{g: round(d[g] * T, 1) for g in groups}} for d in daily.values()],
