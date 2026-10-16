@@ -1054,3 +1054,17 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .dg-clear { position: absolute; right: 12px; }
 .dg-found { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 12px; background: #F3FBFB; border: 1px solid #CFEAE9; }
 .dg-names { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; } .dg-names em { font-style: normal; font-size: 11px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* step 3 mock: painted scenes behind the video and covers */
+.ps-video.rich, .ps-cover.rich { background: #1e3f57; isolation: isolate; }
+.ps-scene { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
+.ps-video.rich::after, .ps-cover.rich::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%); }
+.ps.on .ps-video.rich .ps-scene { animation: kenburns 6s ease-in-out infinite alternate; transform-origin: 60% 70%; }
+@keyframes kenburns { from { transform: scale(1); } to { transform: scale(1.12) translate(-2%, -2%); } }
+.ps-video.rich .ps-headline { text-shadow: 0 2px 8px rgba(0,0,0,.55); }
+.ps-cover.rich b { font-size: 12.5px; font-weight: 900; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+.ps-cover.rich em { display: inline-flex; align-items: baseline; gap: 3px; align-self: flex-start; background: #FFD23F; color: #3a2a00; padding: 1px 6px; border-radius: 5px; text-shadow: none; font-size: 10px; margin-top: 4px; }
+.ps-cover.rich em small { font-size: 7px; font-weight: 700; }
+.ps-cv-tag { position: absolute; right: 6px; top: 6px; font-style: normal; font-size: 7.5px; font-weight: 800; background: rgba(255,255,255,.92); color: #1F6F72; padding: 1px 5px; border-radius: 999px; }
+.ps-cv-tag.hot { background: var(--brand); color: #fff; }
+.ps-cover.rich em { white-space: nowrap; max-width: 100%; }

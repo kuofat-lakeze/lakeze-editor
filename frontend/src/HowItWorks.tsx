@@ -78,6 +78,49 @@ const FILES = [
 ]
 const R = 15, C = 2 * Math.PI * R
 
+/* Painted stand-ins for real frames: a sea-view villa with an infinity pool and 龜山島 on the horizon. */
+function Scene({ kind }: { kind: 'day' | 'sunset' | 'pool' }) {
+  const sky = kind === 'sunset' ? ['#FF9A62', '#FFC98B', '#FFE3B0'] : kind === 'pool' ? ['#7FC8E8', '#B9E4F2', '#E6F6FA'] : ['#4FA9D8', '#8ED0EC', '#D4EFF8']
+  const sea = kind === 'sunset' ? ['#E8865A', '#9C4F4A'] : ['#2E8DB8', '#1B5C80']
+  return (
+    <svg className="ps-scene" viewBox="0 0 90 160" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <linearGradient id={`sk-${kind}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={sky[0]} /><stop offset=".6" stopColor={sky[1]} /><stop offset="1" stopColor={sky[2]} /></linearGradient>
+        <linearGradient id={`se-${kind}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={sea[0]} /><stop offset="1" stopColor={sea[1]} /></linearGradient>
+        <linearGradient id={`pl-${kind}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#5FE0E6" /><stop offset="1" stopColor="#1FA7C2" /></linearGradient>
+      </defs>
+      <rect width="90" height="160" fill={`url(#sk-${kind})`} />
+      {kind === 'sunset'
+        ? <circle cx="62" cy="66" r="11" fill="#FFF1C9" opacity=".95" />
+        : <circle cx="70" cy="22" r="7" fill="#FFF8DD" opacity=".9" />}
+      <g fill="#fff" opacity=".75"><ellipse cx="22" cy="26" rx="12" ry="3.2" /><ellipse cx="30" cy="24" rx="7" ry="3" /><ellipse cx="58" cy="40" rx="9" ry="2.4" /></g>
+      {/* 龜山島 */}
+      <path d="M8 78 C 16 70, 22 66, 30 69 C 34 62, 38 62, 41 70 C 46 70, 52 74, 56 78 Z" fill={kind === 'sunset' ? '#7A4A55' : '#3F6E7E'} opacity=".85" />
+      <rect y="77" width="90" height="40" fill={`url(#se-${kind})`} />
+      <g stroke="#fff" strokeOpacity=".45" strokeWidth=".8" strokeLinecap="round"><path d="M10 86h12M40 92h16M66 84h10M20 100h14M58 104h18" /></g>
+      {kind === 'sunset' && <path d="M56 78 L68 78 L64 116 L60 116 Z" fill="#FFE3A3" opacity=".35" />}
+      {/* deck + infinity pool */}
+      <path d="M0 112 L90 104 L90 160 L0 160 Z" fill="#E9D9C2" />
+      <path d="M0 118 L90 110 L90 134 L0 142 Z" fill={`url(#pl-${kind})`} />
+      <g stroke="#fff" strokeOpacity=".7" strokeWidth="1" strokeLinecap="round" fill="none"><path d="M8 128 q6 -3 12 0 t12 0" /><path d="M48 122 q6 -3 12 0 t12 0" /></g>
+      {/* villa */}
+      <g>
+        <rect x="58" y="88" width="30" height="20" fill="#FAF6EF" />
+        <path d="M55 89 L73 79 L91 89 Z" fill="#5A4A42" />
+        <rect x="62" y="93" width="7" height="8" fill="#9FD3E6" /><rect x="74" y="93" width="9" height="8" fill="#9FD3E6" />
+        <rect x="70" y="100" width="4" height="8" fill="#B07A52" />
+      </g>
+      {/* palm */}
+      <g transform="translate(14 104)">
+        <path d="M0 0 C 1 -12, 3 -22, 6 -30" stroke="#6B4A2E" strokeWidth="2" fill="none" />
+        <g fill="#2F8F5B"><path d="M6 -30 C 0 -34, -8 -32, -12 -26 C -4 -30, 2 -29, 6 -30 Z" /><path d="M6 -30 C 12 -36, 20 -34, 24 -28 C 16 -31, 10 -30, 6 -30 Z" /><path d="M6 -30 C 4 -38, 8 -44, 14 -46 C 9 -40, 8 -35, 6 -30 Z" /><path d="M6 -30 C 0 -36, -4 -42, -2 -46 C 0 -40, 3 -35, 6 -30 Z" /></g>
+      </g>
+      {kind === 'pool' && <g><circle cx="34" cy="128" r="4" fill="#FF6B6B" /><path d="M30 128h8" stroke="#fff" strokeWidth="1.4" /><ellipse cx="52" cy="131" rx="5" ry="1.6" fill="#FFD23F" /></g>}
+      <rect width="90" height="160" fill="url(#vig)" />
+    </svg>
+  )
+}
+
 function Phone({ step }: { step: number }) {
   return (
     <div className="phone" data-step={step}>
@@ -129,7 +172,8 @@ function Phone({ step }: { step: number }) {
         <div className={`ps ps-done ${step === 2 ? 'on' : ''}`}>
           <div className="ps-vhead"><b>v1</b><span className="ps-pill">最終版</span><small>36 秒 · 影片＋2 張封面</small></div>
           <div className="ps-result">
-            <div className="ps-video">
+            <div className="ps-video rich">
+              <Scene kind="day" />
               <div className="ps-super">KTV · 電動麻將 · 寵物友善</div>
               <div className="ps-headline">宜蘭海邊包棟<br /><em>25米戲水池</em></div>
               <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /><b /><b /></span><small>Vivian 旁白</small></div>
@@ -137,8 +181,8 @@ function Phone({ step }: { step: number }) {
               <div className="ps-play" />
             </div>
             <div className="ps-covers">
-              <div className="ps-cover a"><span>封面 A</span><b>宜蘭海邊<br />包棟民宿</b><em>NT$1,500</em></div>
-              <div className="ps-cover b"><span>封面 B</span><b>25 米<br />戲水池</b><em>平日每人 1,500</em></div>
+              <div className="ps-cover a rich"><Scene kind="sunset" /><span>封面 A</span><i className="ps-cv-tag">龜山島海景</i><b>宜蘭海邊<br />包棟民宿</b><em><small>平日每人</small>NT$1,500</em></div>
+              <div className="ps-cover b rich"><Scene kind="pool" /><span>封面 B</span><i className="ps-cv-tag hot">寵物友善</i><b>25 米<br />無邊際泳池</b><em><small>平日每人</small>1,500</em></div>
             </div>
           </div>
           <div className="ps-actions"><span>下載</span><span className="pri glow">分享給朋友</span></div>
