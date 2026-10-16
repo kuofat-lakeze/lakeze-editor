@@ -1,0 +1,59 @@
+# Real end-to-end test against a deployed instance (costs Claude + ElevenLabs credits). Manual only.
+# Results (log, summary.json, final_1080.mp4, cover.jpg) are force-pushed to the `results_branch` so they
+# can be fetched with plain git. The admin password is generated on the runner and stored only encrypted
+# with the RSA public key given in `pubkey` (decrypt: base64 -d admin_password.enc | openssl pkeyutl -decrypt
+# -inkey private.pem -pkeyopt rsa_padding_mode:oaep).
+name: e2e
+on:
+  workflow_dispatch:
+    inputs:
+      base_url: { description: "https://host of the deployed app", required: true }
+      email: { description: "admin email (must be in ADMIN_EMAILS)", required: true }
+      pubkey: { description: "RSA public key PEM used to encrypt the generated password", required: false, default: "" }
+      password: { description: "existing password (re-runs); leave empty to generate one", required: false, default: "" }
+      project_name: { description: "project name", required: false, default: "測試專案" }
+      brief: { description: "first message to the editor", required: true }
+      revision: { description: "revision request", required: false, default: "把價格字幕改成金色、大一點" }
+      results_branch: { description: "branch to push results to", required: false, default: "e2e-results" }
+permissions:
+  contents: write
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - name: Password
+        id: pw
+        env: { PUBKEY: "${{ inputs.pubkey }}", GIVEN: "${{ inputs.password }}" }
+        run: |
+          mkdir -p e2e_out
+          if [ -n "$GIVEN" ]; then PW=$GIVEN; else PW=$(openssl rand -base64 12); fi
+          echo "::add-mask::$PW"
+          echo "pw=$PW" >> "$GITHUB_OUTPUT"
+          if [ -n "$PUBKEY" ]; then
+            printf '%s\n' "$PUBKEY" > "$RUNNER_TEMP/pub.pem"
+            printf '%s' "$PW" | openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/pub.pem" -pkeyopt rsa_padding_mode:oaep | base64 -w0 > e2e_out/admin_password.enc
+          fi
+      - name: Run E2E
+        env:
+          BASE: ${{ inputs.base_url }}
+          E2E_EMAIL: ${{ inputs.email }}
+          E2E_PASSWORD: ${{ steps.pw.outputs.pw }}
+          PROJECT_NAME: ${{ inputs.project_name }}
+          BRIEF: ${{ inputs.brief }}
+          REVISION: ${{ inputs.revision }}
+          OUT: e2e_out
+        run: bash deploy/e2e.sh
+      - name: Publish results branch
+        if: always()
+        env:
+          BRANCH: ${{ inputs.results_branch }}
+          TOKEN: ${{ github.token }}
+        run: |
+          cd e2e_out
+          [ -f summary.json ] && cat summary.json >> "$GITHUB_STEP_SUMMARY" || true
+          git init -q -b "$BRANCH"
+          git config user.name e2e-bot; git config user.email e2e-bot@users.noreply.github.com
+          git add -A && git commit -qm "e2e results run ${GITHUB_RUN_ID}"
+          git push -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}" "HEAD:refs/heads/$BRANCH"

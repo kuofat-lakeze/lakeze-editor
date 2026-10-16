@@ -68,8 +68,9 @@ make_service() {
     echo "exists  $name=$sid"
   fi
   # railway.json (config-as-code) is deprecated on Railway, so set deploy settings here directly.
-  gql 'mutation($s:String!,$e:String!,$d:String!,$h:String!){ serviceInstanceUpdate(serviceId:$s, environmentId:$e, input:{rootDirectory:$d, dockerfilePath:"Dockerfile", healthcheckPath:$h, healthcheckTimeout:300, restartPolicyType:ON_FAILURE, restartPolicyMaxRetries:10, numReplicas:1}) }' \
-    "{\"s\":\"$sid\",\"e\":\"$ENV_ID\",\"d\":\"$dir\",\"h\":\"$health\"}" >/dev/null
+  # watchPatterns: only rebuild when files under this service's directory change.
+  gql 'mutation($s:String!,$e:String!,$d:String!,$h:String!,$w:[String!]){ serviceInstanceUpdate(serviceId:$s, environmentId:$e, input:{rootDirectory:$d, dockerfilePath:"Dockerfile", healthcheckPath:$h, healthcheckTimeout:300, restartPolicyType:ON_FAILURE, restartPolicyMaxRetries:10, numReplicas:1, watchPatterns:$w}) }' \
+    "$(jq -cn --arg s "$sid" --arg e "$ENV_ID" --arg d "$dir" --arg h "$health" '{s:$s,e:$e,d:$d,h:$h,w:["\($d)/**"]}')" >/dev/null
   gql 'mutation($p:String!,$e:String!,$s:String!,$v:EnvironmentVariables!){ variableCollectionUpsert(input:{projectId:$p, environmentId:$e, serviceId:$s, variables:$v, skipDeploys:true}) }' \
     "$(jq -cn --arg p "$PROJECT_ID" --arg e "$ENV_ID" --arg s "$sid" --argjson v "$vars" '{p:$p,e:$e,s:$s,v:$v}')" >/dev/null
   echo "$sid"
