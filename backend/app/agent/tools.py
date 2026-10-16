@@ -277,9 +277,9 @@ def _export(inp, ctx):
     if not mixw.exists():
         return [_text("還沒有混音，先 compose_audio")]
     r = mix.mux_and_export(video, mixw, ctx.root / "out", inp.get("stem", "final"))
+    sizes = {k: round(p.stat().st_size / 2**20, 1) for k, p in r.items()}  # before add_asset moves the files
     ids = {k: ctx.add_asset(p, "video", {"master": "母帶", "upload": "上傳用 1080p", "preview": "預覽 720p"}[k],
-                            {"size_mb": round(p.stat().st_size / 2**20, 1)})["id"] for k, p in r.items()}
-    sizes = {k: round(p.stat().st_size / 2**20, 1) for k, p in r.items()}
+                            {"size_mb": sizes[k]})["id"] for k, p in r.items()}
     return [_text(f"輸出完成：{_j(sizes)} MB，卡片 {_j(ids)}")]
 
 
