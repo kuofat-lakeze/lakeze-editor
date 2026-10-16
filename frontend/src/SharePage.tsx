@@ -62,8 +62,8 @@ export function SharePage({ token }: { token: string }) {
                 )}
                 <div className="share-social">
                   <span className="muted small">覺得不錯？分享給更多人</span>
-                  <button className="btn small fb" onClick={() => shareToFacebook(location.href, promoText(data.project_name, location.href, data.signup_points ?? 110))}><FbIcon /> Facebook</button>
-                  <button className="btn small line" onClick={() => shareToLine(promoText(data.project_name, location.href, data.signup_points ?? 110))}><LineIcon /> LINE</button>
+                  <button className="btn small fb" onClick={() => shareToFacebook(location.href, promoText(data.project_name, location.href, data.signup_points ?? 220))}><FbIcon /> Facebook</button>
+                  <button className="btn small line" onClick={() => shareToLine(promoText(data.project_name, location.href, data.signup_points ?? 220))}><LineIcon /> LINE</button>
                   <button className="btn small" onClick={() => navigator.clipboard?.writeText(location.href)}>複製連結</button>
                 </div>
                 {v.covers.length > 0 && (
@@ -110,7 +110,7 @@ export function SharePage({ token }: { token: string }) {
             <section className="share-cta">
               <div className="share-cta-k">這支影片是用旅剪做的</div>
               <h2>你也想做一支？</h2>
-              <p>丟影片、說賣點，15 分鐘拿到有旁白、字幕、封面的短影音。註冊送 {data.signup_points ?? 110} 點，第一支免費，不用綁卡。</p>
+              <p>丟影片、說賣點，15 分鐘拿到有旁白、字幕、封面的短影音。註冊送 {data.signup_points ?? 220} 點，第一支免費，不用綁卡。</p>
               <a className="btn primary lg" href={data.signup_url ?? '/signup'}>免費試做第一支</a>
               <a className="small" href="/">先看看怎麼用 →</a>
             </section>

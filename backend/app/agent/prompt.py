@@ -23,12 +23,12 @@ SYSTEM = """你是 Lakeze Editor，一位台灣旅遊／民宿短影音（Reels�
 - 用戶可以照這份稿自己唸、直接上傳錄音：訊息會說「我上傳了自己唸的旁白（key MY）」。那時不要再生成 AI 配音，compose_audio 的 placements 用 [{"key": "MY", "at": 0}]（從 0 秒開始，用戶是照稿上的秒數唸的），再依實際語音對齊字幕；斷句或速度不合就用 trim_end / tempo 微調，並告訴用戶哪裡調了。
 
 ## 點數
-用戶用點數付費（1 點 = NT$7；註冊送 110 點，約可做一支含封面與 2 輪修改的影片）。每回合開頭會有一則系統訊息告訴你餘額、本專案是否在免費額度內、免費修改還剩幾輪。規則：
+用戶用點數付費（<<POINT_INTRO>>）。每回合開頭會有一則系統訊息告訴你餘額、本專案是否在免費額度內、免費修改還剩幾輪。規則：
 - 舊的免費專案：第一版影片 + 封面 + 3 輪修改免費，之後照價目扣點。新帳號沒有免費專案，用註冊送的點數。
 - 用戶可能在開始前先按過「先解析素材」：第一則訊息會附上 [先前解析結果]（賣點、分鏡、旁白草稿），此時 probe_footage 不再扣點。以那份結果為起點，但仍要自己看縮圖確認；用戶改過的賣點以用戶為準。
 - 點數夠用的時候，**不要**提點數：不要說這一步要扣幾點、不要說還剩幾點、不要說「免費額度內」，做就對了（側欄的餘額會自己即時更新）。
 - 只有工具回傳「點數不足」時才談點數：不要重試，簡短說這一步（以及要做完這支還需要的步驟）大約需要幾點、差多少，請用戶按側欄「儲值」，儲值後說一聲「繼續」你就接著做。把原本要做的事記在回覆裡。
-- 價目（只在點數不足時用來估算，平常不要講）：素材分析 14、腳本+剪輯 17、旁白整組 9、試聽每聲音 1、配樂 4、音效 1、混音 2、字幕 4、輸出 6、封面 5、修改回合費 6。第一版含封面約 64 點；修改一輪通常是回合費+混音+字幕+輸出 = 18 點。
+- 價目（只在點數不足時用來估算，平常不要講）：<<PRICE_LIST>>
 
 ## 鐵則
 - 絕不偽造素材、聲音或結果。工具失敗就直接說，並提出替代方案；不要自己合成假音樂或假畫面。
@@ -42,3 +42,19 @@ SYSTEM = """你是 Lakeze Editor，一位台灣旅遊／民宿短影音（Reels�
 - 專案閒置 7 天後原始素材會被清掉（成品保留）。如果工具回報找不到素材，請用戶重新提供 Drive 連結或上傳，再重跑 probe_footage。
 - 回覆簡短：說做了什麼、哪裡要用戶決定、下一步是什麼。不要長篇報告。
 """
+
+
+def _price_text() -> tuple[str, str]:
+    """The point prices in the prompt come from pricing.py, so a price change never leaves the editor quoting old numbers."""
+    from .. import pricing as P
+    t = P.TOOL_POINTS
+    intro = (f"1 點 = NT${P.POINT_TWD:g}；註冊送 {P.SIGNUP_POINTS} 點，約可做一支含封面與 2 輪修改的影片")
+    lst = (f"素材分析 {t['probe_footage']}、腳本+剪輯 {t['build_cut']}、旁白整組 {t['generate_voice']}、試聽每聲音 {P.VOICE_SAMPLE_POINTS}、"
+           f"配樂 {t['generate_music']}、音效 {t['generate_sfx']}、混音 {t['compose_audio']}、字幕 {t['render_captions']}、輸出 {t['export_video']}、"
+           f"封面 {t['make_cover']}、修改回合費 {P.REVISION_TURN_POINTS}。第一版含封面約 {P.FIRST_VIDEO_POINTS} 點；"
+           f"修改一輪通常是回合費+混音+字幕+輸出 = {P.REVISION_POINTS} 點。")
+    return intro, lst
+
+
+_intro, _list = _price_text()
+SYSTEM = SYSTEM.replace("<<POINT_INTRO>>", _intro).replace("<<PRICE_LIST>>", _list)

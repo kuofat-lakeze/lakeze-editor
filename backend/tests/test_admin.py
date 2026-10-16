@@ -241,7 +241,7 @@ def test_share_og_page_and_default_admins(client):
     asyncio.run(seed())
     r = TestClient(M.app).get("/api/og/s/ogtok")
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
-    assert 'og:title" content="A1｜用旅剪 15 分鐘剪好的短影音"' in r.text and "註冊送 110 點" in r.text
+    assert 'og:title" content="A1｜用旅剪 15 分鐘剪好的短影音"' in r.text and f"註冊送 {P.SIGNUP_POINTS} 點" in r.text
     assert 'og:image" content="https://editor.lakeze.com/api/s/ogtok/file/' in r.text and 'refresh" content="0;url=https://editor.lakeze.com/s/ogtok"' in r.text
     assert TestClient(M.app).get("/api/og/s/nope").status_code == 404
 
@@ -271,7 +271,7 @@ def test_order_flow(client, monkeypatch):
     for _ in range(2):
         assert c.post("/api/webhooks/lemonsqueezy", content=body, headers={"X-Signature": sig}).status_code == 200
     g = c.get(f"/api/orders/{oid}").json()
-    assert g["order"]["status"] == "paid" and g["balance"] == bal0 + 100
+    assert g["order"]["status"] == "paid" and g["balance"] == bal0 + P.PACKS["p100"]["points"]
     # transfer: report last 5 → admin approves → credited
     monkeypatch.setattr(C, "BANK_TRANSFER", {"bank": "國泰世華", "code": "013", "account": "123", "name": "人客多"})
     r = c.post("/api/orders", json={"item": "sub5", "method": "transfer"}).json()
@@ -286,7 +286,7 @@ def test_order_flow(client, monkeypatch):
     assert c.post(f"/api/admin/orders/{tid}/approve").json()["already"] is True
     holder["u"] = b
     me = c.get("/api/me").json()
-    assert me["balance"] == bal0 + 100 + 500
+    assert me["balance"] == bal0 + P.PACKS["p100"]["points"] + P.SUBSCRIPTIONS["sub5"]["points"]
     # cancel + another user's order
     r = c.post("/api/orders", json={"item": "p50", "method": "transfer"}).json()
     assert c.post(f"/api/orders/{r['order']['id']}/cancel").json()["order"]["status"] == "cancelled"

@@ -60,22 +60,22 @@ def test_quota_and_state():
 
 def test_renewal_charges_then_lapses():
     async def go():
-        u = await _mk_user(plan="s20", points=15)
+        u = await _mk_user(plan="s20", points=30)
         async with D.Session() as s:
             uu = await s.get(D.User, u.id); uu.storage_renews_at = datetime.now(timezone.utc) - timedelta(hours=1); await s.commit()
         r = await M.renew_storage_plans()
         assert r == {"renewed": 1, "lapsed": 0}
-        assert await D.balance(u.id) == 5
+        assert await D.balance(u.id) == 10
         async with D.Session() as s:
             uu = await s.get(D.User, u.id)
             assert uu.storage_plan == "s20" and uu.storage_renews_at is not None
             uu.storage_renews_at = datetime.now(timezone.utc) - timedelta(hours=1); await s.commit()
-        r = await M.renew_storage_plans()   # 5 points left: can't pay 10
+        r = await M.renew_storage_plans()   # 10 points left: can't pay 20
         assert r == {"renewed": 0, "lapsed": 1}
         async with D.Session() as s:
             uu = await s.get(D.User, u.id)
             assert uu.storage_plan == "free" and uu.storage_renews_at is None
-        assert await D.balance(u.id) == 5
+        assert await D.balance(u.id) == 10
     asyncio.run(go())
 
 
@@ -89,11 +89,11 @@ def client():
 
 def test_plan_switch_and_delete_version(client):
     c, holder = client
-    u = asyncio.run(_mk_user(points=12))
+    u = asyncio.run(_mk_user(points=24))
     holder["u"] = u
-    assert c.post("/api/storage/plan", json={"plan": "s100"}).status_code == 402   # 30 > 12
+    assert c.post("/api/storage/plan", json={"plan": "s100"}).status_code == 402   # 60 > 24
     r = c.post("/api/storage/plan", json={"plan": "s20"}); assert r.status_code == 200, r.text
-    assert r.json()["balance"] == 2 and r.json()["storage"]["plan"] == "s20"
+    assert r.json()["balance"] == 4 and r.json()["storage"]["plan"] == "s20"
     pid = asyncio.run(_mk_deliverable(u.id, 5000))
     s = c.get("/api/storage").json()
     assert s["used_bytes"] == 5000 and s["projects"][0]["id"] == pid and [p["id"] for p in s["plans"]] == ["free", "s20", "s100"]
@@ -189,8 +189,11 @@ def test_signup_gets_welcome_points(client):
     holder["u"] = asyncio.run(_mk_user(email="other@x.y"))
     r = c.post("/api/auth/signup", json={"email": "new@lakeze.com", "password": "password123"})
     assert r.status_code == 200, r.text
-    assert asyncio.run(D.balance(r.json()["id"])) == P.SIGNUP_POINTS == 110
-    assert P.FIRST_VIDEO_POINTS + 2 * P.REVISION_POINTS == 100 and P.POINT_TWD == 7
+    assert asyncio.run(D.balance(r.json()["id"])) == P.SIGNUP_POINTS == 220
+    assert P.FIRST_VIDEO_POINTS + 2 * P.REVISION_POINTS == 200 and P.POINT_TWD == 3.5
+    # every NT$ price is what it was at NT$7 a point
+    assert (P.FIRST_VIDEO_POINTS + 2 * P.REVISION_POINTS) * P.POINT_TWD == 700 and P.PACKS["p300"] == {**P.PACKS["p300"], "twd": 2100, "points": 600}
+    assert [P.SUBSCRIPTIONS[k]["twd"] for k in ("sub5", "sub15")] == [3150, 8550]
     assert not asyncio.run(D.has_paid(r.json()["id"]))   # a gift isn't a purchase: trial rules still apply
 
 
@@ -281,4 +284,22 @@ def test_free_plan_removes_deliverables_after_7_days():
             u = await s.get(D.User, paid.id); a = (await s.execute(D.select(D.Asset).where(D.Asset.project_id == pp))).scalar_one()
             exp = D.deliverable_expiry(u, a.created_at)
             assert timedelta(days=6) < exp - datetime.now(timezone.utc) <= timedelta(days=7)
+    asyncio.run(go())
+
+
+def test_points_rescale_doubles_the_ledger_once():
+    """1 點 NT$7 → NT$3.5: an existing ledger is doubled exactly once, so balances keep their NT$ worth."""
+    async def go():
+        u = await _mk_user(points=110)
+        await D.add_credits(u.id, -64, "charge", "build_cut")
+        async with D.Session() as s:
+            s.add(D.Order(user_id=u.id, item="p50", kind="pack", label="50 點", points=50, amount_twd=350, method="transfer", status="reported"))
+            await s.commit()
+        async with D.engine.begin() as conn:   # pretend this database predates the rescale
+            await conn.execute(D.text("DELETE FROM app_flags"))
+        await D.init_db(); await D.init_db()    # runs once, then never again
+        assert await D.balance(u.id) == (110 - 64) * 2
+        async with D.Session() as s:
+            o = (await s.execute(D.select(D.Order))).scalar_one()
+            assert o.points == 100
     asyncio.run(go())

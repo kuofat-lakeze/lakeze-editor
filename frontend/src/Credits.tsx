@@ -9,6 +9,38 @@ export type CreditsTab = 'overview' | 'projects' | 'ledger' | 'plans' | 'buy' | 
 const TABS: { id: CreditsTab; label: string }[] = [
   { id: 'plans', label: '方案' }, { id: 'buy', label: '儲值' }, { id: 'overview', label: '總覽' }, { id: 'projects', label: '依專案' }, { id: 'ledger', label: '明細' }]
 const twd = (n: number) => `NT$${n.toLocaleString()}`
+
+type PackLike = { id: string; points: number }
+/** The cheapest set of packs that covers `need` points (fewest packs on a tie). Small knapsack in pack-size steps. */
+function cheapestCombo<T extends PackLike>(packs: T[], need: number, price: (k: T) => number): T[] {
+  if (!packs.length || need <= 0) return packs.slice(0, 1)
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a)
+  const step = packs.reduce((g, k) => gcd(g, k.points), packs[0].points)
+  const top = Math.ceil(need / step) + Math.max(...packs.map(k => k.points)) / step
+  const best: ({ cost: number; n: number; from: number; pack: T } | null)[] = Array(top + 1).fill(null)
+  best[0] = { cost: 0, n: 0, from: -1, pack: packs[0] }
+  for (let i = 1; i <= top; i++) for (const k of packs) {
+    const j = i - k.points / step
+    const b = j >= 0 ? best[j] : null
+    if (!b) continue
+    const c = { cost: b.cost + price(k), n: b.n + 1, from: j, pack: k }
+    const cur = best[i]
+    if (!cur || c.cost < cur.cost || (c.cost === cur.cost && c.n < cur.n)) best[i] = c
+  }
+  let at = -1
+  for (let i = Math.ceil(need / step); i <= top; i++) {
+    const b = best[i]
+    if (b && (at < 0 || b.cost < best[at]!.cost || (b.cost === best[at]!.cost && b.n < best[at]!.n))) at = i
+  }
+  const out: T[] = []
+  for (let i = at; i > 0; i = best[i]!.from) out.push(best[i]!.pack)
+  return out.sort((a, b) => b.points - a.points)
+}
+const groupPacks = <T extends PackLike>(c: T[]) => {
+  const m = new Map<string, [T, number]>()
+  for (const k of c) m.set(k.id, [k, (m.get(k.id)?.[1] ?? 0) + 1])
+  return [...m.values()]
+}
 export const fmtGB = (gb: number) => gb < 1 ? `${Math.round(gb * 1000)} MB` : `${gb} GB`
 
 const dayLabel = (iso: string) => {
@@ -69,12 +101,13 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   const singlePts = FIRST + 2 * REV                        // the same in points
   // top-up calculator
   const need = nVideos * FIRST + nVideos * nRev * REV
-  const bestPack = p.packs.find(k => k.points >= (needPoints > 0 ? needPoints : need)) ?? p.packs[p.packs.length - 1]
-  const packsNeeded = Math.ceil(need / bestPack.points)
   const member = !!sub                                   // subscribers top up at their plan's price per point
   const myPlan = sub ? p.subscriptions.find(x => x.id === sub.id) : undefined
   const rate = myPlan ? myPlan.point_twd : p.point_twd
   const packPrice = (k: typeof p.packs[number]) => (sub && k.member_twd[sub.id] ? k.member_twd[sub.id] : k.twd)
+  const combo = cheapestCombo(p.packs, needPoints > 0 ? needPoints : need, packPrice)
+  const bestPack = combo.reduce((a, k) => (k.points > a.points ? k : a), combo[0] ?? p.packs[0])
+  const comboLabel = (c: typeof combo) => groupPacks(c).map(([k, n]) => `${n > 1 ? `${n}×` : ''}${k.points.toLocaleString()}`).join(' ＋ ') + ' 點'
 
   return (
     <div className="credits">
@@ -327,7 +360,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
             {needPoints > 0 && (
               <section className="card need-banner">
                 <div><b>剛剛那一步差 {needPoints} 點</b><div className="muted small">目前餘額 {sum.balance} 點。儲值入帳後回到專案輸入「繼續」，剪輯師會接著做。</div></div>
-                <span className="pill">建議 {(p.packs.find(k => k.points >= needPoints) ?? p.packs[p.packs.length - 1]).points} 點</span>
+                <span className="pill">建議 {comboLabel(combo)}</span>
               </section>
             )}
             <section className="card calc">
@@ -339,7 +372,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
               <div className="calc-out">
                 <div><span className="muted small">需要</span><div className="num">{need}<span className="unit">點</span></div></div>
                 <div><span className="muted small">約{member ? '（會員價）' : ''}</span><div className="num">{twd(Math.round(need * rate))}</div></div>
-                <div><span className="muted small">建議</span><div className="num small">{packsNeeded > 1 ? `${packsNeeded} 份 ` : ''}{bestPack.points} 點包<span className="unit">{twd(packPrice(bestPack) * packsNeeded)}</span></div></div>
+                <div><span className="muted small">建議</span><div className="num small">{comboLabel(combo)}<span className="unit">{twd(combo.reduce((a, k) => a + packPrice(k), 0))}</span></div></div>
               </div>
               {member && myPlan && <div className="calc-tip member">你是 {myPlan.label} 會員，儲值一律會員價 NT${myPlan.point_twd} / 點（省 {myPlan.member_discount_pct}%），加買的影片跟方案內一樣划算。</div>}
               {nVideos >= sub5.videos && !sub && (
@@ -349,13 +382,13 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
             <section className="packs-grid">
               {p.packs.map(k => (
                 <div key={k.id} className={`packc card ${k.id === bestPack.id ? 'best' : ''}`}>
-                  {k.id === bestPack.id && <div className="ribbon">剛好夠</div>}
+                  {k.id === bestPack.id && <div className="ribbon">{combo.length > 1 ? '建議組合' : '剛好夠'}</div>}
                   <div className="packc-pts">{k.points}<span className="unit">點</span></div>
                   <div className="packc-price">{twd(packPrice(k))}{member && <s className="muted small">{twd(k.twd)}</s>}{member && <span className="member-tag">會員價</span>}</div>
                   {k.points >= FIRST + 2 * REV
                     ? <div className="packc-videos">約可剪 <b>{Math.floor(k.points / (FIRST + 2 * REV))}</b> 支<span className="muted small">（含封面與 2 輪修改）</span></div>
                     : <div className="packc-videos">補點用<span className="muted small">：約 {Math.floor(k.points / REV)} 輪修改，或補足第一支</span></div>}
-                  <div className="muted small">點數不過期{!member && <> · 包月會員 {twd(k.member_twd.sub5)} 起</>}</div>
+                  <div className="muted small">點數不過期{!member && <> · 包月會員 {twd(Math.min(...Object.values(k.member_twd)))} 起</>}</div>
                   {canBuy(sub ? (k.member_checkout_url?.[sub.id] || k.checkout_url) : k.checkout_url)
                     ? <button className="btn primary block" onClick={() => buy(k.id)}>購買</button>
                     : <button className="btn block" disabled>洽客服開通</button>}

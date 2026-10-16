@@ -194,6 +194,19 @@ _MIGRATIONS = [
 ]
 
 
+class AppFlag(Base):
+    """One-time data migrations that already ran (key = migration name)."""
+    __tablename__ = "app_flags"
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+# 2026-10: 1 點 went from NT$7 to NT$3.5 with every NT$ price unchanged, so every point count doubled.
+# The whole ledger is doubled once (balances, charges, waived points, order points), which keeps each
+# user's balance worth the same NT$ and keeps subscription-period accounting consistent.
+POINTS_RESCALE = "points_x2_nt3_5"
+
+
 async def init_db() -> None:
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     async with engine.begin() as conn:
@@ -203,6 +216,12 @@ async def init_db() -> None:
                 await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
             except Exception:
                 pass  # column exists
+    async with engine.begin() as conn:   # one transaction: the doubling and its flag land together or not at all
+        done = (await conn.execute(text("SELECT 1 FROM app_flags WHERE key = :k"), {"k": POINTS_RESCALE})).first()
+        if not done:
+            await conn.execute(text("UPDATE credit_tx SET delta = delta * 2, points_waived = points_waived * 2"))
+            await conn.execute(text("UPDATE orders SET points = points * 2"))
+            await conn.execute(text("INSERT INTO app_flags (key, created_at) VALUES (:k, :t)"), {"k": POINTS_RESCALE, "t": now().isoformat()})
 
 
 EXPORT_NAMES = {"母帶": "master", "上傳用 1080p": "upload", "預覽 720p": "preview"}
