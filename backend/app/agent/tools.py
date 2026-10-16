@@ -20,6 +20,11 @@ class ToolContext:
     add_asset: Callable[..., dict]            # (path, kind, name, meta=None) -> {id,url}
     record_usage: Callable[..., None]         # (kind, units, meta=None)
     notes: dict = field(default_factory=dict)
+    voice_trial: Callable[[str], dict | None] = lambda voice_id: None   # (voice_id) -> {used, limit} when the trial cap applies
+    voice_used: Callable[[float], None] = lambda seconds: None           # add generated seconds to the trial counter
+
+
+MANDARIN_CHARS_PER_SEC = 3.5   # for estimating narration length before generating it
 
 
 def _text(s: str) -> dict:
@@ -205,11 +210,21 @@ def _search_voices(inp, ctx):
 
 def _voice(inp, ctx):
     vo_dir = ctx.root / "work" / "vo"
+    trial = ctx.voice_trial(inp["voice_id"])
+    if trial:   # the user's own cloned voice on the free tier: capped at a few seconds of speech
+        est = sum(len(l["text"]) for l in inp["lines"]) / MANDARIN_CHARS_PER_SEC
+        left = trial["limit"] - trial["used"]
+        if est > left + 1:
+            raise RuntimeError(f"試用版用自己的聲音最多生成 {trial['limit']} 秒（已用 {trial['used']:.0f} 秒，剩 {max(0, left):.0f} 秒），"
+                               f"這段旁白約 {est:.0f} 秒。請先用內建聲音（例如 Vivian）完成整支影片，並告訴用戶：儲值後自己的聲音就不限秒數；"
+                               f"或只用自己的聲音錄其中 {max(0, left):.0f} 秒以內的一兩句。")
     res = eleven.tts_verified(inp["lines"], inp["voice_id"], vo_dir, model=inp.get("model", "eleven_v3"),
                               tags=inp.get("tags", "[excited]"), stability=inp.get("stability", 0.5),
                               speed=inp.get("speed", 1.0))
     chars = sum(len(l["text"]) * r["takes"] for l, r in zip(inp["lines"], res))
     ctx.record_usage("elevenlabs_tts_chars", chars, {"voice_id": inp["voice_id"]})
+    if trial:
+        ctx.voice_used(sum(r["duration"] for r in res))
     if inp.get("deliver"):
         for r in res:
             r["asset"] = ctx.add_asset(vo_dir / r["file"], "audio", f"旁白試聽 {r['key']}：{r['text'][:20]}")["id"]

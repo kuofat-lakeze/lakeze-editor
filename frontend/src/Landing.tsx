@@ -5,8 +5,10 @@ import { useEffect } from 'react'
 
 export const PRODUCT = { name: '旅剪', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
 const MARKET = { days: 3, low: 2000, high: 3000 }      // what a studio charges today
-const OURS = { minutes: 15, twd: 470 }                 // pay-as-you-go first version incl. cover = 47 points (backend/app/pricing.py)
-const SUB = { name: '專業旅人', twd: 3150, videos: 5, perVideo: 630 }   // monthly: 5 videos, 2 revisions each, 20 GB, own voice
+// One video with cover and 2 revision rounds (the usual path to a final cut); from backend/app/pricing.py.
+const OURS = { minutes: 15, twd: 730 }                 // pay-as-you-go: 47 + 2 × 13 points
+const SUB = { name: '專業旅人', twd: 2800, videos: 5, perVideo: 560 }   // monthly: 5 videos, 2 revisions each, 20 GB
+const FREE_REVISIONS = 3
 
 
 function useReveal() {
@@ -40,7 +42,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
         <p className="ld-sub reveal in d2">丟影片或照片、說賣點，<b>15 分鐘</b>自動剪出有旁白口播、配樂、雙層字幕的旅遊短影音，<b>封面一起做好</b>。</p>
         <div className="ld-cta reveal in d3">
           <a className="btn primary lg" onClick={onStart}>免費試做第一支</a>
-          <span className="muted small">第一支影片、封面與 4 輪修改免費，不用綁卡。</span>
+          <span className="muted small">第一支影片、封面與 {FREE_REVISIONS} 輪修改免費，所有功能都能用，不用綁卡。</span>
         </div>
       </section>
 
@@ -60,15 +62,15 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
             <div className="ld-cmp-label">{PRODUCT.name}</div>
             <div className="ld-cmp-row"><span>交件</span><b>{OURS.minutes} 分鐘</b></div>
             <div className="ld-bar"><div style={{ width: `${Math.max(2, 100 - timePct)}%` }} /></div>
-            <div className="ld-cmp-row"><span>費用</span><b>NT${OURS.twd}</b></div>
+            <div className="ld-cmp-row"><span>費用（含 2 輪修改）</span><b>NT${OURS.twd}</b></div>
             <div className="ld-bar"><div style={{ width: `${Math.round(OURS.twd / MARKET.high * 100)}%` }} /></div>
           </div>
         </div>
         <div className="ld-save">
           <div className="reveal"><div className="ld-save-num">{timePct}%</div><div className="muted small">時間省下來：3 天變 15 分鐘，今天拍今天發</div></div>
-          <div className="reveal d1"><div className="ld-save-num">NT${saveLow.toLocaleString()}–{saveHigh.toLocaleString()}</div><div className="muted small">每支省下約 {savePct}% 的費用；訂閱 {SUB.name} 每月 NT${SUB.twd.toLocaleString()}，{SUB.videos} 支含 2 輪修改，每支 NT${SUB.perVideo}</div></div>
+          <div className="reveal d1"><div className="ld-save-num">NT${saveLow.toLocaleString()}–{saveHigh.toLocaleString()}</div><div className="muted small">每支省下約 {savePct}% 的費用；包月 {SUB.name} 每支再降到 NT${SUB.perVideo}（每月 NT${SUB.twd.toLocaleString()}，{SUB.videos} 支）</div></div>
         </div>
-        <div className="muted small ld-note">按次付費以第一版含封面 47 點（1 點 = NT$10）計，修改一輪約 NT$130；訂閱另含成品空間。業界行情為市場常見報價區間。</div>
+        <div className="muted small ld-note">單次購買以第一版含封面 47 點＋2 輪修改各 13 點計（1 點 = NT$10）；包月另含成品空間。業界行情為市場常見報價區間。</div>
       </section>
 
       <section className="ld-foot-cta reveal">

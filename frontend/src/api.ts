@@ -26,15 +26,15 @@ export type StorageInfo = StorageState & {
   projects: { id: string; name: string; final_version: number | null; bytes: number; versions: number }[]
 }
 export type Me = { id: string; email: string; is_admin: boolean; balance: number; free_project_id: string | null; storage?: StorageState; subscription?: MySubscription | null
-  can_clone_voice?: boolean; voice?: MyVoice | null; tier?: string }
+  can_clone_voice?: boolean; voice?: MyVoice | null; tier?: string; voice_trial?: { used: number; limit: number } | null }
 export type Pack = { id: string; twd: number; points: number; label: string; checkout_url: string | null; member_twd: number; member_checkout_url?: string | null }
 export type Subscription = { id: string; label: string; who: string; desc: string; features: string[]; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
   twd: number; payg_twd: number; save_twd: number; save_pct: number; per_video_twd: number; checkout_url?: string | null }
 export type MySubscription = { id: string; label: string; points: number; videos: number; storage_gb: number; features: string[]; period_start: string | null; renews_at: string | null }
-export type Tier = { id: string; label: string; who: string }
+export type Tier = { id: string; label: string; who: string; features?: string[]; voice_seconds?: number }
 export type Pricing = { point_twd: number; menu: { item: string; points: number }[]; free_revision_turns: number; packs: Pack[]; provider_configured: boolean; note: string
   first_video_points: number; revision_points: number; first_video_twd: number; revision_twd: number; subscriptions: Subscription[]; storage_plans: StoragePlan[]
-  tiers: { free: Tier; payg: Tier }; free_storage_gb: number; member_point_twd: number; member_discount_pct: number }
+  tiers: { free: Tier; payg: Tier }; free_storage_gb: number; member_point_twd: number; member_discount_pct: number; trial_voice_seconds: number }
 export type MyVoice = { voice_id: string; name: string }
 export type AdminUser = { id: string; email: string; created_at: string; is_admin: boolean; disabled: boolean; note: string; balance: number; waived: number; paid_twd: number; cost_usd: number; projects: number; exports: number; last_active?: string | null; storage_plan?: string; storage_bytes?: number; storage_quota_bytes?: number; subscription?: string }
 export type AdminStats = { users: number; new_users_7d: number; projects: number; exports: number; revenue_twd: number; points_sold: number; points_used: number; points_waived: number; cost_usd: number; claude_cost_usd: number; eleven_cost_usd: number }

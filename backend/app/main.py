@@ -194,8 +194,10 @@ async def me(user: User = CurrentUser):
     return {"id": user.id, "email": user.email, "is_admin": user.is_admin, "balance": await balance(user.id),
             "free_project_id": user.free_project_id, "storage": await storage_state(user.id),
             "subscription": _sub_dict(user), "can_clone_voice": await _can_clone(user),
-            "tier": user.subscription or ("payg" if await has_paid(user.id) else "free"),
-            "voice": {"voice_id": user.voice_id, "name": user.voice_name or "我的聲音"} if user.voice_id else None}
+            "tier": (tier := user.subscription or ("payg" if await has_paid(user.id) else "free")),
+            "voice": {"voice_id": user.voice_id, "name": user.voice_name or "我的聲音"} if user.voice_id else None,
+            # on the free tier the clone may narrate up to TRIAL_VOICE_SECONDS of speech
+            "voice_trial": {"used": round(user.voice_trial_seconds or 0.0, 1), "limit": pricing.TRIAL_VOICE_SECONDS} if tier == "free" else None}
 
 
 async def _can_clone(user: User) -> bool:
@@ -213,7 +215,7 @@ def _custom_voice(u: User) -> dict | None:
 async def clone_voice(file: UploadFile, name: str = Form("我的聲音"), user: User = CurrentUser):
     """Make (or replace) the user's own narration voice from one recording. Subscription feature."""
     if not await _can_clone(user):
-        raise HTTPException(403, f"「{pricing.TIERS_PAYG['label']}」以上（儲值過或訂閱）才能用自己的聲音配音")
+        raise HTTPException(403, "這個方案不能用自己的聲音配音")
     d = config.DATA_DIR / "voices" / user.id
     d.mkdir(parents=True, exist_ok=True)
     suffix = Path(file.filename or "sample.webm").suffix.lower() or ".webm"

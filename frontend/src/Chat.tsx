@@ -72,8 +72,8 @@ const TOOL_LABEL: Record<string, string> = {
   render_captions: '燒字幕', export_video: '輸出成品', make_cover: '做封面', revision_turn: '修改回合',
 }
 
-export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, onPlans, onProjectsChanged }:
-  { projectId: string; name?: string; onUsage: () => void; onTopUp: () => void; onCredits?: () => void; onStorage?: () => void; onPlans?: () => void; onProjectsChanged?: () => void }) {
+export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, onProjectsChanged }:
+  { projectId: string; name?: string; onUsage: () => void; onTopUp: (needPoints?: number) => void; onCredits?: () => void; onStorage?: () => void; onProjectsChanged?: () => void }) {
   const [tab, setTab] = useState<'chat' | 'files'>('chat')
   const [proj, setProj] = useState<ProjectDetail | null>(null)
   const [live, setLive] = useState<Live>(emptyLive())
@@ -346,18 +346,15 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                       <div className="voice-name">{v.custom && <span className="mine-tag">我的聲音</span>}{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
                       {v.description && <div className="muted small">{v.description}</div>}
                       {v.preview_url && <a className="small" onClick={e => { e.stopPropagation(); preview(v) }}>{playing === v.voice_id ? '■ 停止' : '▶ 試聽'}</a>}
+                      {v.custom && me?.voice_trial && <div className="muted small">試用剩 {Math.max(0, Math.round(me.voice_trial.limit - me.voice_trial.used))} 秒，儲值後不限</div>}
                       {v.custom && <a className="small" onClick={e => { e.stopPropagation(); setCloning(true) }}>重新錄</a>}
                     </div>
                   ))}
-                  {me && !voices.some(v => v.custom) && (me.can_clone_voice
-                    ? <div className="voice add" onClick={() => setCloning(true)}>
-                        <div className="voice-name">＋ 用自己的聲音生成配音語音</div>
-                        <div className="muted small">錄 30 秒，旁白就是你的聲音</div>
-                      </div>
-                    : <div className="voice locked" onClick={onPlans}>
-                        <div className="voice-name">用自己的聲音生成配音語音<span className="lock-tag">旅行者起</span></div>
-                        <div className="muted small">儲值過就能用，錄 30 秒 · 看方案</div>
-                      </div>)}
+                  {me && !voices.some(v => v.custom) && (
+                    <div className="voice add" onClick={() => setCloning(true)}>
+                      <div className="voice-name">＋ 用自己的聲音生成配音語音{me.voice_trial && <span className="lock-tag">試用 {me.voice_trial.limit} 秒</span>}</div>
+                      <div className="muted small">{me.voice_trial ? `錄 30 秒就能試，先生成 ${me.voice_trial.limit} 秒旁白；儲值後不限` : '錄 30 秒，旁白就是你的聲音'}</div>
+                    </div>)}
                   <div className={`voice ${voice === NO_VOICE ? 'sel' : ''}`} onClick={() => setVoice(NO_VOICE)}>
                     <div className="voice-name">不要配音</div>
                     <div className="muted small">只要配樂＋字幕</div>
@@ -430,8 +427,8 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         {needCredits && (
           <div className="card need">
             <div><b>點數不足</b>：這一步需要 {needCredits.needed} 點，目前 {needCredits.balance} 點，差 {Math.max(0, needCredits.needed - needCredits.balance)} 點。
-              <div className="muted small">最小方案 NT$500 = 50 點。儲值後回來輸入「繼續」，剪輯師會接著做。</div></div>
-            <button className="btn primary small" onClick={onTopUp}>立即儲值</button>
+              <div className="muted small">最小 50 點 = NT$500。儲值入帳後回來輸入「繼續」，剪輯師會接著做。</div></div>
+            <button className="btn primary small" onClick={() => onTopUp(Math.max(0, needCredits.needed - needCredits.balance))}>去儲值</button>
           </div>
         )}
         {picking && !uploads.length && (

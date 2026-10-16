@@ -23,7 +23,8 @@ function Workspace() {
   const [current, setCurrent] = useState<string | null>(null)
   const [view, setView] = useState<'chat' | 'admin' | 'credits' | 'gallery'>('chat')
   const [creditsTab, setCreditsTab] = useState<CreditsTab>('overview')
-  const showCredits = (t: CreditsTab = 'plans') => { setCreditsTab(t); setView('credits'); setMenu(false) }
+  const [needPoints, setNeedPoints] = useState(0)
+  const showCredits = (t: CreditsTab = 'plans', need = 0) => { setCreditsTab(t); setNeedPoints(need); setView('credits'); setMenu(false) }
   const [menu, setMenu] = useState(false)
   const [auth, setAuth] = useState<'login' | 'signup' | null>(location.pathname === '/login' ? 'login' : location.pathname === '/signup' ? 'signup' : null)
 
@@ -87,8 +88,8 @@ function Workspace() {
       <main className="main">
         {view === 'admin' && me.is_admin ? <Admin />
           : view === 'gallery' ? <Gallery onOpen={openProject} />
-          : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} />
-          : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={() => showCredits('buy')} onCredits={() => showCredits()} onStorage={() => showCredits('storage')} onPlans={() => showCredits('plans')}
+          : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} needPoints={needPoints} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} />
+          : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits('buy', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
               onProjectsChanged={() => api.projects().then(setProjects)} />
             : <div className="center muted">建立一個專案開始剪片。第一個專案免費。</div>}
       </main>

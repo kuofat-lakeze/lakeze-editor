@@ -51,6 +51,7 @@ class User(Base):
     # A clone of the customer's own voice (ElevenLabs voice id), available on subscriptions with the own_voice feature.
     voice_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     voice_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    voice_trial_seconds: Mapped[float] = mapped_column(Float, default=0.0)  # speech generated with the clone while on the free tier
 
 
 class Project(Base):
@@ -151,7 +152,7 @@ _MIGRATIONS = [
     ("users", "storage_plan", "VARCHAR(20) DEFAULT 'free'"), ("users", "storage_renews_at", "DATETIME"),
     ("users", "storage_quota_gb", "INTEGER"), ("assets", "size_bytes", "INTEGER DEFAULT 0"),
     ("users", "subscription", "VARCHAR(20) DEFAULT ''"), ("users", "sub_period_start", "DATETIME"), ("users", "sub_renews_at", "DATETIME"),
-    ("users", "voice_id", "VARCHAR(64)"), ("users", "voice_name", "VARCHAR(80)"),
+    ("users", "voice_id", "VARCHAR(64)"), ("users", "voice_name", "VARCHAR(80)"), ("users", "voice_trial_seconds", "FLOAT DEFAULT 0"),
 ]
 
 
@@ -367,6 +368,24 @@ class Store:
 
     async def storage_state(self) -> dict:
         return await storage_state(self.user_id)
+
+    # ---- own voice on the free tier -------------------------------------------------
+    async def voice_trial(self, voice_id: str) -> dict | None:
+        """If voice_id is this user's own clone and they are still on the free tier, the trial cap
+        applies: {used, limit}. None means no cap (not their clone, or a paying user)."""
+        from .pricing import TRIAL_VOICE_SECONDS
+        async with Session() as s:
+            u = await s.get(User, self.user_id)
+        if not u or not u.voice_id or u.voice_id != voice_id or u.subscription or await has_paid(self.user_id):
+            return None
+        return {"used": round(u.voice_trial_seconds or 0.0, 1), "limit": TRIAL_VOICE_SECONDS}
+
+    async def add_voice_seconds(self, seconds: float) -> None:
+        async with Session() as s:
+            u = await s.get(User, self.user_id)
+            if u:
+                u.voice_trial_seconds = (u.voice_trial_seconds or 0.0) + seconds
+                await s.commit()
 
     async def note_export(self, project_id: str) -> None:
         async with Session() as s:

@@ -12,7 +12,7 @@ import os
 
 POINT_TWD = 10
 MARGIN_PAYG = 2.20
-MARGIN_SUB = 1.80
+MARGIN_SUB = 1.50   # monthly plans: the discount path, ~23% cheaper per video than pay-as-you-go
 TWD_PER_USD = 32
 
 # Measured cost basis per tool call (NT$): Claude tokens dominate (frames and checks go through the
@@ -62,8 +62,11 @@ TOOL_CATEGORY: dict[str, str] = {
 }
 CATEGORIES = [("cut", "素材與剪輯"), ("audio", "旁白與配樂"), ("subs", "字幕與混音"), ("export", "輸出"), ("cover", "封面"), ("storage", "成品空間")]
 
-# Free trial: the user's first project is free through the first export plus this many revision turns.
-FREE_REVISION_TURNS = 4
+# Free trial (背包客): the user's first project is free through the first export plus this many revision
+# turns (two rounds is the typical path to a final cut). Every editing feature is on; the trial may also
+# narrate with a clone of the owner's voice, capped at TRIAL_VOICE_SECONDS of generated speech.
+FREE_REVISION_TURNS = 3
+TRIAL_VOICE_SECONDS = 30
 
 # Top-up packs (儲值): straight NT$10 a point for pay-as-you-go, so that tier keeps its margin. Points never
 # expire. Subscribers top up at the member rate: the price per point at which a first video clears the
@@ -99,7 +102,8 @@ def _sub(videos: int, revisions_per_video: int, storage_gb: int) -> dict:
     revisions = videos * revisions_per_video
     points = videos * FIRST_VIDEO_POINTS + revisions * REVISION_POINTS
     cost = videos * FIRST_VIDEO_COST + revisions * REVISION_COST + storage_gb * STORAGE_GB_COST_TWD
-    twd = int(round(cost * (1 + MARGIN_SUB) / 50.0) * 50)
+    per_video = int(round(cost * (1 + MARGIN_SUB) / videos / 10.0) * 10)   # the headline number: a round per-video price
+    twd = per_video * videos
     storage_plan = next((k for k, v in STORAGE_PLANS.items() if v["gb"] >= storage_gb), "s100")
     payg_twd = points * POINT_TWD + STORAGE_PLANS[storage_plan]["points"] * POINT_TWD
     return {"videos": videos, "revisions": revisions, "points": points, "storage_gb": STORAGE_PLANS[storage_plan]["gb"],
@@ -119,15 +123,15 @@ SUBSCRIPTIONS: dict[str, dict] = {
 }
 # The two non-subscription tiers shown beside them on the plans page. 背包客 is the free first project;
 # 旅行者 is anyone who has bought points, and that tier already includes narration in their own voice.
-TIERS_FREE = {"id": "free", "label": "背包客", "who": "第一次用，先免費做一支看看", "features": []}
+TIERS_FREE = {"id": "free", "label": "背包客", "who": "第一次用，先免費做一支看看", "features": [OWN_VOICE], "voice_seconds": TRIAL_VOICE_SECONDS}
 TIERS_PAYG = {"id": "payg", "label": "旅行者", "who": "偶爾剪一支，用多少付多少", "features": [OWN_VOICE]}
 
 
 def has_feature(subscription: str, feature: str, *, paying: bool = False) -> bool:
-    """Subscription features, plus everything the pay-as-you-go tier includes once the user has paid."""
+    """Every tier has every editing feature; this stays as the single place to gate one if that changes."""
     if feature in SUBSCRIPTIONS.get(subscription or "", {}).get("features", []):
         return True
-    return paying and feature in TIERS_PAYG["features"]
+    return feature in (TIERS_PAYG if paying else TIERS_FREE)["features"]
 
 # What the user sees on the pricing page (bundles of the tool prices above).
 MENU = [
@@ -168,6 +172,6 @@ def public_pricing() -> dict:
         "first_video_twd": FIRST_VIDEO_POINTS * POINT_TWD, "revision_twd": REVISION_POINTS * POINT_TWD,
         "subscriptions": [{"id": k, **v} for k, v in SUBSCRIPTIONS.items()],
         "tiers": {"free": TIERS_FREE, "payg": TIERS_PAYG},
-        "free_storage_gb": FREE_STORAGE_GB, "free_revision_turns": FREE_REVISION_TURNS,
+        "free_storage_gb": FREE_STORAGE_GB, "free_revision_turns": FREE_REVISION_TURNS, "trial_voice_seconds": TRIAL_VOICE_SECONDS,
         "storage_plans": [{"id": k, **v, "twd": v["points"] * POINT_TWD} for k, v in STORAGE_PLANS.items()],
     }

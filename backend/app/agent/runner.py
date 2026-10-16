@@ -44,7 +44,8 @@ class TurnRunner:
         self.project_id, self.root, self.store, self.emit = project_id, root, store, emit
         self.client = anthropic.AsyncAnthropic(
             default_headers={"anthropic-workspace-id": config.ANTHROPIC_WORKSPACE_ID} if config.ANTHROPIC_WORKSPACE_ID else None)
-        self.ctx = ToolContext(root=root, add_asset=self._add_asset_sync, record_usage=self._usage_sync)
+        self.ctx = ToolContext(root=root, add_asset=self._add_asset_sync, record_usage=self._usage_sync,
+                               voice_trial=self._voice_trial_sync, voice_used=self._voice_used_sync)
         self._loop: asyncio.AbstractEventLoop | None = None  # set in run()
         self.cancelled = False
         self._exports_at_start = 0
@@ -60,6 +61,15 @@ class TurnRunner:
 
     def _usage_sync(self, kind, units, meta=None):
         asyncio.run_coroutine_threadsafe(self.store.record_usage(self.project_id, kind, units, 0.0, meta), self._loop).result()
+
+    def _voice_trial_sync(self, voice_id):
+        fn = getattr(self.store, "voice_trial", None)
+        return asyncio.run_coroutine_threadsafe(fn(voice_id), self._loop).result() if fn else None
+
+    def _voice_used_sync(self, seconds):
+        fn = getattr(self.store, "add_voice_seconds", None)
+        if fn:
+            asyncio.run_coroutine_threadsafe(fn(seconds), self._loop).result()
 
     async def run(self, user_blocks: list[dict]) -> None:
         self._loop = asyncio.get_running_loop()

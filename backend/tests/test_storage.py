@@ -153,13 +153,12 @@ def test_own_voice_is_a_subscription_feature(client, monkeypatch, tmp_path: Path
     c, holder = client
     u = asyncio.run(_mk_user())
     holder["u"] = u
-    assert P.has_feature("sub5", P.OWN_VOICE) and P.has_feature("sub15", P.OWN_VOICE) and not P.has_feature("", P.OWN_VOICE)
-    assert P.has_feature("", P.OWN_VOICE, paying=True)   # 旅行者: anyone who has bought points
-    r = c.post("/api/voice/clone", files={"file": ("s.webm", b"xx", "audio/webm")}, data={"name": "老闆"})
-    assert r.status_code == 403 and c.get("/api/me").json()["tier"] == "free"
+    assert P.has_feature("sub5", P.OWN_VOICE) and P.has_feature("", P.OWN_VOICE, paying=True) and P.has_feature("", P.OWN_VOICE)
+    me = c.get("/api/me").json()
+    assert me["tier"] == "free" and me["can_clone_voice"] and me["voice_trial"] == {"used": 0, "limit": P.TRIAL_VOICE_SECONDS}
     asyncio.run(D.add_credits(u.id, 50, "purchase", "p500", amount_twd=500))
     me = c.get("/api/me").json()
-    assert me["tier"] == "payg" and me["can_clone_voice"]
+    assert me["tier"] == "payg" and me["can_clone_voice"] and me["voice_trial"] is None
     asyncio.run(M.activate_subscription(u.id, "sub5"))
     async def fresh():
         async with D.Session() as s:
@@ -182,6 +181,43 @@ def test_own_voice_is_a_subscription_feature(client, monkeypatch, tmp_path: Path
     monkeypatch.setattr(ff, "duration", lambda p: 8.0)
     assert c.post("/api/voice/clone", files={"file": ("s.webm", b"xx", "audio/webm")}).status_code == 400
     assert c.delete("/api/voice/clone").status_code == 200 and ("del", "v_clone") in calls
+
+
+def test_trial_voice_cap():
+    """On the free tier the owner's clone may narrate TRIAL_VOICE_SECONDS; a longer script is refused
+    before anything is generated, and paying lifts the cap."""
+    from app import pricing as P
+    from app.agent import tools as T
+    from app.pipeline import eleven
+
+    async def go():
+        u = await _mk_user()
+        async with D.Session() as s:
+            uu = await s.get(D.User, u.id); uu.voice_id = "v_clone"; uu.voice_name = "老闆"; await s.commit()
+        st = D.Store(u.id)
+        assert await st.voice_trial("v_clone") == {"used": 0, "limit": P.TRIAL_VOICE_SECONDS}
+        assert await st.voice_trial("preset") is None
+        await st.add_voice_seconds(12.5)
+        assert (await st.voice_trial("v_clone"))["used"] == 12.5
+        await D.add_credits(u.id, 50, "purchase", "p500", amount_twd=500)
+        assert await st.voice_trial("v_clone") is None
+    asyncio.run(go())
+
+    used = []
+    ctx = T.ToolContext(root=Path("/tmp"), add_asset=lambda *a, **k: {"id": "x"}, record_usage=lambda *a, **k: None,
+                        voice_trial=lambda vid: {"used": 20.0, "limit": 30} if vid == "v_clone" else None, voice_used=used.append)
+    long_script = {"voice_id": "v_clone", "lines": [{"key": "A", "text": "這是一段很長很長的旁白" * 8}]}
+    with pytest.raises(RuntimeError) as e:
+        T._voice(long_script, ctx)
+    assert "最多生成 30 秒" in str(e.value) and "剩 10 秒" in str(e.value)
+    # a short line fits and its real duration is added to the counter
+    fake = lambda lines, voice_id, vo_dir, **k: [{"key": l["key"], "text": l["text"], "file": "a.wav", "duration": 4.2, "transcript": l["text"], "match": 1.0, "takes": 1, "ok": True} for l in lines]
+    T.eleven.tts_verified = fake  # type: ignore[attr-defined]
+    try:
+        out = T._voice({"voice_id": "v_clone", "lines": [{"key": "A", "text": "歡迎來到宜蘭"}]}, ctx)
+        assert "全部句子核對通過" in out[0]["text"] and used == [4.2]
+    finally:
+        T.eleven.tts_verified = eleven.tts_verified
 
 
 def test_export_blocked_when_over_quota(monkeypatch):
