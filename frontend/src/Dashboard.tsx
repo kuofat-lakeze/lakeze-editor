@@ -321,9 +321,8 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
                 await api.admin.subscription(id, plan, Number(f.get('subtwd') || 0)); load(); onChanged()
               }}>
                 <select name="plan" defaultValue={u.subscription || 'sub5'}>
-                  <option value="sub3">輕旅行・月繳（3 支／月）</option><option value="sub3q">輕旅行・季繳</option>
-                  <option value="sub5">專業旅人・月繳（6 支／月）</option><option value="sub5q">專業旅人・季繳</option>
-                  <option value="sub15">超級玩家・月繳（18 支／月）</option><option value="sub15q">超級玩家・季繳</option><option value="">結束訂閱</option>
+                  <option value="sub3">輕旅行（NT$990／月）</option><option value="sub5">專業旅人（NT$1,790／月）</option>
+                  <option value="sub15">超級玩家（NT$4,490／月）</option><option value="">結束訂閱</option>
                 </select>
                 <input name="subtwd" type="number" placeholder="實收 NT$" style={{ width: 110 }} />
                 <button className="btn small">{u.subscription ? '續約／變更' : '開通訂閱'}</button>

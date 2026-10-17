@@ -140,7 +140,7 @@ SUBSCRIPTION_PERIOD_DAYS = 30
 SUBSCRIPTION_GRACE_DAYS = 3   # a renewal payment may land a little late before the plan lapses
 OWN_VOICE = "own_voice"       # feature flag: narrate with a clone of the customer's own voice
 # Subscriptions are the discount path: the same points bought pay-as-you-go, minus this much.
-# Three plans, each billed monthly ("sub5") or quarterly ("sub5q", 3 months at once, QUARTER_OFF more off).
+# Three monthly plans. (_sub can also size a multi-month plan, QUARTER_OFF more off, but none is offered.)
 SUB_DISCOUNT = {"sub3": 0.15, "sub5": 0.24, "sub15": 0.36}       # off the same points bought one by one
 SUB_SHAPE = {"sub3": (3, 2, 10), "sub5": (6, 2, 20), "sub15": (18, 2, 100)}   # videos/month, revisions each, storage GB
 QUARTER_OFF = 0.15
@@ -153,11 +153,9 @@ SUB_INFO = {
 # (專業旅人 ≈ NT$3.1, 超級玩家 ≈ NT$2.9), whatever the pack. It's paid as extra points, not a lower price:
 # the same NT$ for everyone, points = price ÷ the plan's rate (never fewer than a non-member gets). That
 # keeps revenue per purchase whole and one price list for every buyer.
-SUBSCRIPTIONS: dict[str, dict] = {}
-for _k, (_v, _r, _gb) in SUB_SHAPE.items():
-    for _q in ("", "q"):
-        SUBSCRIPTIONS[_k + _q] = {**SUB_INFO[_k], "base": _k, "billing": "quarter" if _q else "month",
-                                  "desc": f"每月 {_v} 支影片，每支含 2 輪修改", "features": [OWN_VOICE]}
+SUBSCRIPTIONS: dict[str, dict] = {
+    _k: {**SUB_INFO[_k], "base": _k, "billing": "month", "desc": f"每月 {_v} 支影片，每支含 2 輪修改", "features": [OWN_VOICE]}
+    for _k, (_v, _r, _gb) in SUB_SHAPE.items()}
 MEMBER_POINT_TWD = 0.0
 MEMBER_DISCOUNT_PCT = 0
 # The two non-subscription tiers shown beside them on the plans page. 背包客 is the free first project;
@@ -202,7 +200,6 @@ def apply_point_price(point_twd: float) -> None:
         pk["twd"] = int(round(pk["points"] * POINT_TWD))
     for k, (v, r, gb) in SUB_SHAPE.items():
         SUBSCRIPTIONS[k].update(_sub(v, r, gb, SUB_DISCOUNT[k]))
-        SUBSCRIPTIONS[k + "q"].update(_sub(v, r, gb, SUB_DISCOUNT[k], months=3))
     for k, o in _OVERRIDE.get("subscriptions", {}).items():
         SUBSCRIPTIONS.setdefault(k, {}).update(o)
     for k, v in SUBSCRIPTIONS.items():
@@ -230,7 +227,7 @@ def margins(point_twd: float | None = None, video_cost_twd: float | None = None)
     rows = [{"id": "payg", "label": "單次購買 · 一支含 2 輪修改", "points": pts, "twd": round(pts * p), "cost_twd": round(cost),
              "per_video_twd": round(pts * p)}]
     for k, (v, r, gb) in SUB_SHAPE.items():
-        for months in (1, 3):
+        for months in (1,):
             saved = POINT_TWD
             try:
                 globals()["POINT_TWD"] = p
@@ -238,7 +235,7 @@ def margins(point_twd: float | None = None, video_cost_twd: float | None = None)
             finally:
                 globals()["POINT_TWD"] = saved
             sub_cost = round((v * cost + gb * STORAGE_GB_COST_TWD) * months) if video_cost_twd else sb["cost_twd"]
-            rows.append({"id": k + ("q" if months == 3 else ""), "label": f"{SUB_INFO[k]['label']} · {'季繳' if months == 3 else '月繳'}（每月 {v} 支）",
+            rows.append({"id": k + ("q" if months == 3 else ""), "label": f"{SUB_INFO[k]['label']} · 每月 {v} 支",
                          "points": sb["points"], "twd": sb["twd"], "cost_twd": sub_cost, "per_video_twd": sb["per_video_twd"]})
     for x in rows:
         x["margin_pct"] = round((x["twd"] - x["cost_twd"]) / x["cost_twd"] * 100) if x["cost_twd"] else None

@@ -1563,3 +1563,11 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .pl-payg b { margin-right: 6px; } .pl-payg i { font-style: normal; font-weight: 800; color: var(--brand); white-space: nowrap; }
 .pl-payg:hover { border-color: var(--brand-2); }
 .tier-bar i.sub3, .tier-legend i.sub3 { background: #F5B041; }
+.pl-grid.four { grid-template-columns: 0.85fr 1fr 1fr 1fr; }
+@media (max-width: 1100px) { .pl-grid.four { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .pl-grid.four { grid-template-columns: 1fr; } }
+.pl.payg { background: var(--panel2); border-style: dashed; box-shadow: none; }
+.pl.payg .pl-price { font-size: 26px; }
+.buy-back { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 2px 2px 4px; }
+.buy-back a { font-weight: 700; color: var(--brand); cursor: pointer; } .buy-back b { font-size: 17px; }
+.pl-grid.four .pl-price { font-size: 28px; white-space: nowrap; }

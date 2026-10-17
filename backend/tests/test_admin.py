@@ -352,7 +352,7 @@ def test_point_price_setting(client):
     cur = c.get("/api/admin/pricing").json()
     assert cur["point_twd"] == 3.9 and cur["rows"][0]["twd"] == 390 and cur["rows"][0]["points"] == 100
     pv = c.get("/api/admin/pricing?point_twd=7").json()   # preview only
-    assert pv["rows"][0]["twd"] == 700 and [r["id"] for r in pv["rows"]] == ["payg", "sub3", "sub3q", "sub5", "sub5q", "sub15", "sub15q"] and P.POINT_TWD == 3.9
+    assert pv["rows"][0]["twd"] == 700 and [r["id"] for r in pv["rows"]] == ["payg", "sub3", "sub5", "sub15"] and P.POINT_TWD == 3.9
     assert c.get("/api/admin/pricing?point_twd=0.5").status_code == 400
     try:
         r = c.put("/api/admin/pricing", json={"point_twd": 5}).json()
