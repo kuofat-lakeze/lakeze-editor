@@ -89,7 +89,7 @@ export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false
       <span className="dz-icon"><FilmIcon /></span>
       <span className="dz-text">
         <b>{disabled ? '上傳中…' : count ? `再加素材（已 ${count} 個）` : drag ? '放開就上傳' : '選影片或照片'}</b>
-        <span className="dz-kinds" aria-label="影片、照片、可多選">🎞 影片 · 📷 照片 · 可多選</span>
+        <span className="dz-kinds" aria-label="影片、照片、可多選">🎞 影片 · 📷 照片 · 可多選<em className="dz-many">超過 {MAX_FILES} 個 → 貼雲端連結</em></span>
         {MOBILE_DZ && !disabled && !count && <span className="dz-ios"><CloudDl small /><span>iCloud 影片每支約等 {CLOUD_SECS_PER_VIDEO} 秒</span></span>}
       </span>
       <span className="dz-cta">選擇</span>

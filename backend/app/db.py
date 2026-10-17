@@ -61,8 +61,8 @@ class User(Base):
     provider_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # 介面模式: "easy" (輕鬆模式: conclusions first, few decisions) or "pro" (導演模式: everything).
-    # New accounts start easy; accounts from before the mode existed keep what they had (the column default).
-    ui_mode: Mapped[str] = mapped_column(String(10), default="easy")
+    # Everyone starts in 導演模式; 輕鬆模式 is opt-in from the sidebar.
+    ui_mode: Mapped[str] = mapped_column(String(10), default="pro")
     # CRM: free-form tags ("vip,民宿,宜蘭") and the last authenticated request (refreshed every few minutes).
     tags: Mapped[str] = mapped_column(String(200), default="")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

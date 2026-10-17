@@ -468,7 +468,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     api.clientLog('files_selected', { n: list.length, files: list.map(f => ({ name: f.name, size: f.size, type: f.type })) })
     if (!list.length) return
     setErr('')
-    if (list.length > MAX_FILES) { setErr(`一次最多上傳 ${MAX_FILES} 個，這次只會傳前 ${MAX_FILES} 個，其餘請再選一次。`); list.splice(MAX_FILES) }
+    if (list.length > MAX_FILES) { setErr(`素材超過 ${MAX_FILES} 個：建議放進雲端資料夾（Google 雲端、Dropbox、iCloud），把分享連結貼在下面就好，不用一個個傳。這次先傳前 ${MAX_FILES} 個。`); list.splice(MAX_FILES) }
     const ups: Up[] = list.map(f => ({ id: Math.random().toString(36).slice(2, 10), file: f, name: f.name || 'clip.mp4', size: f.size, loaded: 0,
       status: f.size > MAX_FILE_BYTES ? 'err' : 'wait', error: f.size > MAX_FILE_BYTES ? `超過 1 GB 上限（${fmtMB(f.size)}），請先壓縮，或放到 Google Drive 貼連結` : undefined }))
     setUploads(us => [...us, ...ups])
@@ -590,12 +590,12 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
         {stage === 'start' && (
           <div className="ob-wiz">
             <div className="ob-prog">
-              {(easy ? [0, 2] : [0, 1, 2]).map((si, i) => (
-                <a key={si} className={`ob-pn ${si === obStep ? 'on' : ''} ${obDone[si] ? 'done' : ''}`} onClick={() => si <= obStep || obDone[si - 1] || (easy && hasFootage) ? goStep(si) : null}>
-                  <i>{obDone[si] && si !== obStep ? '✓' : i + 1}</i><span>{easy && si === 2 ? '說賣點' : OB_STEPS[si]}</span>
+              {OB_STEPS.map((t, i) => (
+                <a key={t} className={`ob-pn ${i === obStep ? 'on' : ''} ${obDone[i] ? 'done' : ''}`} onClick={() => i <= obStep || obDone[i - 1] ? goStep(i) : null}>
+                  <i>{obDone[i] && i !== obStep ? '✓' : i + 1}</i><span>{easy && i === 1 ? '剪輯師先看' : easy && i === 2 ? '挑重點' : t}</span>
                 </a>
               ))}
-              <span className="ob-count muted small">第 {easy ? (obStep === 0 ? 1 : 2) : obStep + 1} 步，共 {easy ? 2 : 3} 步 · 註冊送的 110 點夠做第一支</span>
+              <span className="ob-count muted small">第 {obStep + 1} 步，共 3 步 · 註冊送的 110 點夠做第一支</span>
             </div>
 
             <div className="ob-main">
@@ -623,7 +623,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                     {link && drive.state === 'idle' && <div className="lc-msg">🔓 要 https:// 開頭，並開放「知道連結的人可檢視」</div>}
                     <div className="ob-nav">
                       <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : linkOk ? `${drive.info?.label}連結就緒` : uploading ? '上傳中…' : drive.state === 'checking' ? '讀取連結中…' : '還沒有素材'}</span>
-                      <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading} onClick={() => { if (easy) { setSkipAn(true); goStep(2) } else goStep(1) }}>{easy ? '下一步 →' : '下一步：解析素材 →'}</button>
+                      <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading} onClick={() => { goStep(1); if (easy && !analysis) setTimeout(runAnalyze, 50) }}>{easy ? `讓剪輯師先看一遍 →` : '下一步：解析素材 →'}</button>
                     </div>
                   </>
                 )}
@@ -670,7 +670,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                 {obStep === 1 && analysis && (
                   <>
                     <h3>剪輯師看完了：{analysis.summary || `${analysis.n_clips} 個素材`}</h3>
-                    <p className="muted">覺得可以就直接下一步。想調：點掉不要的賣點，或點一段分鏡標重點、改旁白、拿掉。</p>
+                    <p className="muted">{easy ? '這些是剪輯師看到的重點。不想講的點掉，覺得可以就按下一步。' : '覺得可以就直接下一步。想調：點掉不要的賣點，或點一段分鏡標重點、改旁白、拿掉。'}</p>
                     <div className="an-sec">
                       <div className="an-h"><b>賣點</b><span className="muted small">留 {pickedPoints.length} 個</span></div>
                       <div className="an-chips">
@@ -763,8 +763,8 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                 )}
                 {obStep === 2 && (
                   <>
-                    <h3>{easy ? '一句話說這支要賣什麼' : '最後：賣點、風格、長度、聲音'}</h3>
-                    <p className="muted">{easy ? '例如「宜蘭海邊包棟，25 米泳池，平日每人 1,500」。用說的也可以，其他剪輯師會幫你決定。' : analysis ? '賣點已經幫你填好，想改就改；加上價格、店名、語氣更好。' : '地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。'}</p>
+                    <h3>{easy ? '確認重點，選個聲音' : '最後：賣點、風格、長度、聲音'}</h3>
+                    <p className="muted">{easy ? (analysis ? '重點已經幫你填好了，補個價格更好。用說的也可以。' : '一句話說這支要賣什麼，例如「宜蘭海邊包棟，25 米泳池，平日每人 1,500」。') : analysis ? '賣點已經幫你填好，想改就改；加上價格、店名、語氣更好。' : '地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。'}</p>
                     <div className={`spot ${!text.trim() ? 'on' : ''}`}>
                       {!text.trim() && <span className="coach">在這裡打字</span>}
                       <textarea rows={4} value={text} onChange={e => setText(e.target.value)} autoFocus={!text}
@@ -777,7 +777,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                       {['地點：', '價格：平日每人 NT$', '店名：', '語氣：輕鬆活潑'].map(c => (
                         <a key={c} className="chipbtn" onClick={() => setText(t => (t ? t.replace(/\s*$/, '\n') : '') + c)}>{c}</a>))}
                     </div>
-                    {easy && <a className="ob-more-t" onClick={() => setAdv(a => !a)}>{adv ? '收起選項 ▴' : <>更多選項 ▾<small>目前：{(STYLES.find(x => x.id === style) ?? STYLES[0]).name} · {(LENGTHS.find(l => l.id === length) ?? LENGTHS[1]).secs} · {voice === NO_VOICE ? '不配音' : voices.find(v => v.voice_id === voice)?.name ?? '…'}</small></>}</a>}
+                    {easy && <a className="ob-more-t" onClick={() => setAdv(a => !a)}>{adv ? '收起風格與長度 ▴' : <>風格與長度 ▾<small>目前：{(STYLES.find(x => x.id === style) ?? STYLES[0]).name} · {(LENGTHS.find(l => l.id === length) ?? LENGTHS[1]).secs}</small></>}</a>}
                     <div className={`ob-opts ${easy && !adv ? 'hide' : ''}`}>
                     <div className="muted small ob-sub">風格</div>
                     <div className="styles">
@@ -807,6 +807,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                           <div className="lendesc small"><b>{cur.name}{cur.tag ? '（預設）' : ''}</b>{cur.desc}</div>
                         </div>)
                     })()}
+                    </div>
                     <div className="muted small ob-sub">旁白聲音</div>
                     <div className="voice-row">
                       {voices.map(v => (
@@ -830,9 +831,8 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                       </div>
                       {voice === null && <span className="muted small">載入聲音中…</span>}
                     </div>
-                    </div>
                     <div className="ob-nav">
-                      <a className="small" onClick={() => goStep(easy ? 0 : 1)}>← 上一步</a>
+                      <a className="small" onClick={() => goStep(1)}>← 上一步</a>
                       <div className={`spot inline ${canStart ? 'on' : ''}`}>
                         {canStart && <span className="coach">按下去就開始</span>}
                         <button className={`btn primary start ${canStart ? 'glow' : ''}`} disabled={!canStart} onClick={start}>
