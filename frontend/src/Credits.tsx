@@ -69,7 +69,6 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   const savedTwd = Math.max(0, doneVideos * S.video_twd + revRounds * S.revision_twd - Math.round(sum.used * p.point_twd))
   const savedHours = Math.max(0, doneVideos * (S.video_min - S.app_video_min) + revRounds * (S.revision_min - S.app_revision_min)) / 60
   const month = sum.daily.reduce((a, d) => a + d.used + d.waived, 0)
-  const monthPaid = sum.daily.reduce((a, d) => a + d.used, 0)
   const groupByDay = (rows: Ledger[]) => {
     const groups: { day: string; items: Ledger[] }[] = []
     for (const l of rows) {
@@ -156,28 +155,19 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                 <div className="eyebrow">目前餘額</div>
                 <div className="hero-num">{sum.balance}<span className="unit">點</span></div>
                 <div className="hero-sub">
-                  {low ? '快用完了。' : ''}餘額約可付費修改 <b>{revisionsLeft}</b> 輪，或做 <b>{videosLeft.toFixed(1)}</b> 支新影片（每支約 {twd(p.first_video_twd)}）
+                  {low ? '快用完了。' : ''}約可再做 <b>{Math.floor(videosLeft)}</b> 支影片{revisionsLeft > 0 && videosLeft < 1 ? <>，或改 <b>{revisionsLeft}</b> 輪</> : null}
                 </div>
               </div>
               <div className="hero-side">
-                <button className="btn primary" onClick={() => setTab('plans')}>儲值</button>
+                <button className="btn primary" onClick={() => setTab(sub ? 'buy' : 'plans')}>{sub ? `用${sub.label}價儲值` : '儲值'}</button>
                 <a className="small" onClick={() => setTab('plans')}>看方案</a>
               </div>
-              {sub && (
-                <div className="hero-free sub">
-                  訂閱中：<b>{sub.label}</b>，本期含 {sub.points} 點（約 {sub.videos} 支影片）與 {sub.storage_gb} GB 成品空間
-                  {sub.renews_at && <>，{sub.renews_at.slice(5, 10).replace('-', '/')} 續約</>}。沒用完的點數會一直累積，不會重置；訂閱期間加買點數一律 1 點 {twd(myPlan?.point_twd ?? 0)}。
-                </div>
-              )}
-              {sum.free_project && sum.free_project.in_free && (
-                <div className="hero-free">
-                  背包客方案進行中：「{sum.free_project.name}」{sum.free_project.free_revisions_left === null ? '第一版與封面免費' : `還有 ${sum.free_project.free_revisions_left} 輪免費修改`}，不會動到上面的餘額。
-                </div>
-              )}
               <div className="hero-foot">
-                <span>最近 30 天用了 <b>{month}</b> 點</span>
-                <span className="dot-sep" />
-                <span>其中扣點 <b>{monthPaid}</b>、免費額度 <b>{month - monthPaid}</b></span>
+                {sub ? <>
+                  <span>每月 <b>{sub.points}</b> 點{sub.renews_at && <> · {sub.renews_at.slice(5, 10).replace('-', '/')} 續約</>}</span>
+                  <span className="dot-sep" /><span>點數累積不歸零</span>
+                </> : <span>最近 30 天用了 <b>{month}</b> 點</span>}
+                {sum.free_project && sum.free_project.in_free && <><span className="dot-sep" /><span>「{sum.free_project.name}」還有 <b>{sum.free_project.free_revisions_left ?? '免費'}</b> 輪免費修改</span></>}
               </div>
             </section>
 
@@ -189,7 +179,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                 <div className="hl"><span>大約省下</span><b>{twd(savedTwd)}</b></div>
                 <div className="hl"><span>大約省下</span><b>{savedHours < 10 ? savedHours.toFixed(1) : Math.round(savedHours)}<small> 小時</small></b></div>
               </div>
-              <div className="muted small wins-fine">以外包剪一支約 {twd(S.video_twd)}、改一輪 {twd(S.revision_twd)}，自己剪一支約 {S.video_min / 60} 小時、改一輪 {S.revision_min} 分鐘估算，已扣掉你用掉的點數。</div>
+              <div className="muted small wins-fine">以市場平均一支 {twd(S.video_twd)}、自己剪一支約 {S.video_min / 60} 小時估算，已扣掉你花的點數。</div>
             </section>
 
             <section className="card chart">
@@ -316,15 +306,28 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
             <section className="pl-head"><h3>選一個方案</h3><span className="muted small">一支影片（含封面、2 輪修改）＝ 100 點</span></section>
             <div className="pl-free">✓ 包月隨時可取消，不綁約</div>
             <section className="pl-grid four">
-              <div className="pl card payg">
-                <div className="pl-top"><b className="pl-name">單次購買</b></div>
-                <div className="pl-who">偶爾剪一支</div>
-                <div className="pl-label">平均一支</div>
-                <div className="pl-price">{twd(single)}</div>
-                <div className="pl-pt"><b>1 點 {twd(p.point_twd)}</b></div>
-                <ul className="pl-list"><li>用多少買多少</li><li>點數不過期</li></ul>
-                <button className="btn block" onClick={() => setTab('buy')}>單次儲值</button>
-              </div>
+              {myPlan ? (
+                <div className="pl card payg member">
+                  <div className="pl-ribbon mem">你的{myPlan.label}價</div>
+                  <div className="pl-top"><b className="pl-name">加購點數</b></div>
+                  <div className="pl-who">訂閱期間隨時加</div>
+                  <div className="pl-label">1 點</div>
+                  <div className="pl-price">{twd(myPlan.point_twd)}<s>{twd(p.point_twd)}</s></div>
+                  <div className="pl-pt"><b>省 {myPlan.member_discount_pct}%</b><span>比單次購買</span></div>
+                  <ul className="pl-list"><li>買多少都是這個價</li><li>點數累積不歸零</li></ul>
+                  <button className="btn block primary" onClick={() => setTab('buy')}>加購點數</button>
+                </div>
+              ) : (
+                <div className="pl card payg">
+                  <div className="pl-top"><b className="pl-name">單次購買</b></div>
+                  <div className="pl-who">偶爾剪一支</div>
+                  <div className="pl-label">平均一支</div>
+                  <div className="pl-price">{twd(single)}</div>
+                  <div className="pl-pt"><b>1 點 {twd(p.point_twd)}</b></div>
+                  <ul className="pl-list"><li>用多少買多少</li><li>點數不過期</li></ul>
+                  <button className="btn block" onClick={() => setTab('buy')}>單次儲值</button>
+                </div>
+              )}
               {p.subscriptions.map(s => {
                 const isCur = sub?.id === s.id
                 const best = s.id === 'sub5'
@@ -391,7 +394,15 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
 
         {tab === 'buy' && (
           <>
-            <div className="buy-back"><a onClick={() => setTab('plans')}>← 回到方案</a><b>單次儲值點數</b><span className="muted small">常剪片的話，包月更划算</span></div>
+            <div className="buy-back"><a onClick={() => setTab('plans')}>← 回到方案</a><b>{myPlan ? '加購點數' : '單次儲值點數'}</b>{!myPlan && <span className="muted small">常剪片的話，包月更划算</span>}</div>
+            {myPlan && (
+              <div className="mem-bar">
+                <span className="mem-tag">{myPlan.label}價</span>
+                <span>1 點 <b>{twd(myPlan.point_twd)}</b> <s>{twd(p.point_twd)}</s></span>
+                <span className="mem-off">省 {myPlan.member_discount_pct}%</span>
+                <span className="muted small">訂閱期間買多少都是這個價</span>
+              </div>
+            )}
             {needPoints > 0 && (
               <section className="card need-banner">
                 <div><b>剛剛那一步差 {needPoints} 點</b><div className="muted small">目前餘額 {sum.balance} 點。儲值入帳後回到專案輸入「繼續」，剪輯師會接著做。</div></div>
@@ -400,7 +411,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
             )}
             {/* 自訂儲值：輸入點數，最少 MIN 點 */}
             <section className="card tu">
-              <div className="tu-head"><b>要儲值幾點？</b><span className="muted small">最少 {MIN} 點，輸入多少都可以</span></div>
+              <div className="tu-head"><b>要{myPlan ? '加購' : '儲值'}幾點？</b><span className="muted small">最少 {MIN} 點，輸入多少都可以</span></div>
               <div className="tu-row">
                 <label className={`tu-input ${amt && !amtOk ? 'bad' : ''}`}>
                   <input inputMode="numeric" pattern="[0-9]*" value={amt} aria-label="儲值點數" onChange={e => setAmt(e.target.value.replace(/\D/g, '').slice(0, 5))} />
@@ -410,14 +421,17 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
               </div>
               {amt && !amtOk && <div className="error small">{amtN < MIN ? `最少 ${MIN} 點` : `一次最多 ${MAX.toLocaleString()} 點`}</div>}
               <div className="tu-out">
-                <div><span>1 點</span><b>{twd(cur.rate)}</b>{myPlan && <small className="mem">{myPlan.label}價</small>}</div>
+                <div><span>1 點</span><b>{twd(cur.rate)}{myPlan && <s>{twd(p.point_twd)}</s>}</b>{myPlan && <small className="mem">{myPlan.label}價 · 省 {myPlan.member_discount_pct}%</small>}</div>
                 <div><span>實得</span><b>{cur.total.toLocaleString()} 點</b>{cur.bonus > 0 && <small className="ok">含送 {cur.bonus}</small>}</div>
                 <div><span>約可剪</span><b>{(cur.total / (FIRST + 2 * REV)).toFixed(1)} 支</b></div>
               </div>
-              <button className="btn primary block lg" disabled={!amtOk} onClick={() => buy(`pts:${amtN}`)}>購買 {twd(cur.twd)}</button>
+              <button className="btn primary block lg" disabled={!amtOk} onClick={() => buy(`pts:${amtN}`)}>
+                {myPlan ? <>加購 {twd(cur.twd)}<s>{twd(Math.floor(cur.n * p.point_twd + 0.5))}</s></> : <>購買 {twd(cur.twd)}</>}
+              </button>
+              {myPlan && amtOk && <div className="tu-save">比單次購買省 {twd(Math.floor(cur.n * p.point_twd + 0.5) - cur.twd)}</div>}
               <div className="muted small tu-fine">
                 {(p.topup_bonus ?? []).length > 0 && <>{p.topup_bonus[0].from} 點起加送 {p.topup_bonus[0].pct}%，最高送 {p.topup_bonus[p.topup_bonus.length - 1].pct}%。</>}
-                {myPlan ? `訂閱${myPlan.label}期間，儲值一律 1 點 ${twd(myPlan.point_twd)}。` : `包月的話 1 點最低 ${twd(Math.min(...p.subscriptions.map(x => x.point_twd)))}。`}點數不過期。
+                {myPlan ? '' : `包月的話 1 點最低 ${twd(Math.min(...p.subscriptions.map(x => x.point_twd)))}。`}點數不過期。
               </div>
             </section>
             <section className="card calc">
