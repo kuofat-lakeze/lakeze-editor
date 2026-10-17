@@ -612,7 +612,30 @@ async def credits_summary(user: User = CurrentUser):
 
 
 # ---- 付款流程: order → pay (card / transfer) → result ---------------------------------------------------
+TOPUP_PREFIX = "pts:"   # 自訂儲值: "pts:<points>"
+
+
+def _topup_points(item: str) -> int | None:
+    if not item.startswith(TOPUP_PREFIX):
+        return None
+    try:
+        n = int(item[len(TOPUP_PREFIX):])
+    except ValueError:
+        raise HTTPException(400, "點數要是整數")
+    if n < pricing.MIN_TOPUP_POINTS:
+        raise HTTPException(400, f"最少儲值 {pricing.MIN_TOPUP_POINTS} 點")
+    if n > pricing.MAX_TOPUP_POINTS:
+        raise HTTPException(400, f"一次最多儲值 {pricing.MAX_TOPUP_POINTS:,} 點")
+    return n
+
+
 def _item(item: str, user: User) -> dict:
+    n = _topup_points(item)
+    if n is not None:
+        t = pricing.topup(n, user.subscription or "")
+        plan = f"（{pricing.SUBSCRIPTIONS[t['member']]['label']}價 1 點 NT${t['point_twd']:g}）" if t["member"] else ""
+        return {"kind": "pack", "label": f"{n:,} 點" + (f" + 送 {t['bonus']}" if t["bonus"] else "") + plan,
+                "points": t["total"], "amount_twd": t["twd"], "list_twd": t["list_twd"], "member": t["member"]}
     if item in pricing.PACKS:
         pk = pricing.PACKS[item]
         member = user.subscription if user.subscription in pk.get("member_bonus", {}) else ""
@@ -623,6 +646,31 @@ def _item(item: str, user: User) -> dict:
         sb = pricing.SUBSCRIPTIONS[item]
         return {"kind": "sub", "label": f"{sb['label']}（{'季繳' if sb.get('billing') == 'quarter' else '月繳'}）", "points": sb["points"], "amount_twd": sb["twd"], "list_twd": sb["payg_twd"], "member": ""}
     raise HTTPException(404, "沒有這個方案")
+
+
+def _ls_custom_ready() -> bool:
+    return bool(config.LS_API_KEY and config.LS_STORE_ID and config.LS_TOPUP_VARIANT)
+
+
+async def _ls_custom_checkout(user: User, order_id: str, amount_twd: int, label: str) -> str | None:
+    """A one-off Lemon Squeezy checkout for a custom top-up: the points variant at a custom price."""
+    import urllib.request
+    back = f"{config.PUBLIC_URL}/pay/result?order={order_id}"
+    body = {"data": {"type": "checkouts", "attributes": {
+        "custom_price": amount_twd * 100,
+        "product_options": {"name": f"旅剪點數 {label}", "redirect_url": back},
+        "checkout_data": {"email": user.email, "custom": {"user_id": user.id, "order_id": order_id}}},
+        "relationships": {"store": {"data": {"type": "stores", "id": str(config.LS_STORE_ID)}},
+                          "variant": {"data": {"type": "variants", "id": str(config.LS_TOPUP_VARIANT)}}}}}
+    req = urllib.request.Request("https://api.lemonsqueezy.com/v1/checkouts", data=json.dumps(body).encode(), method="POST",
+                                 headers={"Authorization": f"Bearer {config.LS_API_KEY}", "Accept": "application/vnd.api+json",
+                                          "Content-Type": "application/vnd.api+json"})
+    try:
+        r = await asyncio.to_thread(lambda: json.loads(urllib.request.urlopen(req, timeout=20).read()))
+        return r["data"]["attributes"]["url"]
+    except Exception as e:   # never log the request: it carries the key
+        log.warning("lemonsqueezy custom checkout failed: %s", type(e).__name__)
+        return None
 
 
 def _card_url(item: str, user: User, order_id: str) -> str | None:
@@ -643,9 +691,10 @@ def _order_dict(o: Order) -> dict:
 
 
 @app.get("/api/pay/methods")
-async def pay_methods(user: User = CurrentUser):
+async def pay_methods(item: str = "", user: User = CurrentUser):
     """Which ways to pay are open right now (the confirm page only shows these)."""
-    return {"card": bool(config.CHECKOUT_URLS), "transfer": bool(config.BANK_TRANSFER), "test": _is_test(user),
+    card = _ls_custom_ready() if item.startswith(TOPUP_PREFIX) else bool(config.CHECKOUT_URLS)
+    return {"card": card, "transfer": bool(config.BANK_TRANSFER), "test": _is_test(user),
             "note": config.TOPUP_NOTE}
 
 
@@ -673,7 +722,8 @@ async def _fulfil(o: Order, meta: dict | None = None) -> None:
 async def create_order(body: OrderBody, user: User = CurrentUser):
     it = _item(body.item, user)
     method = "test" if _is_test(user) else body.method
-    if method == "card" and not config.CHECKOUT_URLS:
+    custom = body.item.startswith(TOPUP_PREFIX)
+    if method == "card" and not (_ls_custom_ready() if custom else config.CHECKOUT_URLS):
         raise HTTPException(400, "信用卡付款尚未開通，請改用其他方式")
     if method == "transfer" and not config.BANK_TRANSFER:
         raise HTTPException(400, "銀行轉帳尚未開通")
@@ -688,7 +738,7 @@ async def create_order(body: OrderBody, user: User = CurrentUser):
         await _fulfil(o, {"test": True})
         o.status = "paid"
     elif method == "card":
-        url = _card_url(body.item, user, o.id)
+        url = await _ls_custom_checkout(user, o.id, o.amount_twd, o.label) if custom else _card_url(body.item, user, o.id)
         if not url:
             raise HTTPException(400, "這個方案還不能刷卡，請改用其他方式")
         nxt = {"redirect": url}
@@ -792,6 +842,18 @@ async def lemonsqueezy_webhook(request: Request):
     variant = str((attrs.get("first_order_item") or {}).get("variant_id") or (attrs.get("first_subscription_item") or {}).get("variant_id")
                   or attrs.get("variant_id"))
     plan_id = config.LS_VARIANTS.get(variant) or ""
+    our = (ev["meta"].get("custom_data") or {}).get("order_id")
+    if our and user_id:   # started from our payment page (any variant, incl. custom top-ups): fulfil that order once
+        async with Session() as s:
+            o = await s.get(Order, our)
+        if o and o.user_id == user_id:
+            if event == "order_created" or o.status != "paid":
+                await _fulfil(o, {"order_id": f"{event}:{order_id}", "total": attrs.get("total"), "currency": attrs.get("currency")})
+                return {"ok": True, "order": our}
+            paid_at = o.paid_at if o.paid_at is None or o.paid_at.tzinfo else o.paid_at.replace(tzinfo=timezone.utc)
+            if o.kind != "sub" or (paid_at and datetime.now(timezone.utc) - paid_at < timedelta(days=2)):
+                return {"ok": True, "order": our, "duplicate": True}   # the first invoice of the order just fulfilled
+            # a later invoice of the subscription: falls through to the renewal below
     member = ""   # which plan's rate a member pack was bought at
     for suffix, sub_id in (("m2", "sub15"), ("m", "sub5")):
         if plan_id.endswith(suffix) and plan_id[: -len(suffix)] in pricing.PACKS:
@@ -805,13 +867,6 @@ async def lemonsqueezy_webhook(request: Request):
     if dup:
         return {"duplicate": True}
     meta = {"order_id": f"{event}:{order_id}", "total": attrs.get("total"), "currency": attrs.get("currency")}
-    our = (ev["meta"].get("custom_data") or {}).get("order_id")
-    if our:   # started from our payment page: fulfil that order (credits once, marks it paid)
-        async with Session() as s:
-            o = await s.get(Order, our)
-        if o and o.user_id == user_id:
-            await _fulfil(o, meta)
-            return {"ok": True, "order": our}
     if plan_id in pricing.SUBSCRIPTIONS:
         await activate_subscription(user_id, plan_id, paid_twd=pricing.SUBSCRIPTIONS[plan_id]["twd"], meta=meta)
         return {"ok": True, "subscription": plan_id}

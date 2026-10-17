@@ -261,7 +261,31 @@ def public_pricing() -> dict:
         "tiers": {"free": TIERS_FREE, "payg": TIERS_PAYG},
         "free_storage_gb": FREE_STORAGE_GB, "free_retention_days": FREE_RETENTION_DAYS, "free_revision_turns": FREE_REVISION_TURNS, "trial_voice_seconds": TRIAL_VOICE_SECONDS,
         "storage_plans": [{"id": k, **v, "twd": int(round(v["points"] * POINT_TWD))} for k, v in STORAGE_PLANS.items()],
+        "min_topup_points": MIN_TOPUP_POINTS, "max_topup_points": MAX_TOPUP_POINTS,
+        "topup_bonus": [{"from": pk["points"], "rate": pk["bonus"] / pk["points"], "pct": round(pk["bonus"] / pk["points"] * 100, 1)} for pk in PACKS.values() if pk.get("bonus")],
     }
+
+
+MIN_TOPUP_POINTS = 20       # 自訂儲值: any whole number of points from here up
+MAX_TOPUP_POINTS = 50000
+
+
+def topup_bonus(points: int) -> int:
+    """Bonus for a custom top-up: the bonus rate of the largest pack it reaches (300 點起加送)."""
+    rate = 0.0
+    for pk in PACKS.values():
+        if pk.get("bonus") and points >= pk["points"]:
+            rate = max(rate, pk["bonus"] / pk["points"])
+    return int(points * rate)
+
+
+def topup(points: int, subscription: str = "") -> dict:
+    """A custom top-up of `points`: priced at the buyer's plan rate (1 點 NT$ of their plan) or the
+    single-purchase rate, plus the volume bonus."""
+    rate = SUBSCRIPTIONS[subscription]["point_twd"] if subscription in SUBSCRIPTIONS else POINT_TWD
+    bonus = topup_bonus(points)
+    return {"points": points, "bonus": bonus, "total": points + bonus, "point_twd": rate,
+            "twd": int(points * rate + 0.5), "list_twd": int(points * POINT_TWD + 0.5), "member": subscription if subscription in SUBSCRIPTIONS else ""}
 
 
 def pack_points(pack: dict, subscription: str = "") -> int:

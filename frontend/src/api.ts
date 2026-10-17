@@ -61,7 +61,8 @@ export type PricePreview = { measured?: MeasuredCost; cost_source?: 'measured' |
   rows: PriceRow[]; current: PriceRow[]; packs: { id: string; points: number; twd: number }[] }
 export type Pricing = { point_twd: number; menu: { item: string; points: number }[]; free_revision_turns: number; packs: Pack[]; provider_configured: boolean; note: string
   first_video_points: number; revision_points: number; first_video_twd: number; revision_twd: number; subscriptions: Subscription[]; storage_plans: StoragePlan[]
-  tiers: { free: Tier; payg: Tier }; free_storage_gb: number; free_retention_days: number; member_point_twd: number; member_discount_pct: number; trial_voice_seconds: number; signup_points: number }
+  tiers: { free: Tier; payg: Tier }; free_storage_gb: number; free_retention_days: number; member_point_twd: number; member_discount_pct: number; trial_voice_seconds: number; signup_points: number
+  min_topup_points: number; max_topup_points: number; topup_bonus: { from: number; rate: number; pct: number }[] }
 export type MyVoice = { voice_id: string; name: string }
 export type Stage = 'disabled' | 'sub' | 'paid' | 'churn' | 'trial_done' | 'trial' | 'new'
 export type AdminUser = { id: string; email: string; name?: string | null; provider: string; created_at: string; is_admin: boolean; disabled: boolean; note: string; tags: string[]
@@ -142,7 +143,7 @@ export const api = {
   shareThread: (token: string) => fetch(`/api/s/${token}/comments`).then(j<Thread>),
   replyComment: (id: string, text: string) => post(`/api/projects/${id}/comments`, { text }).then(j<ClientComment>),
   gallery: () => fetch('/api/gallery').then(j<GalleryItem[]>),
-  payMethods: () => fetch('/api/pay/methods').then(j<PayMethods>),
+  payMethods: (item = '') => fetch(`/api/pay/methods?item=${encodeURIComponent(item)}`).then(j<PayMethods>),
   createOrder: (item: string, method: string) => post('/api/orders', { item, method }).then(j<{ order: Order; redirect?: string; bank?: Record<string, string>; amount_twd?: number }>),
   order: (id: string) => fetch(`/api/orders/${id}`).then(j<{ order: Order; balance: number; bank: Record<string, string> | null }>),
   orders: () => fetch('/api/orders').then(j<Order[]>),

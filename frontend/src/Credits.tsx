@@ -10,38 +10,6 @@ const TABS: { id: CreditsTab; label: string }[] = [
   { id: 'plans', label: '方案' }, { id: 'overview', label: '總覽' }, { id: 'projects', label: '依專案' }, { id: 'ledger', label: '明細' }]
 const twd = (n: number) => `NT$${n.toLocaleString()}`
 
-type PackLike = { id: string; points: number }
-/** The cheapest set of packs that covers `need` points (fewest packs on a tie). Small knapsack in pack-size steps. */
-const got = (k: PackLike & { total?: number }) => k.total ?? k.points   // points received: paid + bonus
-function cheapestCombo<T extends PackLike & { total?: number }>(packs: T[], need: number, price: (k: T) => number): T[] {
-  if (!packs.length || need <= 0) return packs.slice(0, 1)
-  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a)
-  const step = packs.reduce((g, k) => gcd(g, got(k)), got(packs[0]))
-  const top = Math.ceil(need / step) + Math.max(...packs.map(got)) / step
-  const best: ({ cost: number; n: number; from: number; pack: T } | null)[] = Array(top + 1).fill(null)
-  best[0] = { cost: 0, n: 0, from: -1, pack: packs[0] }
-  for (let i = 1; i <= top; i++) for (const k of packs) {
-    const j = i - got(k) / step
-    const b = j >= 0 ? best[j] : null
-    if (!b) continue
-    const c = { cost: b.cost + price(k), n: b.n + 1, from: j, pack: k }
-    const cur = best[i]
-    if (!cur || c.cost < cur.cost || (c.cost === cur.cost && c.n < cur.n)) best[i] = c
-  }
-  let at = -1
-  for (let i = Math.ceil(need / step); i <= top; i++) {
-    const b = best[i]
-    if (b && (at < 0 || b.cost < best[at]!.cost || (b.cost === best[at]!.cost && b.n < best[at]!.n))) at = i
-  }
-  const out: T[] = []
-  for (let i = at; i > 0; i = best[i]!.from) out.push(best[i]!.pack)
-  return out.sort((a, b) => b.points - a.points)
-}
-const groupPacks = <T extends PackLike>(c: T[]) => {
-  const m = new Map<string, [T, number]>()
-  for (const k of c) m.set(k.id, [k, (m.get(k.id)?.[1] ?? 0) + 1])
-  return [...m.values()]
-}
 export const fmtGB = (gb: number) => gb < 1 ? `${Math.round(gb * 1000)} MB` : `${gb} GB`
 
 const dayLabel = (iso: string) => {
@@ -62,6 +30,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   const [hover, setHover] = useState<number | null>(null)
   const [nVideos, setNVideos] = useState(5)
   const [nRev, setNRev] = useState(1)
+  const [amt, setAmt] = useState(String(needPoints > 0 ? Math.max(20, needPoints) : 100))   // 自訂儲值點數
   const reload = () => { api.creditsSummary().then(setSum); api.credits().then(r => setLedger(r.ledger)); api.me().then(setMe) }
   useEffect(() => { reload(); api.pricing().then(setP) }, [])
   useEffect(() => {
@@ -100,32 +69,38 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   const single = p.first_video_twd + 2 * p.revision_twd   // one video with cover and 2 revision rounds, in NT$
   // top-up calculator
   const need = nVideos * FIRST + nVideos * nRev * REV
-  const member = !!sub                                   // subscribers top up at their plan's price per point
   const myPlan = sub ? p.subscriptions.find(x => x.id === sub.id) : undefined
-  // One price for everyone; members get extra points on every pack (專業旅人 +15 %, 超級玩家 +25 %).
-  const memberBonus = (k: typeof p.packs[number], plan = sub?.id) => (plan ? k.member_bonus?.[plan] ?? 0 : 0)
-  const gotPts = (k: typeof p.packs[number], plan = sub?.id) => (k.total ?? k.points) + memberBonus(k, plan)
-  const packPrice = (k: typeof p.packs[number]) => k.twd
-  const combo = cheapestCombo(p.packs.map(k => ({ ...k, total: gotPts(k) })), needPoints > 0 ? needPoints : need, packPrice)
-  const bestPack = combo.reduce((a, k) => (k.points > a.points ? k : a), combo[0] ?? p.packs[0])
+  // 自訂儲值: any whole number of points from MIN; 1 點 at the plan's price while subscribed, 300 點起加送.
+  const MIN = p.min_topup_points ?? 20, MAX = p.max_topup_points ?? 50000
+  const rateOf = (plan?: string) => (plan ? p.subscriptions.find(x => x.id === plan)?.point_twd : undefined) ?? p.point_twd
+  const bonusOf = (n: number) => Math.floor(n * (p.topup_bonus ?? []).reduce((r, b) => (n >= b.from ? Math.max(r, b.rate) : r), 0) + 1e-9)
+  const topup = (n: number, plan = sub?.id) => { const r = rateOf(plan); const b = bonusOf(n); return { n, bonus: b, total: n + b, rate: r, twd: Math.floor(n * r + 0.5 + 1e-9) } }
+  const topupFor = (want: number, plan = sub?.id) => {   // the smallest top-up that brings in at least `want` points
+    let n = Math.max(MIN, Math.ceil(want / 1.2))
+    while (n + bonusOf(n) < want) n++
+    return topup(n, plan)
+  }
+  const amtN = parseInt(amt || '0', 10)
+  const amtOk = amtN >= MIN && amtN <= MAX
+  const cur = topup(amtOk ? amtN : Math.min(Math.max(amtN, MIN), MAX))
   // 試算比較: a month of `need` points bought single, or on each plan (the plan's points + top-ups at its price).
-  const compare = [{ id: '', label: '單次購買', fee: 0, incl: 0 }, ...p.subscriptions.filter(x => (x.billing ?? 'month') === 'month').map(x => ({ id: x.id, label: x.label, fee: x.twd, incl: x.points }))].map(o => {
+  const compare = [{ id: '', label: '單次購買', fee: 0, incl: 0 }, ...p.subscriptions.map(x => ({ id: x.id, label: x.label, fee: x.twd, incl: x.points }))].map(o => {
     const extra = Math.max(0, need - o.incl)
-    const c = extra > 0 ? cheapestCombo(p.packs.map(k => ({ ...k, total: gotPts(k, o.id || undefined) })), extra, packPrice) : []
-    const cost = o.fee + c.reduce((a, k) => a + k.twd, 0)
-    const pts = o.incl + c.reduce((a, k) => a + gotPts(k, o.id || undefined), 0)
-    return { ...o, cost, pts, rate: Math.round(cost / Math.max(1, pts) * 100) / 100, buy: c }
+    const t = extra > 0 ? topupFor(extra, o.id || '') : null
+    const cost = o.fee + (t?.twd ?? 0)
+    const pts = o.incl + (t?.total ?? 0)
+    return { ...o, cost, pts, rate: Math.round(cost / Math.max(1, pts) * 100) / 100, buy: t }
   })
   const cheapest = compare.reduce((a, o) => (o.cost < a.cost ? o : a), compare[0])
-  const comboLabel = (c: typeof combo) => groupPacks(c).map(([k, n]) => `${n > 1 ? `${n}×` : ''}${k.points.toLocaleString()}`).join(' ＋ ') + ' 點'
+  const sugg = topupFor(needPoints > 0 ? needPoints : need)
 
   return (
     <div className="credits">
       {toast && <div className="buy-toast">{toast}</div>}
       {paying && p && (() => {
-        const pk = p.packs.find(x => x.id === paying); const sb = p.subscriptions.find(x => x.id === paying)
-        const got = pk ? gotPts(pk, me?.subscription?.id) : 0
-        const item = pk ? { id: pk.id, kind: 'pack' as const, title: `${pk.points.toLocaleString()} 點${got > pk.points ? `（實得 ${got.toLocaleString()} 點）` : ''}`, sub: `約可剪 ${Math.max(0, Math.floor(got / (p.first_video_points + 2 * p.revision_points)))} 支（含封面與 2 輪修改）`, points: got, twd: pk.twd, listTwd: undefined }
+        const sb = p.subscriptions.find(x => x.id === paying)
+        const tu = paying.startsWith('pts:') ? topup(parseInt(paying.slice(4), 10)) : null
+        const item = tu ? { id: paying, kind: 'pack' as const, title: `${tu.n.toLocaleString()} 點${tu.bonus ? `（送 ${tu.bonus}，實得 ${tu.total.toLocaleString()} 點）` : ''}`, sub: `1 點 ${twd(tu.rate)}${myPlan ? `・${myPlan.label}價` : ''} · 約可剪 ${(tu.total / (p.first_video_points + 2 * p.revision_points)).toFixed(1)} 支`, points: tu.total, twd: tu.twd, listTwd: myPlan ? Math.floor(tu.n * p.point_twd + 0.5) : undefined }
           : sb ? { id: sb.id, kind: 'sub' as const, title: `${sb.label} · ${sb.billing === 'quarter' ? '季繳' : '月繳'}`, sub: sb.billing === 'quarter' ? `一次 3 個月：${sb.points.toLocaleString()} 點，每月約 ${sb.videos} 支 · ${sb.storage_gb} GB 空間` : `每月 ${sb.points} 點，約 ${sb.videos} 支 · ${sb.storage_gb} GB 空間`, points: sb.points, twd: sb.twd, listTwd: sb.payg_twd } : null
         return item && <PayFlow item={item} onClose={() => { setPaying(null); reload(); onBought?.() }} onPaid={() => { setPaying(null); setToast(`完成！${item.title}已入帳`); setTimeout(() => setToast(''), 5000); reload(); onBought?.() }} />
       })()}
@@ -389,7 +364,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                 <ul className="muted small pl-rules">
                   <li>包月隨時可取消、不綁約，取消後已有的點數照樣保留。</li>
                   <li>訂閱立即生效，每 30 天續約；沒用完的點數（訂閱附的、自己買的）都會一直累積，不會重置。</li>
-                  <li>點數包 300 點起加送。訂閱期間加買點數，一律用該方案的每點價格：{p.subscriptions.map(x => `${x.label} 1 點 ${twd(x.point_twd)}`).join('、')}（付一樣的錢，用多給點數的方式計算）。</li>
+                  <li>自由輸入儲值點數，最少 20 點，300 點起加送。訂閱期間加買點數，一律用該方案的每點價格：{p.subscriptions.map(x => `${x.label} 1 點 ${twd(x.point_twd)}`).join('、')}（付一樣的錢，用多給點數的方式計算）。</li>
                   <li>免費空間的成品保留 {p.free_retention_days} 天後自動移除；加購空間（從點數扣，每 30 天續扣）就一直保存。點數不夠續扣時降回免費空間，從那天起再保留 {p.free_retention_days} 天。</li>
                 </ul>
               </div>
@@ -403,9 +378,31 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
             {needPoints > 0 && (
               <section className="card need-banner">
                 <div><b>剛剛那一步差 {needPoints} 點</b><div className="muted small">目前餘額 {sum.balance} 點。儲值入帳後回到專案輸入「繼續」，剪輯師會接著做。</div></div>
-                <span className="pill">建議 {comboLabel(combo)}</span>
+                <span className="pill">建議 {sugg.n.toLocaleString()} 點</span>
               </section>
             )}
+            {/* 自訂儲值：輸入點數，最少 MIN 點 */}
+            <section className="card tu">
+              <div className="tu-head"><b>要儲值幾點？</b><span className="muted small">最少 {MIN} 點，輸入多少都可以</span></div>
+              <div className="tu-row">
+                <label className={`tu-input ${amt && !amtOk ? 'bad' : ''}`}>
+                  <input inputMode="numeric" pattern="[0-9]*" value={amt} aria-label="儲值點數" onChange={e => setAmt(e.target.value.replace(/\D/g, '').slice(0, 5))} />
+                  <span>點</span>
+                </label>
+                <div className="tu-chips">{[20, 100, 300, 500, 1000].map(n => <a key={n} className={`chipbtn ${amtN === n ? 'on' : ''}`} onClick={() => setAmt(String(n))}>{n}</a>)}</div>
+              </div>
+              {amt && !amtOk && <div className="error small">{amtN < MIN ? `最少 ${MIN} 點` : `一次最多 ${MAX.toLocaleString()} 點`}</div>}
+              <div className="tu-out">
+                <div><span>1 點</span><b>{twd(cur.rate)}</b>{myPlan && <small className="mem">{myPlan.label}價</small>}</div>
+                <div><span>實得</span><b>{cur.total.toLocaleString()} 點</b>{cur.bonus > 0 && <small className="ok">含送 {cur.bonus}</small>}</div>
+                <div><span>約可剪</span><b>{(cur.total / (FIRST + 2 * REV)).toFixed(1)} 支</b></div>
+              </div>
+              <button className="btn primary block lg" disabled={!amtOk} onClick={() => buy(`pts:${amtN}`)}>購買 {twd(cur.twd)}</button>
+              <div className="muted small tu-fine">
+                {(p.topup_bonus ?? []).length > 0 && <>{p.topup_bonus[0].from} 點起加送 {p.topup_bonus[0].pct}%，最高送 {p.topup_bonus[p.topup_bonus.length - 1].pct}%。</>}
+                {myPlan ? `訂閱${myPlan.label}期間，儲值一律 1 點 ${twd(myPlan.point_twd)}。` : `包月的話 1 點最低 ${twd(Math.min(...p.subscriptions.map(x => x.point_twd)))}。`}點數不過期。
+              </div>
+            </section>
             <section className="card calc">
               <div className="calc-head"><b>我想剪幾支？</b><span className="muted small">算給你看要買多少點</span></div>
               <div className="calc-row">
@@ -414,7 +411,8 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
               </div>
               <div className="calc-out">
                 <div><span className="muted small">需要</span><div className="num">{need.toLocaleString()}<span className="unit">點</span></div></div>
-                <div><span className="muted small">建議</span><div className="num small">{comboLabel(combo)}<span className="unit">{twd(combo.reduce((a, k) => a + packPrice(k), 0))}</span></div></div>
+                <div><span className="muted small">建議儲值</span><div className="num small">{sugg.n.toLocaleString()} 點<span className="unit">{twd(sugg.twd)}</span></div></div>
+                <button className="btn small" onClick={() => { setAmt(String(sugg.n)); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>用這個數字</button>
               </div>
               <div className="cmp2">
                 <div className="cmp2-head"><b>一個月剪 {nVideos} 支，哪個划算？</b><span className="muted small">需要 {need.toLocaleString()} 點</span></div>
@@ -423,39 +421,13 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                   return (
                     <div key={o.id || 'payg'} className={`cmp2-row ${o === cheapest ? 'best' : ''}`}>
                       <div className="cmp2-name"><b>{o.label}</b>{o === cheapest && <span className="cmp2-tag">最划算</span>}
-                        <small>{o.id ? `月費 ${twd(o.fee)} 含 ${o.incl.toLocaleString()} 點${o.buy.length ? `，再用${o.label}價加買 ${comboLabel(o.buy)}` : ''}` : `買 ${comboLabel(o.buy)}`}</small></div>
+                        <small>{o.id ? `月費 ${twd(o.fee)} 含 ${o.incl.toLocaleString()} 點${o.buy ? `，再用${o.label}價加買 ${o.buy.n.toLocaleString()} 點` : ''}` : `儲值 ${o.buy?.n.toLocaleString() ?? 0} 點`}</small></div>
                       <div className="cmp2-num"><b>{twd(o.cost)}</b><small>{o.pts.toLocaleString()} 點 · 每點 {twd(o.rate)}</small></div>
                       <div className={`cmp2-save ${save > 0 ? 'pos' : ''}`}>{o.id ? (save > 0 ? `省 ${twd(save)}` : save < 0 ? `多 ${twd(-save)}` : '一樣') : '—'}</div>
                     </div>)
                 })}
                 <div className="muted small">訂閱另含成品空間（{p.subscriptions.map(x => `${x.label} ${x.storage_gb} GB`).join('、')}）。用不完的點數會累積到下個月。</div>
               </div>
-              {member && myPlan && <div className="calc-tip member">你是{myPlan.label}：訂閱期間買點數一律用<b>{myPlan.label}價</b> <b>1 點 {twd(myPlan.point_twd)}</b>（付一樣的錢、點數多 {myPlan.member_bonus_pct}%），已經算進上面的建議組合。</div>}
-              {nVideos >= sub5.videos && !sub && (
-                <div className="calc-tip">一個月要剪 {nVideos} 支的話，<b>{sub5.label}</b>訂閱 {twd(sub5.twd)} 含 {sub5.videos} 支＋{sub5.revisions} 輪修改＋{sub5.storage_gb} GB，每支 {twd(sub5.per_video_twd)}。<a onClick={() => setTab('plans')}>看方案</a></div>
-              )}
-            </section>
-            <section className="packs-grid">
-              {p.packs.map(k => (
-                <div key={k.id} className={`packc card ${k.id === bestPack.id ? 'best' : ''}`}>
-                  {k.id === bestPack.id && <div className="ribbon">{combo.length > 1 ? '建議組合' : '剛好夠'}</div>}
-                  <div className="packc-pts">{k.points.toLocaleString()}<span className="unit">點</span></div>
-                  {(k.bonus || memberBonus(k)) ? <div className="packc-chips">
-                    {k.bonus ? <span className="packc-bonus">＋送 {k.bonus}</span> : null}
-                    {memberBonus(k) ? <span className="packc-bonus member">{myPlan?.label}價 1 點 {twd(myPlan?.point_twd ?? 0)}・多 {memberBonus(k)} 點</span> : null}
-                  </div> : null}
-                  <div className="packc-price">{twd(k.twd)}</div>
-                  <div className="packc-got">實得 <b>{gotPts(k).toLocaleString()}</b> 點 · 每點約 {twd(Math.round(k.twd / gotPts(k) * 100) / 100)}</div>
-                  {gotPts(k) >= FIRST + 2 * REV
-                    ? <div className="packc-videos">約可剪 <b>{Math.floor(gotPts(k) / (FIRST + 2 * REV))}</b> 支<span className="muted small">（含封面與 2 輪修改）</span></div>
-                    : <div className="packc-videos">補點用<span className="muted small">：約 {Math.floor(gotPts(k) / REV)} 輪修改，或補足第一支</span></div>}
-                  {!member && k.member_bonus && <div className="packc-tease">同樣 {twd(k.twd)}，訂閱後實得：{p.subscriptions.filter(x => (x.billing ?? 'month') === 'month').map(x => <span key={x.id}>{x.label}價 <b>{gotPts(k, x.id).toLocaleString()}</b> 點</span>)}</div>}
-                  <div className="muted small">點數不過期，用不完會累積</div>
-                  {canBuy(k.checkout_url)
-                    ? <button className="btn primary block" onClick={() => buy(k.id)}>購買</button>
-                    : <button className="btn block" disabled>洽客服開通</button>}
-                </div>
-              ))}
             </section>
             {!p.provider_configured && <section className="howto muted small">{p.note}</section>}
             <section className="card">

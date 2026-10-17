@@ -295,6 +295,27 @@ def test_order_flow(client, monkeypatch):
     assert c.post("/api/orders", json={"item": "nope"}).status_code == 404
 
 
+def test_custom_topup(client, monkeypatch):
+    from app import config as C
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = b
+    monkeypatch.setattr(C, "BANK_TRANSFER", {"bank": "國泰世華", "code": "013", "account": "123", "name": "人客多"})
+    monkeypatch.setattr(C, "LS_API_KEY", "")
+    assert c.post("/api/orders", json={"item": "pts:19", "method": "transfer"}).status_code == 400
+    assert c.post("/api/orders", json={"item": "pts:abc", "method": "transfer"}).status_code == 400
+    assert c.get("/api/pay/methods?item=pts:20").json()["card"] is False
+    assert c.post("/api/orders", json={"item": "pts:20", "method": "card"}).status_code == 400
+    r = c.post("/api/orders", json={"item": "pts:20", "method": "transfer"}).json()
+    assert r["order"]["points"] == 20 and r["amount_twd"] == round(20 * P.POINT_TWD)
+    r = c.post("/api/orders", json={"item": "pts:337", "method": "transfer"}).json()   # 300 點起加送
+    assert r["order"]["points"] == 337 + P.topup_bonus(337) and P.topup_bonus(337) == 16
+    asyncio.run(M.activate_subscription(b.id, "sub5", paid_twd=0))
+    b.subscription = "sub5"   # the test client hands back this object as the current user
+    r = c.post("/api/orders", json={"item": "pts:100", "method": "transfer"}).json()   # 訂閱中: the plan's price per point
+    assert r["amount_twd"] == round(100 * P.SUBSCRIPTIONS["sub5"]["point_twd"]) and "專業旅人價" in r["order"]["label"]
+
+
 def test_owner_narration_upload(client, monkeypatch, tmp_path: Path):
     import subprocess
     c, holder = client

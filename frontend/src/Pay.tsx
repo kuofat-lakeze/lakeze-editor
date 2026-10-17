@@ -25,7 +25,7 @@ export function PayFlow({ item, onClose, onPaid }: { item: Item; onClose: () => 
   const [err, setErr] = useState('')
   const [copied, setCopied] = useState('')
   useEffect(() => {
-    api.payMethods().then(m => { setMethods(m); setMethod(m.test ? 'test' : m.card ? 'card' : 'transfer') }).catch(() => setMethods({ card: false, transfer: false, test: false, note: '' }))
+    api.payMethods(item.id).then(m => { setMethods(m); setMethod(m.test ? 'test' : m.card ? 'card' : 'transfer') }).catch(() => setMethods({ card: false, transfer: false, test: false, note: '' }))
   }, [])
   const none = methods && !methods.card && !methods.transfer && !methods.test
   const go = async () => {
@@ -61,7 +61,7 @@ export function PayFlow({ item, onClose, onPaid }: { item: Item; onClose: () => 
             </div>
             <div className="pay-get">
               <span>入帳</span><b>{item.points.toLocaleString()} 點</b>
-              <span className="muted small">{item.kind === 'sub' ? '每月自動入帳；當月沒用完的訂閱點數下個月重算' : '點數不會過期'}</span>
+              <span className="muted small">{item.kind === 'sub' ? '每月自動入帳；沒用完的點數會累積' : '點數不會過期'}</span>
             </div>
             {!methods ? <div className="muted small">載入付款方式…</div> : none ? (
               <div className="card need"><div><b>線上付款即將開通</b><div className="muted small">{methods.note || '請聯絡客服購買，入帳後點數會自動出現。'}</div></div></div>

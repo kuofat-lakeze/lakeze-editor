@@ -40,6 +40,11 @@ ADMIN_EMAILS = DEFAULT_ADMIN_EMAILS | {e.strip().lower() for e in _env("ADMIN_EM
 CHECKOUT_URLS = json.loads(_env("CHECKOUT_URLS", "{}"))
 LS_VARIANTS = json.loads(_env("LS_VARIANTS", "{}"))
 LS_WEBHOOK_SECRET = _env("LEMONSQUEEZY_WEBHOOK_SECRET")
+# 自訂點數刷卡: a checkout is created per order through the Lemon Squeezy API with a custom price on one
+# "points" variant. Needs an API key, the store id and that variant id; without them card is off for it.
+LS_API_KEY = _env("LEMONSQUEEZY_API_KEY")
+LS_STORE_ID = _env("LEMONSQUEEZY_STORE_ID")
+LS_TOPUP_VARIANT = _env("LEMONSQUEEZY_TOPUP_VARIANT")
 # Bank transfer details shown on the payment page (JSON {"bank": "...", "code": "812", "account": "...", "name": "..."}).
 # Empty = transfer not offered.
 BANK_TRANSFER = json.loads(_env("BANK_TRANSFER_JSON", "{}"))
