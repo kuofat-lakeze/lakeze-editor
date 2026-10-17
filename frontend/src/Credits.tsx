@@ -7,7 +7,7 @@ import { StorageInline } from './Storage'
 const CAT_COLOR: Record<string, string> = { cut: '#E8571C', audio: '#1B7AC3', subs: '#2E9E8F', export: '#7B61C4', cover: '#B8860B', storage: '#5B6B7A' }
 export type CreditsTab = 'overview' | 'projects' | 'ledger' | 'plans' | 'buy' | 'storage'
 const TABS: { id: CreditsTab; label: string }[] = [
-  { id: 'plans', label: '方案' }, { id: 'overview', label: '總覽' }, { id: 'projects', label: '依專案' }, { id: 'ledger', label: '明細' }]
+  { id: 'plans', label: '選方案' }, { id: 'overview', label: '我的方案' }, { id: 'projects', label: '專案明細' }]
 const twd = (n: number) => `NT$${n.toLocaleString()}`
 
 export const fmtGB = (gb: number) => gb < 1 ? `${Math.round(gb * 1000)} MB` : `${gb} GB`
@@ -20,12 +20,12 @@ const dayLabel = (iso: string) => {
 
 export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenProject, onBought }:
   { initialTab?: CreditsTab; needPoints?: number; onClose: () => void; onOpenProject?: (id: string) => void; onBought?: () => void }) {
-  const [tab, setTab] = useState<CreditsTab>(initialTab === 'storage' ? 'plans' : initialTab)
+  const [tab, setTab] = useState<CreditsTab>(initialTab === 'storage' ? 'plans' : initialTab === 'ledger' ? 'projects' : initialTab)
+  const [range, setRange] = useState<7 | 30>(30)
   const [sum, setSum] = useState<CreditsSummary | null>(null)
   const [p, setP] = useState<Pricing | null>(null)
   const [me, setMe] = useState<Me | null>(null)
   const [ledger, setLedger] = useState<Ledger[]>([])
-  const [filter, setFilter] = useState<string>('all')
   const [open, setOpen] = useState<string | null>(null)
   const [hover, setHover] = useState<number | null>(null)
   const [nVideos, setNVideos] = useState(5)
@@ -54,16 +54,51 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   const revisionsLeft = Math.floor(sum.balance / REV)
   const videosLeft = sum.balance / FIRST
   const low = sum.balance < 10
-  const maxDay = Math.max(1, ...sum.daily.map(d => d.used + d.waived))
+  const days = sum.daily.slice(-range)
+  const dayTotal = (d: { used: number; waived: number }) => d.used + d.waived
+  const rangeTotal = days.reduce((a, d) => a + dayTotal(d), 0)
+  const activeDays = days.filter(d => dayTotal(d) > 0).length
+  const peak = Math.max(0, ...days.map(dayTotal))
+  const yTop = peak <= 10 ? 10 : Math.ceil(peak / (peak > 100 ? 50 : 10)) * (peak > 100 ? 50 : 10)   // a round top for the scale
+  const peakAt = days.findIndex(d => dayTotal(d) === peak)
+  const wk = ['日', '一', '二', '三', '四', '五', '六']
+  // 成果: finished videos, revision rounds, and roughly what that saved against the usual way
+  const S = p.savings ?? { video_twd: 3000, revision_twd: 600, video_min: 240, revision_min: 40, app_video_min: 15, app_revision_min: 3 }
+  const doneVideos = sum.projects.filter(x => x.exports > 0).length
+  const revRounds = sum.projects.reduce((a, x) => a + x.revision_turns, 0)
+  const savedTwd = Math.max(0, doneVideos * S.video_twd + revRounds * S.revision_twd - Math.round(sum.used * p.point_twd))
+  const savedHours = Math.max(0, doneVideos * (S.video_min - S.app_video_min) + revRounds * (S.revision_min - S.app_revision_min)) / 60
   const month = sum.daily.reduce((a, d) => a + d.used + d.waived, 0)
   const monthPaid = sum.daily.reduce((a, d) => a + d.used, 0)
-  const rows = ledger.filter(l => filter === 'all' || (filter === 'free' ? l.waived > 0 : filter === 'topup' ? l.delta > 0 : l.project_id === filter))
-  const groups: { day: string; items: Ledger[] }[] = []
-  for (const l of rows) {
-    const day = dayLabel(l.created_at)
-    const g = groups[groups.length - 1]
-    if (g && g.day === day) g.items.push(l); else groups.push({ day, items: [l] })
+  const groupByDay = (rows: Ledger[]) => {
+    const groups: { day: string; items: Ledger[] }[] = []
+    for (const l of rows) {
+      const day = dayLabel(l.created_at)
+      const g = groups[groups.length - 1]
+      if (g && g.day === day) g.items.push(l); else groups.push({ day, items: [l] })
+    }
+    return groups
   }
+  const ledgerRow = (l: Ledger, i: number, showProject: boolean) => {
+    const isCharge = l.kind === 'charge'
+    const title = isCharge ? label(l.reason) : l.kind === 'purchase' ? '儲值' : l.kind === 'grant' ? '加點' : l.kind === 'refund' ? '退點'
+      : l.kind === 'subscription' ? '訂閱點數入帳' : l.kind === 'expire' ? '訂閱點數到期' : l.reason
+    return (
+      <div key={i} className="lrow">
+        <i style={{ background: isCharge ? CAT_COLOR[cat(l.reason)] : l.kind === 'expire' ? '#C9C3B8' : 'var(--ok)' }} />
+        <div className="lmain">
+          <div>{title}</div>
+          <div className="muted small">{showProject && l.project_id ? `${projName[l.project_id] ?? ''} ` : (!l.project_id && l.reason !== title && l.kind !== 'expire' ? `${l.reason} ` : '')}
+            {new Date(l.created_at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}</div>
+        </div>
+        <div className={`lamt ${l.delta > 0 ? 'ok' : ''}`}>
+          {l.delta > 0 ? `+${l.delta}` : l.delta < 0 ? `−${-l.delta}` : <span className="muted">免 {l.waived}</span>}
+        </div>
+      </div>
+    )
+  }
+  const dayGroups = (rows: Ledger[], showProject: boolean) => groupByDay(rows).map(g => (
+    <div key={g.day} className="lgroup"><div className="lday muted small">{g.day}</div>{g.items.map((l, i) => ledgerRow(l, i, showProject))}</div>))
   const sub = me?.subscription ?? null
   const sub5 = p.subscriptions.find(s => s.id === 'sub5') ?? p.subscriptions[0]
   const single = p.first_video_twd + 2 * p.revision_twd   // one video with cover and 2 revision rounds, in NT$
@@ -117,6 +152,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
           <>
             <section className={`hero card ${low ? 'low' : ''}`}>
               <div className="hero-main">
+                <div className="hero-plan">目前方案<b>{sub ? sub.label : me?.tier === 'free' ? '免費方案' : '單次購買'}</b>{sub ? <span>包月 · 1 點 {twd(myPlan?.point_twd ?? 0)}</span> : <a onClick={() => setTab('plans')}>改包月更划算 →</a>}</div>
                 <div className="eyebrow">目前餘額</div>
                 <div className="hero-num">{sum.balance}<span className="unit">點</span></div>
                 <div className="hero-sub">
@@ -145,37 +181,57 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
               </div>
             </section>
 
-            <section className="kpis">
-              <div className="kpi"><span className="muted small">累計儲值</span><b>{sum.purchased}</b><span className="muted small">點</span></div>
-              <div className="kpi"><span className="muted small">累計使用</span><b>{sum.used}</b><span className="muted small">點</span></div>
-              <div className="kpi"><span className="muted small">免費額度省下</span><b>{sum.waived}</b><span className="muted small">點 ≈ {twd(sum.waived * p.point_twd)}</span></div>
+            <section className="card wins">
+              <div className="wins-head"><b>你的成果</b><span className="muted small">用旅剪到現在</span></div>
+              <div className="wins-grid">
+                <div><span>完成影片</span><b>{doneVideos}<small> 支</small></b></div>
+                <div><span>修改</span><b>{revRounds}<small> 輪</small></b></div>
+                <div className="hl"><span>大約省下</span><b>{twd(savedTwd)}</b></div>
+                <div className="hl"><span>大約省下</span><b>{savedHours < 10 ? savedHours.toFixed(1) : Math.round(savedHours)}<small> 小時</small></b></div>
+              </div>
+              <div className="muted small wins-fine">以外包剪一支約 {twd(S.video_twd)}、改一輪 {twd(S.revision_twd)}，自己剪一支約 {S.video_min / 60} 小時、改一輪 {S.revision_min} 分鐘估算，已扣掉你用掉的點數。</div>
             </section>
 
             <section className="card chart">
               <div className="chart-head">
-                <div><b>每日用量</b><div className="muted small">最近 30 天</div></div>
-                <span className="legend"><i style={{ background: CAT_COLOR.cut }} />扣點<i className="hatch" />免費額度</span>
+                <div><b>每日用量</b><div className="muted small">{range} 天共 <b className="ink">{rangeTotal.toLocaleString()}</b> 點{activeDays > 0 && <>・有剪片的 {activeDays} 天平均 {Math.round(rangeTotal / activeDays)} 點</>}</div></div>
+                <div className="seg mini">{([7, 30] as const).map(r => <a key={r} className={range === r ? 'on' : ''} onClick={() => { setRange(r); setHover(null) }}>{r} 天</a>)}</div>
               </div>
-              <div className="plot">
-                <div className="grid"><span /><span /><span /></div>
-                <div className="bars" role="img" aria-label="最近 30 天每日點數用量" onMouseLeave={() => setHover(null)}>
-                  {sum.daily.map((d, i) => {
-                    const t = d.used + d.waived
-                    return (
-                      <div key={d.date} className={`bar-col ${hover === i ? 'hover' : ''}`} onMouseEnter={() => setHover(i)}>
-                        <div className="bar-stack" style={{ height: `${Math.max(t ? 3 : 0, (t / maxDay) * 100)}%` }}>
-                          {d.waived > 0 && <div className="seg hatch" style={{ flex: d.waived }} />}
-                          {d.used > 0 && <div className="seg" style={{ flex: d.used, background: CAT_COLOR.cut }} />}
+              {sum.daily.some(d => d.waived > 0) && <span className="legend"><span><i style={{ background: CAT_COLOR.cut }} />扣點</span><span><i className="hatch" />免費額度</span></span>}
+              <div className={`plot2 r${range}`}>
+                <div className="yax muted small"><span>{yTop}</span><span>{yTop / 2}</span><span>0</span></div>
+                <div className="pane">
+                  <div className="grid"><span /><span /><span /></div>
+                  <div className="bars" role="img" aria-label={`最近 ${range} 天每日點數用量`} onMouseLeave={() => setHover(null)}>
+                    {days.map((d, i) => {
+                      const t = dayTotal(d)
+                      const lab = t > 0 && (range === 7 || i === peakAt)
+                      return (
+                        <div key={d.date} className={`bar-col ${hover === i ? 'hover' : ''}`} onMouseEnter={() => setHover(i)} onClick={() => setHover(hover === i ? null : i)}>
+                          {t > 0 ? (
+                            <div className="bar-stack" style={{ height: `${(t / yTop) * 100}%` }}>
+                              {lab && hover !== i && <em className="vlab">{t}</em>}
+                              {d.waived > 0 && <div className="seg hatch" style={{ flex: d.waived }} />}
+                              {d.used > 0 && <div className="seg" style={{ flex: d.used, background: CAT_COLOR.cut }} />}
+                            </div>) : <div className="bar-nil" />}
+                          {hover === i && <div className={`tip ${i < 3 ? 'l' : i > days.length - 4 ? 'r' : ''}`}>{d.date.slice(5).replace('-', '/')}（{wk[new Date(d.date + 'T00:00:00').getDay()]}）· {t} 點{d.waived ? `（免費 ${d.waived}）` : ''}</div>}
                         </div>
-                        {hover === i && <div className="tip">{d.date.slice(5).replace('-', '/')} · {t} 點{d.waived ? `（免費 ${d.waived}）` : ''}</div>}
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
-              <div className="axis muted small">
-                {[0, 7, 14, 21, 29].map(i => <span key={i} style={{ left: `${(i / 29) * 100}%` }}>{i === 29 ? '今天' : sum.daily[i]?.date.slice(5).replace('-', '/')}</span>)}
+              <div className="axis2 muted small">
+                {range === 7
+                  ? days.map((d, i) => <span key={d.date}>{i === days.length - 1 ? '今天' : wk[new Date(d.date + 'T00:00:00').getDay()]}</span>)
+                  : [0, 7, 14, 21, 29].map(i => <span key={i} style={{ left: `${(i / 29) * 100}%` }} className="abs">{i === 29 ? '今天' : days[i]?.date.slice(5).replace('-', '/')}</span>)}
               </div>
+            </section>
+
+            <section className="kpis">
+              <div className="kpi"><span className="muted small">累計儲值</span><b>{sum.purchased}</b><span className="muted small">點</span></div>
+              <div className="kpi"><span className="muted small">累計使用</span><b>{sum.used}</b><span className="muted small">點</span></div>
+              <div className="kpi"><span className="muted small">免費額度省下</span><b>{sum.waived}</b><span className="muted small">點 ≈ {twd(sum.waived * p.point_twd)}</span></div>
             </section>
 
             <section className="howto muted small">
@@ -185,108 +241,69 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
           </>
         )}
 
-        {tab === 'projects' && (
-          <div className="proj-list">
-            {sum.projects.length === 0 && <div className="muted">還沒有專案。</div>}
-            {sum.projects.map(pr => {
-              const total = pr.used + pr.waived
-              const isOpen = open === pr.id
-              return (
-                <section key={pr.id} className={`card proj ${isOpen ? 'open' : ''}`} onClick={() => setOpen(isOpen ? null : pr.id)}>
-                  <div className="proj-head">
-                    <div className="proj-title">
-                      <b>{pr.name}</b>{pr.free && <span className="pill">背包客 · 免費</span>}
-                      <div className="muted small">輸出 {pr.exports} 次 · 修改 {pr.revision_turns} 輪 · {pr.updated_at.slice(5, 10).replace('-', '/')}</div>
-                    </div>
-                    <div className="proj-total">
-                      <div className="num">{pr.used}<span className="unit">點</span></div>
-                      {pr.waived > 0 && <div className="muted small">＋免費 {pr.waived}</div>}
-                    </div>
-                  </div>
-                  {total > 0 ? (
-                    <>
-                      <div className="stack">
-                        {sum.categories.map(c => (pr.by_category[c.id] ?? 0) > 0 && (
-                          <div key={c.id} className="seg" style={{ flex: pr.by_category[c.id], background: CAT_COLOR[c.id] }} title={`${c.label} ${pr.by_category[c.id]} 點`} />))}
-                      </div>
-                      <div className="legend wrap">
-                        {sum.categories.map(c => (pr.by_category[c.id] ?? 0) > 0 && (
-                          <span key={c.id}><i style={{ background: CAT_COLOR[c.id] }} />{c.label} <b>{pr.by_category[c.id]}</b></span>))}
-                      </div>
-                    </>
-                  ) : <div className="muted small">還沒有扣點</div>}
-                  {isOpen && total > 0 && (
-                    <div className="tool-rows">
-                      {Object.entries(pr.by_tool).sort((a, b) => b[1] - a[1]).map(([t, v]) => (
-                        <div key={t} className="tool-row"><i style={{ background: CAT_COLOR[cat(t)] }} /><span>{label(t)}</span><b>{v} 點</b></div>))}
-                    </div>
-                  )}
-                  <div className="more muted small">{isOpen ? '收合' : '展開看每個步驟'}</div>
-                </section>
-              )
-            })}
-          </div>
-        )}
-
-        {tab === 'ledger' && (() => {
-          const ps = [...sum.projects].filter(x => x.used || x.waived).sort((x, y) => y.used - x.used)
-          const tot = ps.reduce((t, x) => ({ used: t.used + x.used, waived: t.waived + x.waived, exports: t.exports + x.exports, rev: t.rev + x.revision_turns }), { used: 0, waived: 0, exports: 0, rev: 0 })
-          return ps.length > 0 && (
-            <section className="card lsum">
-              <div className="lsum-head"><b>每個專案加總</b><span className="muted small">點一下看該專案的每一筆</span></div>
-              <table className="lsum-t">
-                <thead><tr><th>專案</th><th className="r">輸出 / 修改</th><th className="r">用掉點數</th><th className="r">免費額度</th></tr></thead>
-                <tbody>
-                  {ps.map(x => (
-                    <tr key={x.id} className={filter === x.id ? 'on' : ''} onClick={() => setFilter(f => f === x.id ? 'all' : x.id)}>
-                      <td>{x.name}{x.free && <span className="pill">免費</span>}</td>
-                      <td className="r muted">{x.exports} 次 / {x.revision_turns} 輪</td>
-                      <td className="r"><b>{x.used.toLocaleString()}</b> 點</td>
-                      <td className="r muted">{x.waived ? `${x.waived.toLocaleString()} 點` : '—'}</td>
-                    </tr>))}
-                </tbody>
-                <tfoot><tr><td>合計 {ps.length} 個專案</td><td className="r">{tot.exports} 次 / {tot.rev} 輪</td><td className="r"><b>{tot.used.toLocaleString()}</b> 點</td><td className="r">{tot.waived ? `${tot.waived.toLocaleString()} 點` : '—'}</td></tr></tfoot>
-              </table>
-              <div className="muted small lsum-foot">儲值與加點共 {sum.purchased.toLocaleString()} 點 · 目前餘額 <b>{sum.balance.toLocaleString()}</b> 點</div>
-            </section>)
-        })()}
-        {tab === 'ledger' && (
-          <section className="card ledger-card">
-            <div className="ledger-head">
-              <select value={filter} onChange={e => setFilter(e.target.value)}>
-                <option value="all">全部紀錄</option>
-                <option value="topup">儲值 / 加點 / 訂閱</option>
-                <option value="free">免費額度</option>
-                {sum.projects.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
-              </select>
-              <span className="muted small">{rows.length} 筆</span>
-            </div>
-            {groups.length === 0 && <div className="muted small" style={{ padding: '12px 0' }}>還沒有紀錄</div>}
-            {groups.map(g => (
-              <div key={g.day} className="lgroup">
-                <div className="lday muted small">{g.day}</div>
-                {g.items.map((l, i) => {
-                  const isCharge = l.kind === 'charge'
-                  const title = isCharge ? label(l.reason) : l.kind === 'purchase' ? '儲值' : l.kind === 'grant' ? '加點' : l.kind === 'refund' ? '退點'
-                    : l.kind === 'subscription' ? '訂閱點數入帳' : l.kind === 'expire' ? '訂閱點數到期' : l.reason
-                  return (
-                    <div key={i} className="lrow">
-                      <i style={{ background: isCharge ? CAT_COLOR[cat(l.reason)] : l.kind === 'expire' ? '#C9C3B8' : 'var(--ok)' }} />
-                      <div className="lmain">
-                        <div>{title}</div>
-                        <div className="muted small">{l.project_id ? projName[l.project_id] ?? '' : (l.reason !== title && l.kind !== 'expire' ? l.reason : '')}
-                          {' '}{new Date(l.created_at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}</div>
-                      </div>
-                      <div className={`lamt ${l.delta > 0 ? 'ok' : ''}`}>
-                        {l.delta > 0 ? `+${l.delta}` : l.delta < 0 ? `−${-l.delta}` : <span className="muted">免 {l.waived}</span>}
-                      </div>
-                    </div>
-                  )
-                })}
+        {tab === 'projects' && (() => {
+          const active = sum.projects.filter(x => x.used || x.waived || x.exports)
+          const idle = sum.projects.filter(x => !(x.used || x.waived || x.exports))
+          const topups = ledger.filter(l => !l.project_id)
+          const tot = active.reduce((t, x) => t + x.used, 0)
+          return (
+            <div className="proj-list">
+              <div className="pm-sum">
+                <span><b>{active.length}</b> 個專案</span><span>完成 <b>{doneVideos}</b> 支 · 修改 <b>{revRounds}</b> 輪</span>
+                <span>用掉 <b>{tot.toLocaleString()}</b> 點</span><span>餘額 <b>{sum.balance.toLocaleString()}</b> 點</span>
               </div>
-            ))}
-          </section>
-        )}
+              {active.length === 0 && <div className="muted">還沒有扣點的專案。</div>}
+              {active.map(pr => {
+                const total = pr.used + pr.waived
+                const isOpen = open === pr.id
+                const rows = ledger.filter(l => l.project_id === pr.id)
+                return (
+                  <section key={pr.id} className={`card proj ${isOpen ? 'open' : ''}`}>
+                    <div className="proj-click" onClick={() => setOpen(isOpen ? null : pr.id)}>
+                      <div className="proj-head">
+                        <div className="proj-title">
+                          <b>{pr.name}</b>{pr.free && <span className="pill">背包客 · 免費</span>}
+                          <div className="muted small">{pr.exports > 0 ? '✓ 已完成' : '進行中'} · 修改 {pr.revision_turns} 輪 · {pr.updated_at.slice(5, 10).replace('-', '/')}</div>
+                        </div>
+                        <div className="proj-total">
+                          <div className="num">{pr.used}<span className="unit">點</span></div>
+                          {pr.waived > 0 && <div className="muted small">＋免費 {pr.waived}</div>}
+                        </div>
+                      </div>
+                      {total > 0 && (
+                        <>
+                          <div className="stack">
+                            {sum.categories.map(c => (pr.by_category[c.id] ?? 0) > 0 && (
+                              <div key={c.id} className="seg" style={{ flex: pr.by_category[c.id], background: CAT_COLOR[c.id] }} title={`${c.label} ${pr.by_category[c.id]} 點`} />))}
+                          </div>
+                          <div className="legend wrap">
+                            {sum.categories.map(c => (pr.by_category[c.id] ?? 0) > 0 && (
+                              <span key={c.id}><i style={{ background: CAT_COLOR[c.id] }} />{c.label} <b>{pr.by_category[c.id]}</b></span>))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    {isOpen && (
+                      <div className="pm-detail">
+                        {total > 0 && <div className="tool-rows">
+                          {Object.entries(pr.by_tool).sort((a, b) => b[1] - a[1]).map(([t, v]) => (
+                            <div key={t} className="tool-row"><i style={{ background: CAT_COLOR[cat(t)] }} /><span>{label(t)}</span><b>{v} 點</b></div>))}
+                        </div>}
+                        {rows.length > 0 && <><div className="pm-sub muted small">每一筆紀錄</div>{dayGroups(rows, false)}</>}
+                      </div>
+                    )}
+                    <div className="more muted small" onClick={() => setOpen(isOpen ? null : pr.id)}>{isOpen ? '收合' : '展開看每個步驟與每一筆'}</div>
+                  </section>
+                )
+              })}
+              {idle.length > 0 && <div className="pm-idle muted small">還沒扣點：{idle.map(x => x.name).join('、')}</div>}
+              <section className="card ledger-card">
+                <div className="ledger-head"><b>儲值與入帳</b><span className="muted small">累計 {sum.purchased.toLocaleString()} 點</span></div>
+                {topups.length === 0 ? <div className="muted small" style={{ padding: '12px 0' }}>還沒有紀錄</div> : dayGroups(topups, false)}
+              </section>
+            </div>
+          )
+        })()}
 
         {tab === 'plans' && (
           <>

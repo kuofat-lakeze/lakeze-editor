@@ -261,10 +261,15 @@ def public_pricing() -> dict:
         "tiers": {"free": TIERS_FREE, "payg": TIERS_PAYG},
         "free_storage_gb": FREE_STORAGE_GB, "free_retention_days": FREE_RETENTION_DAYS, "free_revision_turns": FREE_REVISION_TURNS, "trial_voice_seconds": TRIAL_VOICE_SECONDS,
         "storage_plans": [{"id": k, **v, "twd": int(round(v["points"] * POINT_TWD))} for k, v in STORAGE_PLANS.items()],
+        "savings": SAVINGS,
         "min_topup_points": MIN_TOPUP_POINTS, "max_topup_points": MAX_TOPUP_POINTS,
         "topup_bonus": [{"from": pk["points"], "rate": pk["bonus"] / pk["points"], "pct": round(pk["bonus"] / pk["points"] * 100, 1)} for pk in PACKS.values() if pk.get("bonus")],
     }
 
+
+# 「大約省下」on the user's 我的方案 page: what the same work costs done the usual way (outsourced
+# editing price, own editing time) against the time it takes here.
+SAVINGS = {"video_twd": 3000, "revision_twd": 600, "video_min": 240, "revision_min": 40, "app_video_min": 15, "app_revision_min": 3}
 
 MIN_TOPUP_POINTS = 20       # 自訂儲值: any whole number of points from here up
 MAX_TOPUP_POINTS = 50000

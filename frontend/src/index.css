@@ -1598,3 +1598,47 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .tu-out small { font-size: 11.5px; font-weight: 800; } .tu-out small.ok { color: #1E7A4C; } .tu-out small.mem { color: var(--brand); }
 .tu-fine { line-height: 1.6; }
 .tu-input input, .tu-input input:focus { border: 0 !important; box-shadow: none !important; border-radius: 0; }
+/* 我的方案：成果 */
+.wins { display: flex; flex-direction: column; gap: 12px; }
+.wins-head { display: flex; align-items: baseline; gap: 10px; } .wins-head b { font-size: 16px; }
+.wins-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.wins-grid > div { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--panel2); }
+.wins-grid span { font-size: 12.5px; color: var(--muted); }
+.wins-grid b { font-size: 26px; font-weight: 800; letter-spacing: -.5px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.wins-grid b small { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.wins-grid .hl { background: #E4F5EC; } .wins-grid .hl b { color: #1E7A4C; }
+.wins-fine { line-height: 1.6; }
+@media (max-width: 640px) { .wins-grid { grid-template-columns: 1fr 1fr; } .wins-grid b { font-size: 22px; } }
+/* 每日用量（重新設計） */
+.chart .chart-head { align-items: center; margin-bottom: 8px; }
+.chart .chart-head .seg.mini { margin-left: auto; }
+.chart .chart-head b.ink { color: var(--text); }
+.chart > .legend { margin: 0 0 8px; }
+.plot2 { display: grid; grid-template-columns: auto 1fr; gap: 8px; height: 170px; margin-top: 18px; }
+.yax { display: flex; flex-direction: column; justify-content: space-between; text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; transform: translateY(-.5em); height: calc(100% + 1em); }
+.plot2 .pane { position: relative; }
+.plot2 .bars { gap: 2px; }
+.plot2.r7 .bars { gap: 10px; padding: 0 4px; }
+.plot2 .bar-stack { position: relative; overflow: visible; min-height: 3px; }
+.plot2 .bar-stack > .seg:first-of-type { border-radius: 4px 4px 0 0; }
+.plot2 .bar-stack > .seg:only-of-type { border-radius: 4px 4px 0 0; }
+.plot2.r7 .bar-stack { max-width: 44px; margin: 0 auto; }
+.plot2 .bar-col { justify-content: center; cursor: pointer; }
+.bar-nil { width: 100%; height: 2px; border-radius: 2px; background: var(--line); }
+.plot2.r7 .bar-nil { max-width: 44px; margin: 0 auto; }
+.vlab { position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%); font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.plot2 .tip.l { left: 0; transform: none; } .plot2 .tip.r { left: auto; right: 0; transform: none; }
+.axis2 { position: relative; height: 18px; margin-top: 6px; margin-left: 30px; display: flex; }
+.axis2 span { flex: 1; text-align: center; white-space: nowrap; }
+.axis2 span.abs { position: absolute; flex: none; transform: translateX(-50%); } .axis2 span.abs:first-child { transform: none; } .axis2 span.abs:last-child { transform: translateX(-100%); }
+/* 專案明細（依專案＋明細合併） */
+.pm-sum { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13.5px; color: var(--muted); padding: 2px 4px 4px; }
+.pm-sum b { color: var(--text); font-variant-numeric: tabular-nums; }
+.proj { cursor: default; } .proj-click { cursor: pointer; }
+.proj .more { cursor: pointer; }
+.pm-detail { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.pm-sub { margin-top: 10px; font-weight: 700; }
+.pm-idle { padding: 4px 6px; line-height: 1.6; }
+.hero-plan { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+.hero-plan b { font-size: 14px; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 3px 10px; border-radius: 999px; }
+.hero-plan a { font-weight: 700; color: var(--brand); cursor: pointer; }

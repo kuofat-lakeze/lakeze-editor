@@ -62,7 +62,8 @@ export type PricePreview = { measured?: MeasuredCost; cost_source?: 'measured' |
 export type Pricing = { point_twd: number; menu: { item: string; points: number }[]; free_revision_turns: number; packs: Pack[]; provider_configured: boolean; note: string
   first_video_points: number; revision_points: number; first_video_twd: number; revision_twd: number; subscriptions: Subscription[]; storage_plans: StoragePlan[]
   tiers: { free: Tier; payg: Tier }; free_storage_gb: number; free_retention_days: number; member_point_twd: number; member_discount_pct: number; trial_voice_seconds: number; signup_points: number
-  min_topup_points: number; max_topup_points: number; topup_bonus: { from: number; rate: number; pct: number }[] }
+  min_topup_points: number; max_topup_points: number; topup_bonus: { from: number; rate: number; pct: number }[]
+  savings: { video_twd: number; revision_twd: number; video_min: number; revision_min: number; app_video_min: number; app_revision_min: number } }
 export type MyVoice = { voice_id: string; name: string }
 export type Stage = 'disabled' | 'sub' | 'paid' | 'churn' | 'trial_done' | 'trial' | 'new'
 export type AdminUser = { id: string; email: string; name?: string | null; provider: string; created_at: string; is_admin: boolean; disabled: boolean; note: string; tags: string[]
