@@ -66,7 +66,7 @@ TOOLS: list[dict] = [
                       "properties": {"samples": {"type": "array", "description": "最多 12 格", "items": {
                           "type": "object", "additionalProperties": False, "required": ["clip", "t"],
                           "properties": {"clip": {"type": "integer"}, "t": {"type": "number"}}}}}}},
-    {"name": "build_cut", "description": "依片段清單剪出無聲畫面 base.mp4（1080x1920/30fps），回傳分鏡圖與一支預覽影片。總長照用戶選的長度（短版約 18 秒、標準 36–37 秒、完整 57–58 秒），沒指定用 36–37 秒。",
+    {"name": "build_cut", "description": "依片段清單剪出無聲畫面 base.mp4（1080x1920/30fps），回傳分鏡圖與一支預覽影片。總長照用戶選的長度（短版約 15 秒、標準 36–37 秒、完整 45–60 秒），沒指定用 36–37 秒。",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["segments"],
                       "properties": {"segments": {"type": "array", "items": _SEG}}}},
     {"name": "search_voices", "description": "在 ElevenLabs Voice Library 搜尋聲音。預設找台灣腔中文。",

@@ -85,12 +85,12 @@ const NO_VOICE = 'none'
 const OB_STEPS = ['給素材', '解析素材', '風格與賣點']
 // 影片長度：travel short-form. 標準 is the default; each brief line goes into the first message.
 const LENGTHS = [
-  { id: 'short', name: '短版', secs: '15–20 秒', icon: '⚡', desc: '一個最強亮點＋優惠，最容易被看完。適合投廣告、限時優惠、限動。',
-    brief: '長度：短版 15–20 秒（目標 18 秒），4–6 個鏡頭，只講最強賣點和優惠。' },
+  { id: 'short', name: '短版', secs: '12–20 秒', icon: '⚡', desc: '一個最強亮點＋優惠，最容易被看完。適合投廣告、限時優惠、限動。',
+    brief: '長度：短版 12–20 秒（目標 15 秒），3–6 個鏡頭，只講最強賣點和優惠。' },
   { id: 'std', name: '標準', secs: '30–40 秒', icon: '★', tag: '預設', desc: '賣點、氛圍、價格一次講完。適合 Reels／抖音日常貼文。',
     brief: '長度：標準 30–40 秒（目標 36–37 秒）。' },
-  { id: 'long', name: '完整導覽', secs: '55–60 秒', icon: '🧭', desc: '照入住動線走一圈：房型、設施、周邊。適合包棟、多房型、一日行程。',
-    brief: '長度：完整導覽 55–60 秒（目標 57–58 秒，不超過 60 秒），照入住動線分段導覽。' },
+  { id: 'long', name: '完整導覽', secs: '45–60 秒', icon: '🧭', desc: '照入住動線走一圈：房型、設施、周邊。適合包棟、多房型、一日行程。',
+    brief: '長度：完整導覽 45–60 秒（目標 50 秒，素材多再往 60 秒靠，不超過 60 秒），照入住動線分段導覽。' },
 ]
 const ANALYZE_POINTS = 14   // = backend analyze.ANALYZE_POINTS (probe_footage)
 const ROLE_LABEL: Record<string, string> = { hook: '開場', feature: '賣點', price: '價格', cta: '行動' }
@@ -690,7 +690,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                         <div key={l.id} className={`lenc ${length === l.id ? 'sel' : ''}`} onClick={() => setLength(l.id)} role="radio" aria-checked={length === l.id}>
                           <div className="lenc-top"><span className="lenc-ic" aria-hidden="true">{l.icon}</span><b>{l.name}</b>{l.tag && <span className="pill">{l.tag}</span>}</div>
                           <div className="lenc-secs">{l.secs}</div>
-                          <i className="lenc-bar" style={{ width: `${l.id === 'short' ? 30 : l.id === 'std' ? 62 : 100}%` }} />
+                          <i className="lenc-bar" style={{ width: `${l.id === 'short' ? 27 : l.id === 'std' ? 60 : 100}%` }} />
                           <div className="muted small">{l.desc}</div>
                         </div>
                       ))}
