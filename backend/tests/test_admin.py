@@ -414,3 +414,28 @@ def test_ui_mode(client):
     assert c.patch("/api/me/mode", json={"mode": "easy"}).json()["ui_mode"] == "easy"
     b.ui_mode = "easy"
     assert c.get("/api/me").json()["ui_mode"] == "easy"
+
+
+def test_proof_script_and_say(client, monkeypatch, tmp_path: Path):
+    from app import main as MM, config as C
+    from app.pipeline import eleven
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = b
+    pid = c.post("/api/projects", json={"name": "校對"}).json()["id"]
+    assert c.get(f"/api/projects/{pid}/script").json()["lines"] == []
+    st = D.Store(b.id)
+    asyncio.run(st.save_message(pid, "user", [{"type": "text", "text": "旁白用 薇薇安（voice_id xrDmUzhnE51Df8z38r1M）"}]))
+    asyncio.run(st.save_message(pid, "assistant", [{"type": "text", "text": "好了：\n```旁白\n0.0-3.2 宜蘭海邊，推開門就是泳池\n3.2-6.5 整棟包下來\n```\n"}]))
+    r = c.get(f"/api/projects/{pid}/script").json()
+    assert [l["text"] for l in r["lines"]] == ["宜蘭海邊，推開門就是泳池", "整棟包下來"] and r["lines"][1]["n"] == 2 and r["voice_id"] == "xrDmUzhnE51Df8z38r1M"
+    monkeypatch.setattr(C, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(eleven, "tts_line", lambda text, voice, dest, **kw: dest.write_bytes(b"ID3" + text.encode()))
+    bal0 = asyncio.run(D.balance(b.id))
+    r = c.post(f"/api/projects/{pid}/say", json={"text": "歸山島日出", "voice_id": "xrDmUzhnE51Df8z38r1M"})
+    assert r.status_code == 200 and r.json()["balance"] == bal0 - P.VOICE_SAMPLE_POINTS
+    f = c.get(r.json()["url"])
+    assert f.status_code == 200 and f.content.startswith(b"ID3")
+    r2 = c.post(f"/api/projects/{pid}/say", json={"text": "歸山島日出", "voice_id": "xrDmUzhnE51Df8z38r1M"}).json()   # cached: no second charge
+    assert r2["balance"] == bal0 - P.VOICE_SAMPLE_POINTS
+    assert c.post(f"/api/projects/{pid}/say", json={"text": "  "}).status_code == 400

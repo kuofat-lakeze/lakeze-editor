@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { api, type Analysis, type Asset, type DriveCheck, type Me, type Msg, type ProjectDetail, type Voice } from './api'
+import { api, type Analysis, type Asset, type DeliverableVersion, type DriveCheck, type Me, type Msg, type ProjectDetail, type Voice } from './api'
+import { Proof } from './Proof'
 import { Deliverables } from './Deliverables'
 import { VoiceCloneDialog } from './VoiceClone'
 import { CLOUD_SECS_PER_VIDEO, CloudDl, DropZone, PickGuide, needsPickGuide, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
@@ -239,6 +240,12 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [sheet, setSheet] = useState<number | null>(null)           // shot open in the bottom sheet
   const [adv, setAdv] = useState(false)                             // 輕鬆模式: 風格／長度／聲音 are behind 更多選項
   const [cheer, setCheer] = useState<number | null>(null)           // 輕鬆模式: 影片完成 celebration (export count)
+  const [proof, setProof] = useState<{ version: DeliverableVersion | null; lines?: Line[] } | null>(null)   // 導演模式: 校對台
+  const openProof = async (lines?: Line[], version?: DeliverableVersion) => {
+    let v = version ?? null
+    if (!v) { try { v = (await api.deliverables(projectId)).versions[0] ?? null } catch { v = null } }
+    setProof({ version: v, lines })
+  }
   const prevExports = useRef<number | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const [voices, setVoices] = useState<Voice[]>([])
@@ -527,6 +534,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     onReclone: () => { recloneForScript.current = true; setCloning(true) },
     onPick: v => { setVoice(v.voice_id); submit(`旁白改用「${v.name}」的聲音（voice_id ${v.voice_id}）重新生成，稿子、秒數和其他都不變，配好後重新輸出影片。`) },
     onMore: () => submit('這份旁白稿想換個聲音：請再找 3 個台灣腔的聲音，各用稿子第一句做試聽給我選，先不要重新輸出。'),
+    onProof: easy || running ? undefined : lines => openProof(lines),
   }
   const stage: Stage = running ? 'working' : proj.messages.length === 0 ? 'start' : proj.credits.exports > 0 ? 'revise' : 'progress'
   const anPhase = analyzing ? Math.min(AN_PHASES.length - 1, Math.floor((now - anStart) / 9000)) : 0
@@ -583,7 +591,8 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
           </aside>
         </>
       )}
-      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} />}
+      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} onProof={easy || running ? undefined : v => openProof(undefined, v)} />}
+      {proof && <Proof projectId={projectId} version={proof.version} lines={proof.lines} onClose={() => setProof(null)} onUsage={onUsage} onSend={t => { setTab('chat'); submit(t) }} />}
       {tab === 'chat' && <>
       <VoiceSwapCtx.Provider value={voiceSwap}>
       <div className="thread" ref={threadRef} onScroll={onScroll}>

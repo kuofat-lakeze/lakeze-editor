@@ -1026,6 +1026,93 @@ async def analyze_project(project_id: str, body: AnalyzeBody, user: User = Curre
     return data
 
 
+# ---- 校對台 (導演模式): the latest narration script, a one-line voice check, the revision message ----
+SCRIPT_BLOCK_RE = re.compile(r"```(?:旁白|旁白稿|vo|narration)[^\n]*\n([\s\S]*?)```")
+SCRIPT_LINE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*s?\s*[-–~～到]\s*(\d+(?:\.\d+)?)\s*s?\s*[|｜:：·]?\s*(.+?)\s*$")
+
+
+def _script_lines(body: str) -> list[dict]:
+    out, prev = [], 0.0
+    for raw in body.split("\n"):
+        m = SCRIPT_LINE_RE.match(raw)
+        if m:
+            out.append({"start": float(m.group(1)), "end": float(m.group(2)), "text": m.group(3).strip("「」\"")})
+        elif raw.strip():
+            t = raw.strip()
+            out.append({"start": prev, "end": round(prev + max(1.2, len(t) / 3.5), 1), "text": t})
+        prev = out[-1]["end"] if out else prev
+    for i, l in enumerate(out, 1):
+        l["n"] = i
+    return out
+
+
+@app.get("/api/projects/{project_id}/script")
+async def project_script(project_id: str, user: User = CurrentUser):
+    """The newest 旁白 block the editor wrote, plus the voice it used — what the 校對台 starts from."""
+    await _own(project_id, user)
+    async with Session() as s:
+        rows = (await s.execute(select(Message).where(Message.project_id == project_id).order_by(Message.id.desc()))).scalars().all()
+    lines: list[dict] = []
+    voice_id = ""
+    for m in rows:
+        try:
+            content = json.loads(m.content)
+        except Exception:
+            continue
+        texts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"] if isinstance(content, list) else [str(content)]
+        joined = "\n".join(texts)
+        if not voice_id and (vm := re.findall(r"voice_id[\s=:：]*([A-Za-z0-9]{10,})", joined)):
+            voice_id = vm[-1]
+        if not lines and m.role == "assistant":
+            blocks = SCRIPT_BLOCK_RE.findall(joined)
+            if blocks:
+                lines = _script_lines(blocks[-1])
+        if lines and voice_id:
+            break
+    return {"lines": lines, "voice_id": voice_id or user.voice_id or (config.VOICE_PRESETS[0]["voice_id"] if config.VOICE_PRESETS else ""),
+            "say_points": pricing.VOICE_SAMPLE_POINTS}
+
+
+class SayBody(BaseModel):
+    text: str
+    voice_id: str = ""
+
+
+@app.post("/api/projects/{project_id}/say")
+async def project_say(project_id: str, body: SayBody, user: User = CurrentUser):
+    """One narration line in a voice, for checking a 唸法 before re-exporting. Costs a voice sample."""
+    await _own(project_id, user)
+    text = body.text.strip()[:120]
+    if not text:
+        raise HTTPException(400, "沒有文字")
+    voice = re.sub(r"[^A-Za-z0-9]", "", body.voice_id) or user.voice_id or (config.VOICE_PRESETS[0]["voice_id"] if config.VOICE_PRESETS else "")
+    if not voice:
+        raise HTTPException(400, "沒有可用的聲音")
+    root = project_dir(project_id)
+    dest = root / "work" / "proof" / f"{hashlib.sha1(f'{voice}|{text}'.encode()).hexdigest()[:16]}.mp3"
+    if not dest.exists():
+        store = Store(user.id)
+        ok, bal = await store.charge(project_id, pricing.VOICE_SAMPLE_POINTS, "voice_sample")
+        if not ok:
+            return JSONResponse({"detail": f"點數不足：試聽需要 {pricing.VOICE_SAMPLE_POINTS} 點，目前 {bal} 點", "needed": pricing.VOICE_SAMPLE_POINTS, "balance": bal}, 402)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            await asyncio.to_thread(eleven.tts_line, text, voice, dest)
+        except Exception as e:
+            await add_credits(user.id, pricing.VOICE_SAMPLE_POINTS, "refund", "say_failed", project_id=project_id)
+            raise HTTPException(502, f"試聽生成失敗，點數已退回：{str(e)[:160]}")
+    return {"url": f"/api/projects/{project_id}/proof/{dest.name}", "balance": await balance(user.id)}
+
+
+@app.get("/api/projects/{project_id}/proof/{name}")
+async def project_proof_file(project_id: str, name: str, user: User = CurrentUser):
+    await _own(project_id, user)
+    f = safe_join(project_dir(project_id) / "work" / "proof", name)
+    if not f.exists():
+        raise HTTPException(404, "not found")
+    return FileResponse(f, media_type="audio/mpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
 @app.get("/api/projects/{project_id}/frame/{n}")
 async def frame(project_id: str, n: int, t: float = 0.0, user: User = CurrentUser):
     """One frame of clip #n at second t (cached), for the storyboard the analysis shows."""

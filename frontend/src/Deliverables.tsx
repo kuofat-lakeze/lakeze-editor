@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type Asset, type DeliverablesData, type ShareLink, type StorageState } from './api'
+import { api, type Asset, type DeliverableVersion, type DeliverablesData, type ShareLink, type StorageState } from './api'
 import { StorageMeter, fmtBytes } from './Storage'
 import { ask } from './Dialog'
 import { FbIcon, LineIcon, promoText, shareToFacebook, shareToLine } from './share'
@@ -31,7 +31,7 @@ function ExpiryPill({ at, onKeep }: { at: string; onKeep?: () => void }) {
   return <button type="button" className={`pill exp ${days <= 2 ? 'soon' : ''}`} onClick={onKeep} title="免費空間的成品保留 7 天；加購空間就一直保存">⏳ {txt}</button>
 }
 
-export function Deliverables({ projectId, onChanged, onStorage }: { projectId: string; onChanged?: () => void; onStorage?: () => void }) {
+export function Deliverables({ projectId, onChanged, onStorage, onProof }: { projectId: string; onChanged?: () => void; onStorage?: () => void; onProof?: (v: DeliverableVersion) => void }) {
   const [data, setData] = useState<DeliverablesData | null>(null)
   const [st, setSt] = useState<StorageState | null>(null)
   const [sharing, setSharing] = useState<number | null | 'final'>(null)  // version being shared ('final' = follow final)
@@ -89,6 +89,7 @@ export function Deliverables({ projectId, onChanged, onStorage }: { projectId: s
                 {isFinal
                   ? <button className="btn small" onClick={() => setFinal(null)}>取消最終版</button>
                   : <button className="btn small" onClick={() => setFinal(v.version)}>標成最終版</button>}
+                {onProof && v.main && <button className="btn small" onClick={() => onProof(v)}>校對</button>}
                 <button className="btn primary small" onClick={() => setSharing(v.version)}>分享給朋友</button>
                 <button className="btn small ghost danger" disabled={isFinal || busy === v.version} title={isFinal ? '先取消最終版才能刪' : '刪除這一版，釋放空間'}
                   onClick={() => del(v.version)}>{busy === v.version ? '刪除中…' : '刪除'}</button>

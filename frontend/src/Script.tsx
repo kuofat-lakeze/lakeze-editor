@@ -7,6 +7,7 @@ export type VoiceSwap = {
   voices: Voice[]; current?: string | null; playing?: string | null
   onPreview: (v: Voice) => void; onSample?: (v: Voice) => void; onPick: (v: Voice) => void; onMore: () => void; disabled?: boolean
   canClone?: boolean; onReclone?: () => void   // (re)record the user's own voice; Chat re-voices the script with it
+  onProof?: (lines: Line[]) => void             // 導演模式: open the 校對台 with this script
 }
 export const VoiceSwapCtx = createContext<VoiceSwap | null>(null)
 
@@ -35,12 +36,14 @@ const tc = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).pa
 export function ScriptCard({ lines, onRecord }: { lines: Line[]; onRecord?: () => void }) {
   const total = lines.length ? lines[lines.length - 1].end : 0
   const [copied, setCopied] = useState(false)
+  const swap = useContext(VoiceSwapCtx)
   return (
     <div className="vo-card">
       <div className="vo-head">
         <span className="vo-ic" aria-hidden="true">🎙</span>
         <b>旁白稿</b><span className="muted small">{lines.length} 句 · 約 {Math.round(total)} 秒</span>
         <span className="spacer" />
+        {onRecord && swap?.onProof && <a className="small vo-proof" onClick={() => swap.onProof!(lines)}>校對台 ▸</a>}
         <a className="small" onClick={() => { navigator.clipboard?.writeText(lines.map(l => l.text).join('\n')).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>{copied ? '已複製' : '複製'}</a>
       </div>
       <ol className="vo-lines">
