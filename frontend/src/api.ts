@@ -169,31 +169,40 @@ export const api = {
   // arrive, so a big clip goes up in 8 MB pieces: one short request each, each retried on its own,
   // so a phone on mobile data can lose a few packets without losing the file.
   uploadOne: async (id: string, file: File, onProgress: (loaded: number, total: number) => void) => {
-    const CHUNK = 8 * 2 ** 20
+    // 8 MB pieces, PARALLEL at a time: on phone networks one request at a time leaves the line idle between
+    // round trips; three in flight keep it busy. The server writes each piece at its own offset.
+    const CHUNK = 8 * 2 ** 20, PARALLEL = 3
     const begin = await post(`/api/projects/${id}/upload/begin`, { name: file.name || 'clip.mp4', size: file.size }).then(j<{ upload_id: string }>)
+    const sent: Record<number, number> = {}   // offset -> bytes of that piece already on the wire
+    const report = () => onProgress(Math.min(file.size, Object.values(sent).reduce((a, b) => a + b, 0)), file.size)
     const putChunk = (offset: number, blob: Blob) => new Promise<void>((resolve, reject) => {
       const x = new XMLHttpRequest()
       x.open('PUT', `/api/projects/${id}/upload/${begin.upload_id}/chunk?offset=${offset}`)
       x.setRequestHeader('content-type', 'application/octet-stream')
       x.timeout = 240000
-      x.upload.onprogress = e => onProgress(offset + e.loaded, file.size)
-      x.onload = () => (x.status < 300 ? resolve() : reject(new Error(`HTTP ${x.status} ${x.responseText.slice(0, 200)}`)))
+      x.upload.onprogress = e => { sent[offset] = e.loaded; report() }
+      x.onload = () => (x.status < 300 ? (sent[offset] = blob.size, report(), resolve()) : reject(new Error(`HTTP ${x.status} ${x.responseText.slice(0, 200)}`)))
       x.onerror = () => reject(new Error(`連線中斷（status ${x.status || 0}，readyState ${x.readyState}）`))
       x.onabort = () => reject(new Error('上傳被中止'))
       x.ontimeout = () => reject(new Error('上傳逾時'))
       x.send(blob)
     })
-    for (let offset = 0; offset < file.size; offset += CHUNK) {
+    const sendWithRetry = async (offset: number) => {
       const blob = file.slice(offset, Math.min(offset + CHUNK, file.size))
-      let attempt = 0
-      for (;;) {
-        try { await putChunk(offset, blob); break } catch (e) {
+      for (let attempt = 1; ; attempt++) {
+        try { return await putChunk(offset, blob) } catch (e) {
+          sent[offset] = 0; report()
           const status = Number((/HTTP (\d+)/.exec((e as Error).message) || [])[1] || 0)
-          if (++attempt > 4 || (status >= 400 && status < 500 && status !== 408 && status !== 429)) throw e
+          if (attempt > 4 || (status >= 400 && status < 500 && status !== 408 && status !== 429)) throw e
           await new Promise(r => setTimeout(r, 1500 * attempt))
         }
       }
     }
+    const offsets: number[] = []
+    for (let o = 0; o < file.size; o += CHUNK) offsets.push(o)
+    let next = 0
+    const worker = async () => { while (next < offsets.length) await sendWithRetry(offsets[next++]) }
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, offsets.length) }, worker))
     const done = await post(`/api/projects/${id}/upload/${begin.upload_id}/complete`, {}).then(j<{ saved: { name: string }[] }>)
     onProgress(file.size, file.size)
     return done.saved[0]?.name ?? ''   // the name on the server (a suffix is added when the same name was picked twice)

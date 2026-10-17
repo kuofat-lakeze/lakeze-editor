@@ -51,7 +51,7 @@ def test_chunked_upload_guards(client):
     too_big = (M.config.MAX_UPLOAD_MB << 20) + 1
     assert client.post("/api/projects/p1/upload/begin", json={"name": "a.mp4", "size": too_big}).status_code == 413
     uid = client.post("/api/projects/p1/upload/begin", json={"name": "a.mp4", "size": 10}).json()["upload_id"]
-    assert client.put(f"/api/projects/p1/upload/{uid}/chunk?offset=5", content=b"x").status_code == 409  # gap
+    assert client.put(f"/api/projects/p1/upload/{uid}/chunk?offset=99", content=b"x").status_code == 409  # past the end
     assert client.post(f"/api/projects/p1/upload/{uid}/complete").status_code == 409  # incomplete
     assert client.put(f"/api/projects/p1/upload/{uid}/chunk?offset=0", content=b"x" * 11).status_code == 413  # over-announced
     assert client.post(f"/api/projects/p1/upload/{uid}/complete").status_code == 404  # state dropped
@@ -59,3 +59,16 @@ def test_chunked_upload_guards(client):
     # another project can't touch it
     uid = client.post("/api/projects/p2/upload/begin", json={"name": "a.mp4", "size": 10}).json()["upload_id"]
     assert client.put(f"/api/projects/p1/upload/{uid}/chunk?offset=0", content=b"x").status_code == 404
+
+
+
+def test_parallel_chunks_arrive_out_of_order(client):
+    """Chunks sent at the same time can land in any order; the file is complete only when every byte is in."""
+    r = client.post("/api/projects/p1/upload/begin", json={"name": "par.mp4", "size": 10})
+    uid = r.json()["upload_id"]
+    data = b"0123456789"
+    assert client.put(f"/api/projects/p1/upload/{uid}/chunk?offset=8", content=data[8:]).json()["received"] == 2
+    assert client.put(f"/api/projects/p1/upload/{uid}/chunk?offset=4", content=data[4:8]).json()["received"] == 6
+    assert client.post(f"/api/projects/p1/upload/{uid}/complete").status_code == 409   # 0..4 still missing
+    assert client.put(f"/api/projects/p1/upload/{uid}/chunk?offset=0", content=data[:4]).json()["received"] == 10
+    r = client.post(f"/api/projects/p1/upload/{uid}/complete"); assert r.status_code == 200, r.text

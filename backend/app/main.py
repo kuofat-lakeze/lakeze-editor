@@ -1200,7 +1200,7 @@ async def upload_begin(project_id: str, body: UploadBegin, user: User = CurrentU
     part.parent.mkdir(parents=True, exist_ok=True)
     part.write_bytes(b"")
     name = _SAFE.sub("_", Path(body.name or "clip.mp4").name) or "clip.mp4"
-    _uploads[uid] = {"project": project_id, "name": name, "size": body.size, "received": 0, "part": part}
+    _uploads[uid] = {"project": project_id, "name": name, "size": body.size, "received": 0, "part": part, "parts": {}}
     return {"upload_id": uid, "received": 0}
 
 
@@ -1215,9 +1215,10 @@ def _upload_state(project_id: str, upload_id: str) -> dict:
 async def upload_chunk(project_id: str, upload_id: str, offset: int, request: Request, user: User = CurrentUser):
     await _own(project_id, user)
     st = _upload_state(project_id, upload_id)
-    if offset > st["received"]:
-        raise HTTPException(409, f"gap: have {st['received']}, got offset {offset}")
-    # offset < received happens when the browser retries a chunk whose response was lost: overwrite in place
+    # Chunks arrive in parallel and in any order (the browser sends a few at once): each is written at its
+    # own offset. A retried chunk (its response got lost) simply overwrites the same bytes.
+    if offset < 0 or offset >= st["size"]:
+        raise HTTPException(409, f"offset {offset} outside 0..{st['size']}")
     size = offset
     with open(st["part"], "r+b") as w:
         w.seek(offset)
@@ -1227,8 +1228,19 @@ async def upload_chunk(project_id: str, upload_id: str, offset: int, request: Re
                 w.close(); st["part"].unlink(missing_ok=True); _uploads.pop(upload_id, None)
                 raise HTTPException(413, "more bytes than announced")
             w.write(piece)
-    st["received"] = max(st["received"], size)
+    st["parts"][offset] = size - offset
+    st["received"] = _covered(st["parts"])
     return {"received": st["received"]}
+
+
+def _covered(parts: dict[int, int]) -> int:
+    """Bytes covered by the received chunks (overlaps counted once)."""
+    total, end = 0, 0
+    for off, n in sorted(parts.items()):
+        if off + n > end:
+            total += off + n - max(off, end)
+            end = off + n
+    return total
 
 
 @app.post("/api/projects/{project_id}/upload/{upload_id}/complete")
