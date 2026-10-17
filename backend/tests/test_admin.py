@@ -403,3 +403,14 @@ def test_pricing_uses_measured_cost_per_video(client):
     assert r["rows"][0]["cost_twd"] == 96 and r["rows"][0]["margin_pct"] == round((390 - 96) / 96 * 100)
     d = c.get("/api/admin/costs?days=30").json()
     assert d["per_video"]["projects"] == 3 and d["per_video"]["avg_twd"] == 96
+
+
+def test_ui_mode(client):
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = b
+    assert c.get("/api/me").json()["ui_mode"] in ("easy", "pro")
+    assert c.patch("/api/me/mode", json={"mode": "nope"}).status_code == 400
+    assert c.patch("/api/me/mode", json={"mode": "easy"}).json()["ui_mode"] == "easy"
+    b.ui_mode = "easy"
+    assert c.get("/api/me").json()["ui_mode"] == "easy"

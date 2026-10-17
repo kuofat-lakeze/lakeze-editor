@@ -75,6 +75,10 @@ function Workspace() {
   useEffect(() => { document.title = (notes?.unread ? `(${notes.unread}) ` : '') + '旅剪 · 人客多 Lakeze' }, [notes?.unread])
 
   const refreshMe = () => api.me().then(setMe)
+  // 輕鬆模式 / 導演模式: an account setting; the body class scales type for the easy mode.
+  const easy = !!me && me.ui_mode !== 'pro'
+  useEffect(() => { document.body.classList.toggle('easy', easy) }, [easy])
+  const setMode = (mode: 'easy' | 'pro') => { if (!me) return; setMe({ ...me, ui_mode: mode }); api.setMode(mode).catch(() => refreshMe()) }
   const [payOrder, setPayOrder] = useState<string | null>(location.pathname === '/pay/result' ? new URLSearchParams(location.search).get('order') : null)
   useEffect(() => { refreshMe() }, [])
   useEffect(() => {
@@ -139,6 +143,11 @@ function Workspace() {
           ))}
         </nav>
         <div className="me">
+          <div className="mode-sw" role="radiogroup" aria-label="介面模式">
+            <a role="radio" aria-checked={easy} className={easy ? 'on' : ''} onClick={() => setMode('easy')}>輕鬆模式</a>
+            <a role="radio" aria-checked={!easy} className={!easy ? 'on' : ''} onClick={() => setMode('pro')}>導演模式</a>
+          </div>
+          <div className="muted small mode-hint">{easy ? '只看結論、少按幾下' : '看全部細節、每一步都能調'}</div>
           {me.is_admin && <a className="small" href="/dashboard">管理後台 ↗</a>}
           <div className="muted small">{me.email}</div>
           <a className="small" onClick={() => api.logout().then(() => setMe(null))}>登出</a>
@@ -149,7 +158,7 @@ function Workspace() {
         {payOrder ? <PayResult orderId={payOrder} onDone={() => { setPayOrder(null); history.replaceState(null, '', '/'); refreshMe() }} />
           : view === 'gallery' ? <Gallery onOpen={openProject} />
           : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} needPoints={needPoints} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} onBought={refreshMe} />
-          : current ? <Chat key={current} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits(me.subscription ? 'buy' : 'plans', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
+          : current ? <Chat key={current + (easy ? ':e' : ':p')} easy={easy} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits(me.subscription ? 'buy' : 'plans', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
               onProjectsChanged={() => api.projects().then(setProjects)} feedbackUnread={notes?.by_project[current] ?? 0} onFeedbackRead={pollNotes} />
             : <div className="center muted">建立一個專案開始剪片。第一個專案免費。</div>}
       </main>

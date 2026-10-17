@@ -38,10 +38,11 @@ def _cost(u) -> float:
 
 
 class TurnRunner:
-    def __init__(self, project_id: str, root: Path, store, emit: Emit):
+    def __init__(self, project_id: str, root: Path, store, emit: Emit, ui_mode: str = "pro"):
         """store: object with async load_messages(), save_message(role, content), add_asset(...),
-        record_usage(...) — implemented in app.db."""
+        record_usage(...) — implemented in app.db. ui_mode: "easy" (輕鬆模式) or "pro" (導演模式)."""
         self.project_id, self.root, self.store, self.emit = project_id, root, store, emit
+        self.ui_mode = ui_mode
         self.client = anthropic.AsyncAnthropic(
             default_headers={"anthropic-workspace-id": config.ANTHROPIC_WORKSPACE_ID} if config.ANTHROPIC_WORKSPACE_ID else None)
         self.ctx = ToolContext(root=root, add_asset=self._add_asset_sync, record_usage=self._usage_sync,
@@ -118,6 +119,9 @@ class TurnRunner:
                   f"。餘額 {st['balance']} 點。點數夠用時不要向用戶提點數。"
         else:
             txt = f"餘額 {st['balance']} 點。點數夠用時不要向用戶提點數，只有工具回報點數不足才說。"
+        if self.ui_mode == "easy":
+            txt += ("\n[介面模式] 輕鬆模式：用戶只想看結論。每則回覆第一行是一句結論（25 字內，像「影片做好了，開頭是泳池」），"
+                    "接著最多兩句說明；其他細節放在「---」之後（介面會收起來）。一次最多問一個問題、給兩個選項，能自己決定的就自己決定。")
         self._state_txt = txt
         return {"role": "system", "content": f"[點數狀態] {txt}"}
 

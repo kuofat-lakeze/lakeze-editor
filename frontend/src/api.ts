@@ -47,7 +47,7 @@ export type StorageInfo = StorageState & {
 }
 export type Me = { id: string; email: string; is_admin: boolean; balance: number; free_project_id: string | null; storage?: StorageState; subscription?: MySubscription | null
   can_clone_voice?: boolean; voice?: MyVoice | null; tier?: string; voice_trial?: { used: number; limit: number } | null
-  provider?: 'google' | 'facebook' | null; name?: string | null; test_account?: boolean }
+  provider?: 'google' | 'facebook' | null; name?: string | null; test_account?: boolean; ui_mode?: 'easy' | 'pro' }
 export type Providers = { google: boolean; facebook: boolean }
 export type CheckoutResult = { url: string | null; test?: boolean; granted?: number; subscription?: string; balance?: number }
 export type Pack = { id: string; twd: number; points: number; bonus?: number; total?: number; member_bonus?: Record<string, number>; label: string; checkout_url: string | null; member_twd: Record<string, number>; member_checkout_url?: Record<string, string | null> }
@@ -144,6 +144,7 @@ export const api = {
   shareThread: (token: string) => fetch(`/api/s/${token}/comments`).then(j<Thread>),
   replyComment: (id: string, text: string) => post(`/api/projects/${id}/comments`, { text }).then(j<ClientComment>),
   gallery: () => fetch('/api/gallery').then(j<GalleryItem[]>),
+  setMode: (mode: 'easy' | 'pro') => fetch('/api/me/mode', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) }).then(j<{ ui_mode: string }>),
   payMethods: (item = '') => fetch(`/api/pay/methods?item=${encodeURIComponent(item)}`).then(j<PayMethods>),
   createOrder: (item: string, method: string) => post('/api/orders', { item, method }).then(j<{ order: Order; redirect?: string; bank?: Record<string, string>; amount_twd?: number }>),
   order: (id: string) => fetch(`/api/orders/${id}`).then(j<{ order: Order; balance: number; bank: Record<string, string> | null }>),

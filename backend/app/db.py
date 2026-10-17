@@ -60,6 +60,9 @@ class User(Base):
     provider: Mapped[str] = mapped_column(String(20), default="")
     provider_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # 介面模式: "easy" (輕鬆模式: conclusions first, few decisions) or "pro" (導演模式: everything).
+    # New accounts start easy; accounts from before the mode existed keep what they had (the column default).
+    ui_mode: Mapped[str] = mapped_column(String(10), default="easy")
     # CRM: free-form tags ("vip,民宿,宜蘭") and the last authenticated request (refreshed every few minutes).
     tags: Mapped[str] = mapped_column(String(200), default="")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -190,7 +193,7 @@ _MIGRATIONS = [
     ("users", "provider", "VARCHAR(20) DEFAULT ''"), ("users", "provider_id", "VARCHAR(80)"), ("users", "display_name", "VARCHAR(120)"),
     ("users", "tags", "VARCHAR(200) DEFAULT ''"), ("users", "last_seen_at", "DATETIME"),
     ("share_comments", "read_at", "DATETIME"), ("users", "referrer_id", "VARCHAR(12)"), ("share_comments", "owner", "BOOLEAN DEFAULT 0"),
-    ("users", "storage_free_since", "DATETIME"),
+    ("users", "storage_free_since", "DATETIME"), ("users", "ui_mode", "VARCHAR(10) DEFAULT 'pro'"),
 ]
 
 

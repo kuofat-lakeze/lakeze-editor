@@ -273,8 +273,24 @@ async def me(user: User = CurrentUser):
             "voice": {"voice_id": user.voice_id, "name": user.voice_name or "我的聲音"} if user.voice_id else None,
             # on the free tier the clone may narrate up to TRIAL_VOICE_SECONDS of speech
             "voice_trial": {"used": round(user.voice_trial_seconds or 0.0, 1), "limit": pricing.TRIAL_VOICE_SECONDS} if tier == "free" else None,
-            "provider": user.provider or None, "name": user.display_name,
+            "provider": user.provider or None, "name": user.display_name, "ui_mode": user.ui_mode or "pro",
             "test_account": user.email in config.TEST_EMAILS}   # purchases are credited directly, no payment
+
+
+class ModeBody(BaseModel):
+    mode: str
+
+
+@app.patch("/api/me/mode")
+async def set_mode(body: ModeBody, user: User = CurrentUser):
+    """輕鬆模式 / 導演模式 is an account setting, so it follows the person across devices."""
+    if body.mode not in ("easy", "pro"):
+        raise HTTPException(400, "mode 要是 easy 或 pro")
+    async with Session() as s:
+        u = await s.get(User, user.id)
+        u.ui_mode = body.mode
+        await s.commit()
+    return {"ui_mode": body.mode}
 
 
 def _is_test(user: User) -> bool:
@@ -1359,7 +1375,7 @@ async def send_message(project_id: str, body: Turn, user: User = CurrentUser):
         if spent >= config.USER_BUDGET_USD:
             raise HTTPException(402, "已達用量上限")
     _turns[project_id] = {"task": None, "subs": set(), "events": []}
-    runner = TurnRunner(project_id, project_dir(project_id), Store(user.id), _broadcast(project_id))
+    runner = TurnRunner(project_id, project_dir(project_id), Store(user.id), _broadcast(project_id), ui_mode=user.ui_mode or "pro")
     blocks = [{"type": "text", "text": body.text}]
     if body.with_analysis and (an := analyze.load(project_dir(project_id))):
         blocks.append({"type": "text", "text": analyze.as_brief(an)})   # hidden from the thread (see _public_message)

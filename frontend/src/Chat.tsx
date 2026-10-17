@@ -83,6 +83,29 @@ const CHIPS: Record<Stage, string[]> = {
 const DEFAULT_CHIP: Partial<Record<Stage, string>> = { progress: '照建議做' }
 const NO_VOICE = 'none'
 const OB_STEPS = ['給素材', '解析素材', '風格與賣點']
+// 輕鬆模式: two big answers per stage instead of five chips. `send` goes to the editor; `focus` opens the box; `files` opens 成品.
+const EASY_CHIPS: Record<Stage, { label: string; send?: string; focus?: boolean; files?: boolean; main?: boolean }[]> = {
+  start: [], working: [],
+  progress: [{ label: '好，就這樣 ✓', send: '照建議做', main: true }, { label: '要改一下', focus: true }],
+  revise: [{ label: '很好，看成品 👍', files: true, main: true }, { label: '要改一下', focus: true }],
+}
+const EASY_SAVING_TWD = 2500 - 100 * 3.9   // 市場平均一支 vs 100 點; refined from /api/pricing when loaded
+/** 輕鬆模式: the editor's reply as one conclusion line + the rest (shown behind 看細節). The editor is asked to put
+    a 25-字 conclusion first and details after "---"; without the marker the first sentence is the conclusion. */
+function splitConclusion(text: string): { head: string; rest: string } {
+  const cut = text.search(/\n-{3,}\s*\n/)
+  if (cut > 0) return { head: clean(text.slice(0, cut)), rest: text.slice(cut).replace(/^\s*-{3,}\s*/, '') }
+  const lines = text.split('\n')
+  const i = lines.findIndex(l => l.trim())
+  if (i < 0) return { head: '', rest: text }
+  let head = clean(lines[i])
+  const m = head.match(/^(.{6,60}?[。！？!?])/)
+  let rest = lines.slice(i + 1).join('\n')
+  if (m && m[1].length < head.length) { rest = head.slice(m[1].length) + '\n' + rest; head = m[1] }
+  else if (head.length > 60) { rest = head + '\n' + rest; head = head.slice(0, 40) + '…' }
+  return { head, rest }
+}
+const clean = (s: string) => s.replace(/^#+\s*/, '').replace(/\*\*/g, '').replace(/^[-*•]\s+/, '').replace(/^\d+\.\s+/, '').trim()
 // 影片長度：travel short-form. 標準 is the default; each brief line goes into the first message.
 const LENGTHS = [
   { id: 'short', name: '短版', secs: '12–20 秒', icon: '⚡', desc: '一個最強亮點＋優惠，最容易被看完。適合投廣告、限時優惠、限動。',
@@ -144,8 +167,8 @@ const TOOL_LABEL: Record<string, string> = {
   render_captions: '燒字幕', export_video: '輸出成品', make_cover: '做封面', revision_turn: '修改回合',
 }
 
-export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, onProjectsChanged, feedbackUnread = 0, onFeedbackRead }:
-  { projectId: string; name?: string; onUsage: () => void; onTopUp: (needPoints?: number) => void; onCredits?: () => void; onStorage?: () => void; onProjectsChanged?: () => void; feedbackUnread?: number; onFeedbackRead?: () => void }) {
+export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredits, onStorage, onProjectsChanged, feedbackUnread = 0, onFeedbackRead }:
+  { projectId: string; name?: string; easy?: boolean; onUsage: () => void; onTopUp: (needPoints?: number) => void; onCredits?: () => void; onStorage?: () => void; onProjectsChanged?: () => void; feedbackUnread?: number; onFeedbackRead?: () => void }) {
   const [tab, setTab] = useState<'chat' | 'files'>('chat')
   const [fbOpen, setFbOpen] = useState(false)
   const [prompter, setPrompter] = useState<Line[] | null>(null)
@@ -163,6 +186,12 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
     if (p.client_comments?.some(c => !c.read)) { await api.markCommentsRead(projectId); onFeedbackRead?.(); setProj(x => x && { ...x, client_comments: x.client_comments?.map(c => ({ ...c, read: true })) }) }
   }
   const [proj, setProj] = useState<ProjectDetail | null>(null)
+  useEffect(() => {   // a new export landed during this visit → 輕鬆模式 celebrates it
+    const n = proj?.exports ?? null
+    if (n === null) return
+    if (prevExports.current !== null && n > prevExports.current && easy) setCheer(n)
+    prevExports.current = n
+  }, [proj?.exports]) // eslint-disable-line react-hooks/exhaustive-deps
   const [live, setLive] = useState<Live>(emptyLive())
   const [running, setRunning] = useState(false)
   const [text, setText] = useState('')
@@ -208,6 +237,10 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [editText, setEditText] = useState('')
   const [pins, setPins] = useState<number[]>([])                    // 📌 clips that must be used
   const [sheet, setSheet] = useState<number | null>(null)           // shot open in the bottom sheet
+  const [adv, setAdv] = useState(false)                             // 輕鬆模式: 風格／長度／聲音 are behind 更多選項
+  const [cheer, setCheer] = useState<number | null>(null)           // 輕鬆模式: 影片完成 celebration (export count)
+  const prevExports = useRef<number | null>(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
   const [voices, setVoices] = useState<Voice[]>([])
   const [voice, setVoice] = useState<string | null>(null)   // voice_id, NO_VOICE, or null = not loaded yet
   const [me, setMe] = useState<Me | null>(null)
@@ -557,12 +590,12 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         {stage === 'start' && (
           <div className="ob-wiz">
             <div className="ob-prog">
-              {OB_STEPS.map((t, i) => (
-                <a key={t} className={`ob-pn ${i === obStep ? 'on' : ''} ${obDone[i] ? 'done' : ''}`} onClick={() => i <= obStep || obDone[i - 1] ? goStep(i) : null}>
-                  <i>{obDone[i] && i !== obStep ? '✓' : i + 1}</i><span>{t}</span>
+              {(easy ? [0, 2] : [0, 1, 2]).map((si, i) => (
+                <a key={si} className={`ob-pn ${si === obStep ? 'on' : ''} ${obDone[si] ? 'done' : ''}`} onClick={() => si <= obStep || obDone[si - 1] || (easy && hasFootage) ? goStep(si) : null}>
+                  <i>{obDone[si] && si !== obStep ? '✓' : i + 1}</i><span>{easy && si === 2 ? '說賣點' : OB_STEPS[si]}</span>
                 </a>
               ))}
-              <span className="ob-count muted small">第 {obStep + 1} 步，共 3 步 · 註冊送的 110 點夠做第一支</span>
+              <span className="ob-count muted small">第 {easy ? (obStep === 0 ? 1 : 2) : obStep + 1} 步，共 {easy ? 2 : 3} 步 · 註冊送的 110 點夠做第一支</span>
             </div>
 
             <div className="ob-main">
@@ -590,7 +623,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                     {link && drive.state === 'idle' && <div className="lc-msg">🔓 要 https:// 開頭，並開放「知道連結的人可檢視」</div>}
                     <div className="ob-nav">
                       <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : linkOk ? `${drive.info?.label}連結就緒` : uploading ? '上傳中…' : drive.state === 'checking' ? '讀取連結中…' : '還沒有素材'}</span>
-                      <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading} onClick={() => goStep(1)}>下一步：解析素材 →</button>
+                      <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading} onClick={() => { if (easy) { setSkipAn(true); goStep(2) } else goStep(1) }}>{easy ? '下一步 →' : '下一步：解析素材 →'}</button>
                     </div>
                   </>
                 )}
@@ -730,8 +763,8 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                 )}
                 {obStep === 2 && (
                   <>
-                    <h3>最後：賣點、風格、長度、聲音</h3>
-                    <p className="muted">{analysis ? '賣點已經幫你填好，想改就改；加上價格、店名、語氣更好。' : '地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。'}</p>
+                    <h3>{easy ? '一句話說這支要賣什麼' : '最後：賣點、風格、長度、聲音'}</h3>
+                    <p className="muted">{easy ? '例如「宜蘭海邊包棟，25 米泳池，平日每人 1,500」。用說的也可以，其他剪輯師會幫你決定。' : analysis ? '賣點已經幫你填好，想改就改；加上價格、店名、語氣更好。' : '地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。'}</p>
                     <div className={`spot ${!text.trim() ? 'on' : ''}`}>
                       {!text.trim() && <span className="coach">在這裡打字</span>}
                       <textarea rows={4} value={text} onChange={e => setText(e.target.value)} autoFocus={!text}
@@ -744,6 +777,8 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                       {['地點：', '價格：平日每人 NT$', '店名：', '語氣：輕鬆活潑'].map(c => (
                         <a key={c} className="chipbtn" onClick={() => setText(t => (t ? t.replace(/\s*$/, '\n') : '') + c)}>{c}</a>))}
                     </div>
+                    {easy && <a className="ob-more-t" onClick={() => setAdv(a => !a)}>{adv ? '收起選項 ▴' : <>更多選項 ▾<small>目前：{(STYLES.find(x => x.id === style) ?? STYLES[0]).name} · {(LENGTHS.find(l => l.id === length) ?? LENGTHS[1]).secs} · {voice === NO_VOICE ? '不配音' : voices.find(v => v.voice_id === voice)?.name ?? '…'}</small></>}</a>}
+                    <div className={`ob-opts ${easy && !adv ? 'hide' : ''}`}>
                     <div className="muted small ob-sub">風格</div>
                     <div className="styles">
                       {STYLES.map(st => (
@@ -795,8 +830,9 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                       </div>
                       {voice === null && <span className="muted small">載入聲音中…</span>}
                     </div>
+                    </div>
                     <div className="ob-nav">
-                      <a className="small" onClick={() => goStep(1)}>← 上一步</a>
+                      <a className="small" onClick={() => goStep(easy ? 0 : 1)}>← 上一步</a>
                       <div className={`spot inline ${canStart ? 'on' : ''}`}>
                         {canStart && <span className="coach">按下去就開始</span>}
                         <button className={`btn primary start ${canStart ? 'glow' : ''}`} disabled={!canStart} onClick={start}>
@@ -814,7 +850,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
             </div>
           </div>
         )}
-        {proj.messages.map((m, i) => <Bubble key={m.id} m={m} assets={assetsFor(m, i)} onOpenFiles={() => setTab('files')} onRecord={running ? undefined : setPrompter} />)}
+        {proj.messages.map((m, i) => <Bubble key={m.id} m={m} easy={easy} assets={assetsFor(m, i)} onOpenFiles={() => setTab('files')} onRecord={running ? undefined : setPrompter} />)}
         {running && (
           <div className="bubble assistant">
             {(() => { const cur = [...live.tools].reverse().find(t => t.status === 'run'); return (
@@ -925,10 +961,30 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
             </div>
           </div>)
       })()}
+      {cheer !== null && (
+        <div className="cheer-scrim" onClick={e => { if (e.target === e.currentTarget) setCheer(null) }}>
+          <div className="cheer" role="dialog" aria-label="影片完成">
+            <div className="cheer-emoji" aria-hidden="true">🎉</div>
+            <h3>{cheer === 1 ? '第一支影片做好了！' : `第 ${cheer} 版做好了！`}</h3>
+            <p>比外包剪一支，大約省了 <b>NT${Math.round(EASY_SAVING_TWD).toLocaleString()}</b></p>
+            <button className="btn primary block lg" onClick={() => { setCheer(null); setTab('files') }}>看成品、分享給朋友</button>
+            <a className="cheer-later" onClick={() => setCheer(null)}>等一下再看</a>
+          </div>
+        </div>
+      )}
       {pickGuide && <PickGuide onGo={() => { attachBypass.current = true; attachInput.current?.click() }} onClose={() => setPickGuide(false)} />}
       {cloning && <VoiceCloneDialog current={voices.find(v => v.custom)} onClose={() => { recloneForScript.current = false; setCloning(false) }} onDone={onCloned} />}
       {unseen && <a className="jump" onClick={jump}>↓ 有新內容</a>}
-      {stage !== 'start' && CHIPS[stage].length > 0 && !uploading && (
+      {easy && stage !== 'start' && EASY_CHIPS[stage].length > 0 && !uploading && (
+        <div className="qr ez">
+          <div className="qr-row">
+            {EASY_CHIPS[stage].map(c => (
+              <button key={c.label} type="button" className={`qrb ez ${c.main ? 'main' : ''}`} disabled={running}
+                onClick={() => { if (c.send) submit(c.send); else if (c.files) setTab('files'); else taRef.current?.focus() }}>{c.label}</button>))}
+          </div>
+        </div>
+      )}
+      {!easy && stage !== 'start' && CHIPS[stage].length > 0 && !uploading && (
         <div className="qr">
           <span className="qr-lbl">下一步 · 點一下就送出</span>
           <div className="qr-row">
@@ -949,7 +1005,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
           <ClipIcon />
           <input ref={attachInput} type="file" multiple accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading} onClick={pick}
             onChange={e => { onFiles(e.target.files); e.target.value = '' }} /></label>
-        <textarea value={text} onChange={e => setText(e.target.value)} rows={2}
+        <textarea ref={taRef} value={text} onChange={e => setText(e.target.value)} rows={2}
           placeholder={uploading ? '上傳中，完成後再送出…' : PLACEHOLDER[stage]}
           onKeyDown={e => {
             // Enter sends only on desktop, never while the IME (注音／拼音) is still composing, and never on phones
@@ -967,7 +1023,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   )
 }
 
-function Bubble({ m, assets, onOpenFiles, onRecord }: { m: Msg; assets: Asset[]; onOpenFiles?: () => void; onRecord?: (lines: Line[]) => void }) {
+function Bubble({ m, assets, onOpenFiles, onRecord, easy = false }: { m: Msg; assets: Asset[]; onOpenFiles?: () => void; onRecord?: (lines: Line[]) => void; easy?: boolean }) {
   // Consecutive tool parts collapse into one quiet "did N steps" line; the editor's words stay prominent.
   const groups: ({ kind: 'text'; text: string } | { kind: 'tools'; names: string[] })[] = []
   for (const p of m.parts) {
@@ -975,6 +1031,26 @@ function Bubble({ m, assets, onOpenFiles, onRecord }: { m: Msg; assets: Asset[];
     if (p.type === 'text') groups.push({ kind: 'text', text: p.text })
     else if (last && last.kind === 'tools') last.names.push(p.name)
     else groups.push({ kind: 'tools', names: [p.name] })
+  }
+  if (easy && m.role === 'assistant') {
+    // 輕鬆模式: one conclusion line, the deliverables, and everything else behind 看細節.
+    const texts = groups.filter(g => g.kind === 'text').map(g => (g as { text: string }).text).join('\n\n')
+    const { head, rest } = splitConclusion(texts)
+    const tools = groups.filter(g => g.kind === 'tools').flatMap(g => (g as { names: string[] }).names)
+    const more = rest.trim().length > 0 || tools.length > 0
+    return (
+      <div className="bubble assistant ez">
+        {head && <div className="ez-head">{head}</div>}
+        {assets.map(a => <AssetCard key={a.id} a={a} onOpenFiles={onOpenFiles} />)}
+        {more && (
+          <details className="ez-more">
+            <summary>看細節</summary>
+            {rest.trim() && <Md text={rest} onRecord={onRecord} />}
+            {tools.length > 0 && <div className="muted small">做了 {tools.length} 步：{[...new Set(tools.map(n => TOOL_LABEL[n] ?? n))].join('、')}</div>}
+          </details>
+        )}
+      </div>
+    )
   }
   return (
     <div className={`bubble ${m.role}`}>
