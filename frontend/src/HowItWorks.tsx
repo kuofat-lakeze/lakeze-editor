@@ -196,7 +196,7 @@ function Phone({ step }: { step: number }) {
 
         {/* screen 2: the conversation while the editor works */}
         <div className={`ps ps-chat ${step === 1 ? 'on' : ''}`} style={{ ['--i' as string]: 1 }}>
-          <div className="ps-pick"><span className="sel">旅遊短影音</span><span>質感形象</span><span>促銷活動</span><span className="sel v">Vivian 女聲</span></div>
+          <div className="ps-pick"><span className="sel">旅遊短影音</span><span>質感形象</span><span>促銷活動</span><span className="sel v">薇薇安 女聲</span></div>
           <div className="ps-msg user">宜蘭海邊包棟民宿，25 米戲水池、龜山島海景、KTV、寵物友善。平日每人 NT$1,500。</div>
           <div className="ps-msg ai">
             <div className="ps-work"><i className="ps-spin" /><b>剪輯師工作中</b><span>· 剪輯畫面 · 已 3 分 12 秒</span></div>
@@ -220,7 +220,7 @@ function Phone({ step }: { step: number }) {
               <Scene kind="day" />
               <div className="ps-super">KTV · 電動麻將 · 寵物友善</div>
               <div className="ps-headline">宜蘭海邊包棟<br /><em>25米戲水池</em></div>
-              <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /><b /><b /></span><small>Vivian 旁白</small></div>
+              <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /><b /><b /></span><small>薇薇安 旁白</small></div>
               <div className="ps-sub">推開窗就是龜山島海景</div>
               <div className="ps-play" />
             </div>

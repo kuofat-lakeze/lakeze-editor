@@ -222,7 +222,7 @@ def _voice(inp, ctx):
         left = trial["limit"] - trial["used"]
         if est > left + 1:
             raise RuntimeError(f"試用版用自己的聲音最多生成 {trial['limit']} 秒（已用 {trial['used']:.0f} 秒，剩 {max(0, left):.0f} 秒），"
-                               f"這段旁白約 {est:.0f} 秒。請先用內建聲音（例如 Vivian）完成整支影片，並告訴用戶：儲值後自己的聲音就不限秒數；"
+                               f"這段旁白約 {est:.0f} 秒。請先用內建聲音（例如薇薇安）完成整支影片，並告訴用戶：儲值後自己的聲音就不限秒數；"
                                f"或只用自己的聲音錄其中 {max(0, left):.0f} 秒以內的一兩句。")
     res = eleven.tts_verified(inp["lines"], inp["voice_id"], vo_dir, model=inp.get("model", "eleven_v3"),
                               tags=inp.get("tags", "[excited]"), stability=inp.get("stability", 0.5),

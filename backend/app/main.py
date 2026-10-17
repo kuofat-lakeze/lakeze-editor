@@ -1704,6 +1704,28 @@ async def asset_file(project_id: str, asset_id: str, user: User = CurrentUser):
 _voices_cache: dict = {"at": 0.0, "data": []}
 
 
+# 聲音用中文名字；只有美式／英式口音的才留英文名。Library 的名字是英文（"Kuo Yu"），所以沒設定的
+# 從名字池裡依性別挑一個，用 voice_id 決定，同一個聲音每次都是同一個名字。
+_VOICE_POOL = {"female": ["小晴", "雅婷", "欣怡", "語彤", "佳穎", "品妍"], "male": ["阿哲", "志豪", "承恩", "冠宇", "家豪", "柏翰"]}
+_WESTERN = re.compile(r"american|british|australian|美式|英式|英文|us accent|uk accent", re.I)
+
+
+def _voice_display_name(v: dict, fallback: str, taken: list[str]) -> str:
+    if v["voice_id"] in config.VOICE_NAMES:
+        return config.VOICE_NAMES[v["voice_id"]]
+    if re.search(r"[\u4e00-\u9fff]", fallback):   # already Chinese
+        return fallback
+    if _WESTERN.search(f"{v.get('accent') or ''} {v.get('description') or ''} {v.get('name') or ''}"):
+        return fallback
+    pool = _VOICE_POOL["male" if (v.get("gender") or "").lower() == "male" else "female"]
+    start = int(hashlib.sha1(v["voice_id"].encode()).hexdigest(), 16) % len(pool)
+    for i in range(len(pool)):
+        n = pool[(start + i) % len(pool)]
+        if n not in taken:
+            return n
+    return fallback
+
+
 @app.get("/api/voices")
 async def voices(user: User = CurrentUser):
     """Voices the UI offers up front: configured presets first, then Taiwanese-accent voices from the
@@ -1732,7 +1754,7 @@ async def voices(user: User = CurrentUser):
     for v in found:
         if v["voice_id"] not in seen and len(out) < 6:
             name, _, tail = v["name"].partition(" - ")  # "Kuo Yu - Taiwan Mandarin Narrator" → name + tagline
-            out.append({"voice_id": v["voice_id"], "name": name.strip(), "gender": v.get("gender"),
+            out.append({"voice_id": v["voice_id"], "name": _voice_display_name(v, name.strip(), [x["name"] for x in out]), "gender": v.get("gender"),
                         "description": (tail or v.get("description") or "")[:40], "preview_url": v.get("preview_url")})
             seen.add(v["voice_id"])
     _voices_cache.update(at=time.time(), data=out)

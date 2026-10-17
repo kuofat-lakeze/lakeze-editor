@@ -565,11 +565,11 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                 )}
                 {obStep === 1 && !analysis && (
                   <>
-                    <h3>{analyzing ? '剪輯師正在看素材' : '先讓剪輯師看一遍素材'}</h3>
-                    <p className="muted">不確定要主打什麼？按一下，剪輯師會看完每個畫面，列出<b>賣點、分鏡、旁白逐字稿</b>，還有做這支大約<b>要花幾點</b>。之後正式開剪，素材分析這一步不再重複扣點。</p>
+                    <h3>{analyzing ? '剪輯師正在看素材' : '先讓剪輯師看一遍'}</h3>
+                    {!analyzing && <p className="muted">看完告訴你賣點、分鏡、要花幾點。</p>}
                     {analyzing ? (
                       <div className="an-run">
-                        <div className="an-run-head"><span className="spinner" /><b>解析中</b><span className="muted">· 已 {fmtDur(now - anStart)} · 通常 1–2 分鐘{linkOk && !okUploads ? '，Drive 素材要先下載會更久' : ''}</span></div>
+                        <div className="an-run-head"><span className="spinner" /><b>已 {fmtDur(now - anStart)}</b><span className="muted">· 通常 1–2 分鐘{linkOk && !okUploads ? '，雲端素材更久' : ''}</span></div>
                         <ol className="an-phases">
                           {AN_PHASES.map((p, i) => <li key={p} className={i < anPhase ? 'done' : i === anPhase ? 'on' : ''}><i>{i < anPhase ? '✓' : i + 1}</i>{p}</li>)}
                         </ol>
@@ -585,7 +585,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                             </button>
                           </div>
                           <div className="an-cta-list">
-                            {['有哪些賣點', '分鏡怎麼排', '旁白逐字稿', '預估要花幾點'].map(x => <span key={x}>✓ {x}</span>)}
+                            {['賣點', '分鏡', '旁白稿', '要花幾點'].map(x => <span key={x}>✓ {x}</span>)}
                           </div>
                         </div>
                         {anNeed && (
@@ -599,7 +599,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                     )}
                     <div className="ob-nav">
                       <a className="small" onClick={() => goStep(0)}>← 上一步</a>
-                      {!analyzing && <a className="small muted" onClick={() => { setSkipAn(true); goStep(2) }}>我自己知道賣點，跳過 →</a>}
+                      {!analyzing && <a className="small muted" onClick={() => { setSkipAn(true); goStep(2) }}>跳過 →</a>}
                     </div>
                   </>
                 )}
@@ -685,16 +685,24 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                       ))}
                     </div>
                     <div className="muted small ob-sub">影片長度</div>
-                    <div className="lens">
-                      {LENGTHS.map(l => (
-                        <div key={l.id} className={`lenc ${length === l.id ? 'sel' : ''}`} onClick={() => setLength(l.id)} role="radio" aria-checked={length === l.id}>
-                          <div className="lenc-top"><span className="lenc-ic" aria-hidden="true">{l.icon}</span><b>{l.name}</b>{l.tag && <span className="pill">{l.tag}</span>}</div>
-                          <div className="lenc-secs">{l.secs}</div>
-                          <i className="lenc-bar" style={{ width: `${l.id === 'short' ? 27 : l.id === 'std' ? 60 : 100}%` }} />
-                          <div className="muted small">{l.desc}</div>
-                        </div>
-                      ))}
-                    </div>
+                    {(() => {
+                      const cur = LENGTHS.find(l => l.id === length) ?? LENGTHS[1]
+                      return (
+                        <div className="lenbox">
+                          <div className="lenseg" role="radiogroup" aria-label="影片長度">
+                            {LENGTHS.map(l => (
+                              <button type="button" key={l.id} className={`lenseg-b ${length === l.id ? 'on' : ''}`} onClick={() => setLength(l.id)} role="radio" aria-checked={length === l.id}>
+                                <span className="lenseg-ic" aria-hidden="true">{l.icon}</span><b>{l.name}</b><small>{l.secs}</small>
+                              </button>
+                            ))}
+                          </div>
+                          <div className="lentl" aria-hidden="true">
+                            <i style={{ width: `${cur.id === 'short' ? 27 : cur.id === 'std' ? 60 : 100}%` }} />
+                            <span className="lentl-0">0s</span><span className="lentl-60">60s</span>
+                          </div>
+                          <div className="lendesc small"><b>{cur.name}{cur.tag ? '（預設）' : ''}</b>{cur.desc}</div>
+                        </div>)
+                    })()}
                     <div className="muted small ob-sub">旁白聲音</div>
                     <div className="voice-row">
                       {voices.map(v => (

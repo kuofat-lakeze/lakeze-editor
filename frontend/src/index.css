@@ -1654,3 +1654,18 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .lenc-bar { display: block; height: 4px; border-radius: 4px; background: linear-gradient(90deg, var(--brand), var(--brand-2)); opacity: .35; }
 .lenc.sel .lenc-bar { opacity: 1; }
 @media (max-width: 760px) { .lens { grid-template-columns: 1fr; } }
+/* 影片長度：一條分段選擇器＋時間軸，跟風格卡片明顯不同 */
+.lens, .lenc { display: none; }
+.lenbox { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: var(--panel2); }
+.lenseg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
+.lenseg-b { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 6px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
+.lenseg-b b { font-size: 14px; color: var(--text); } .lenseg-b small { font-size: 12px; font-variant-numeric: tabular-nums; }
+.lenseg-ic { font-size: 14px; line-height: 1; }
+.lenseg-b.on { background: var(--text); color: rgba(255,255,255,.8); box-shadow: 0 2px 8px rgba(34,38,46,.18); }
+.lenseg-b.on b { color: #fff; }
+.lentl { position: relative; height: 8px; margin: 8px 0 14px; border-radius: 8px; background: var(--line); }
+.lentl i { display: block; height: 100%; border-radius: 8px; background: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .25s ease; }
+.lentl span { position: absolute; top: 11px; font-size: 10.5px; color: var(--muted); } .lentl-0 { left: 0; } .lentl-60 { right: 0; }
+.lendesc { color: var(--muted); line-height: 1.5; } .lendesc b { color: var(--text); margin-right: 6px; }
+.pg-hide { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.pg-hide input { width: 16px; height: 16px; margin: 0; accent-color: var(--brand); }

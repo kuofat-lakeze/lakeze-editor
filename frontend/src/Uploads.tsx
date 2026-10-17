@@ -38,10 +38,10 @@ const FilmIcon = () => (
 
 const IOS_PICK = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent)
 const GUIDE_KEY = 'lk_pick_guide_seen'
-const guideSeen = () => { try { return Number(localStorage.getItem(GUIDE_KEY) || 0) } catch { return 3 } }
-const guideMark = () => { try { localStorage.setItem(GUIDE_KEY, String(guideSeen() + 1)) } catch { /* private mode */ } }
-/** iPhone: show the picture guide the first 3 times someone opens the picker. */
-export const needsPickGuide = () => IOS_PICK && guideSeen() < 3
+const guideOff = () => { try { return localStorage.getItem(GUIDE_KEY) === 'off' } catch { return true } }
+const guideHide = () => { try { localStorage.setItem(GUIDE_KEY, 'off') } catch { /* private mode */ } }
+/** iPhone: show the picture guide every time the picker opens, until the person ticks 不再顯示. */
+export const needsPickGuide = () => IOS_PICK && !guideOff()
 
 /* iPhone's photo picker freezes for a few seconds after the blue ✓ while it prepares (or downloads from
    iCloud) the videos, and the ✓ looks like nothing happened. The page can't draw over the picker, so the
@@ -49,6 +49,7 @@ export const needsPickGuide = () => IOS_PICK && guideSeen() < 3
 /* One picture, one animation: the hand taps the picker's blue ✓, a ring fills around it while the screen
    dims (that's the wait), then it turns into an upload arrow. Loops; pure CSS. */
 export function PickGuide({ onGo, onClose }: { onGo: () => void; onClose: () => void }) {
+  const [hide, setHide] = useState(false)
   return (
     <div className="pg-scrim" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="pg" role="dialog" aria-label="按勾勾後等它跑完">
@@ -61,7 +62,8 @@ export function PickGuide({ onGo, onClose }: { onGo: () => void; onClose: () => 
           </div>
         </div>
         <p className="pg1-line">按 <span className="pg1-chip">✓</span> 後，等它跑完</p>
-        <button type="button" className="btn primary block pg-go" onClick={() => { guideMark(); onClose(); onGo() }}>知道了，選影片</button>
+        <button type="button" className="btn primary block pg-go" onClick={() => { if (hide) guideHide(); onClose(); onGo() }}>知道了，選影片</button>
+        <label className="pg-hide"><input type="checkbox" checked={hide} onChange={e => setHide(e.target.checked)} />之後不再顯示</label>
       </div>
     </div>
   )
