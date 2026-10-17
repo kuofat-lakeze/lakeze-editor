@@ -51,7 +51,7 @@ export type Me = { id: string; email: string; is_admin: boolean; balance: number
 export type Providers = { google: boolean; facebook: boolean }
 export type CheckoutResult = { url: string | null; test?: boolean; granted?: number; subscription?: string; balance?: number }
 export type Pack = { id: string; twd: number; points: number; bonus?: number; total?: number; member_bonus?: Record<string, number>; label: string; checkout_url: string | null; member_twd: Record<string, number>; member_checkout_url?: Record<string, string | null> }
-export type Subscription = { member_bonus_pct?: number; id: string; label: string; who: string; desc: string; features: string[]; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
+export type Subscription = { member_bonus_pct?: number; base?: string; billing?: 'month' | 'quarter'; monthly_twd?: number; month_points?: number; months?: number; id: string; label: string; who: string; desc: string; features: string[]; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
   twd: number; payg_twd: number; save_twd: number; save_pct: number; per_video_twd: number; point_twd: number; member_discount_pct: number; checkout_url?: string | null }
 export type MySubscription = { id: string; label: string; points: number; videos: number; storage_gb: number; features: string[]; period_start: string | null; renews_at: string | null }
 export type Tier = { id: string; label: string; who: string; features?: string[]; voice_seconds?: number }
@@ -75,7 +75,7 @@ export type Dashboard = {
   totals: { users: number; paying_users: number; subscribers: number; mrr_twd: number; revenue_twd: number; points_used: number; exports: number; cost_usd: number; cost_twd: number; conversion_pct: number; points_outstanding: number }
   period: DashPeriod; previous: DashPeriod
   daily: { date: string; signups: number; revenue_twd: number; points_used: number; points_waived: number; cost_twd: number; exports: number; active: number }[]
-  tiers: Record<'free' | 'payg' | 'sub5' | 'sub15' | 'disabled', number>; funnel: { label: string; n: number }[]
+  tiers: Record<'free' | 'payg' | 'sub3' | 'sub5' | 'sub15' | 'disabled', number>; funnel: { label: string; n: number }[]
   by_category: { id: string; label: string; points: number }[]; low_balance: DashRow[]; churn: DashRow[]; top: DashRow[]; recent: DashRow[]
   stages: Record<Stage, string>; point_twd: number
 }

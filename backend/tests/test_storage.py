@@ -196,7 +196,7 @@ def test_signup_gets_welcome_points(client):
     r = c.post("/api/auth/signup", json={"email": "new@lakeze.com", "password": "password123"})
     assert r.status_code == 200, r.text
     assert asyncio.run(D.balance(r.json()["id"])) == P.SIGNUP_POINTS == 110
-    assert P.FIRST_VIDEO_POINTS + 2 * P.REVISION_POINTS == 100 and P.POINT_TWD == 3.5
+    assert P.FIRST_VIDEO_POINTS + 2 * P.REVISION_POINTS == 100 and P.POINT_TWD == 3.9
     assert not asyncio.run(D.has_paid(r.json()["id"]))   # a gift isn't a purchase: trial rules still apply
 
 
@@ -317,7 +317,7 @@ def test_packs_bonus_points_stay_below_the_subscription_discount():
     """300 點起加送；入帳＝購買＋加送，價格只算購買的點數；每點實價仍高於專業旅人會員價。"""
     from app import pricing as P
     pk = P.PACKS["p300"]
-    assert pk["total"] == 315 and pk["twd"] == 1050 and pk["label"] == "300 點 + 送 15"
+    assert pk["total"] == 315 and pk["twd"] == 1170 and pk["label"] == "300 點 + 送 15"
     assert M._item("p300", NS(subscription=""))["points"] == 315
     assert all(P.PACKS[k]["bonus"] == 0 for k in ("p50", "p100"))
     for k, v in P.PACKS.items():
@@ -330,9 +330,9 @@ def test_members_get_extra_points_not_a_lower_price():
     from app import pricing as P
     pk = P.PACKS["p1000"]
     free, pro, big = (M._item("p1000", NS(subscription=x)) for x in ("", "sub5", "sub15"))
-    assert free["amount_twd"] == pro["amount_twd"] == big["amount_twd"] == pk["twd"] == 3500
-    assert (free["points"], pro["points"], big["points"]) == (1100, round(3500 / 3.1), round(3500 / 2.9)) == (1100, 1129, 1207)
-    assert pro["label"] == "1,000 點 + 送 100 + 專業旅人價多 29"
+    assert free["amount_twd"] == pro["amount_twd"] == big["amount_twd"] == pk["twd"] == 3900
+    assert (free["points"], pro["points"], big["points"]) == (1100, round(3900 / P.SUBSCRIPTIONS["sub5"]["point_twd"]), round(3900 / P.SUBSCRIPTIONS["sub15"]["point_twd"]))
+    assert pro["label"] == "1,000 點 + 送 100 + 專業旅人價多 209"
     for k, v in P.PACKS.items():   # any pack, any size: the member's price per point is the plan's rate
         for plan in ("sub5", "sub15"):
             got = P.pack_points(v, plan)

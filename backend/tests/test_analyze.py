@@ -181,7 +181,7 @@ def test_test_account_buys_without_payment(client):
             return await s.get(D.User, u.id)
     holder["u"] = asyncio.run(reload())   # the real dependency reloads the user per request
     me = c.get("/api/me").json()
-    assert me["subscription"]["id"] == "sub5" and me["balance"] == 600 and me["can_clone_voice"]
+    assert me["subscription"]["id"] == "sub5" and me["balance"] == 100 + P.SUBSCRIPTIONS["sub5"]["points"] == 700 and me["can_clone_voice"]
     assert c.get("/api/checkout/nope").status_code == 404
     # a normal account without checkout URLs is still told to contact support
     holder["u"] = asyncio.run(_user(email="x@y.z"))

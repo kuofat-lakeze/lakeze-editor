@@ -9,7 +9,7 @@ const MARKET = { days: 3, low: 2000, high: 3000 }      // what a studio charges 
 // One video with cover and 2 revision rounds (the usual path to a final cut). The NT$ numbers follow the
 // point price set on the dashboard (/api/pricing); these are only the first paint before it loads.
 type Prices = { pointTwd: number; points: number; twd: number; sub: { name: string; twd: number; videos: number; perVideo: number }; signup: number }
-const FALLBACK: Prices = { pointTwd: 3.5, points: 100, twd: 350, sub: { name: '專業旅人', twd: 1550, videos: 5, perVideo: 310 }, signup: 110 }
+const FALLBACK: Prices = { pointTwd: 3.9, points: 100, twd: 390, sub: { name: '專業旅人', twd: 1790, videos: 6, perVideo: 298 }, signup: 110 }
 const MINUTES = 15
 
 function usePrices(): Prices {

@@ -61,6 +61,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   const [open, setOpen] = useState<string | null>(null)
   const [hover, setHover] = useState<number | null>(null)
   const [nVideos, setNVideos] = useState(5)
+  const [billing, setBilling] = useState<'month' | 'quarter'>('month')
   const [nRev, setNRev] = useState(1)
   const reload = () => { api.creditsSummary().then(setSum); api.credits().then(r => setLedger(r.ledger)); api.me().then(setMe) }
   useEffect(() => { reload(); api.pricing().then(setP) }, [])
@@ -97,9 +98,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   }
   const sub = me?.subscription ?? null
   const sub5 = p.subscriptions.find(s => s.id === 'sub5') ?? p.subscriptions[0]
-  const inFree = !!sum.free_project?.in_free
   const single = p.first_video_twd + 2 * p.revision_twd   // one video with cover and 2 revision rounds, in NT$
-  const singlePts = FIRST + 2 * REV                        // the same in points
   // top-up calculator
   const need = nVideos * FIRST + nVideos * nRev * REV
   const member = !!sub                                   // subscribers top up at their plan's price per point
@@ -111,7 +110,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   const combo = cheapestCombo(p.packs.map(k => ({ ...k, total: gotPts(k) })), needPoints > 0 ? needPoints : need, packPrice)
   const bestPack = combo.reduce((a, k) => (k.points > a.points ? k : a), combo[0] ?? p.packs[0])
   // 試算比較: a month of `need` points bought single, or on each plan (the plan's points + top-ups at its price).
-  const compare = [{ id: '', label: '單次購買', fee: 0, incl: 0 }, ...p.subscriptions.map(x => ({ id: x.id, label: x.label, fee: x.twd, incl: x.points }))].map(o => {
+  const compare = [{ id: '', label: '單次購買', fee: 0, incl: 0 }, ...p.subscriptions.filter(x => (x.billing ?? 'month') === 'month').map(x => ({ id: x.id, label: x.label, fee: x.twd, incl: x.points }))].map(o => {
     const extra = Math.max(0, need - o.incl)
     const c = extra > 0 ? cheapestCombo(p.packs.map(k => ({ ...k, total: gotPts(k, o.id || undefined) })), extra, packPrice) : []
     const cost = o.fee + c.reduce((a, k) => a + k.twd, 0)
@@ -128,7 +127,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
         const pk = p.packs.find(x => x.id === paying); const sb = p.subscriptions.find(x => x.id === paying)
         const got = pk ? gotPts(pk, me?.subscription?.id) : 0
         const item = pk ? { id: pk.id, kind: 'pack' as const, title: `${pk.points.toLocaleString()} 點${got > pk.points ? `（實得 ${got.toLocaleString()} 點）` : ''}`, sub: `約可剪 ${Math.max(0, Math.floor(got / (p.first_video_points + 2 * p.revision_points)))} 支（含封面與 2 輪修改）`, points: got, twd: pk.twd, listTwd: undefined }
-          : sb ? { id: sb.id, kind: 'sub' as const, title: `${sb.label} · 月繳`, sub: `每月 ${sb.points} 點，約 ${sb.videos} 支 · ${sb.storage_gb} GB 空間`, points: sb.points, twd: sb.twd, listTwd: sb.payg_twd } : null
+          : sb ? { id: sb.id, kind: 'sub' as const, title: `${sb.label} · ${sb.billing === 'quarter' ? '季繳' : '月繳'}`, sub: sb.billing === 'quarter' ? `一次 3 個月：${sb.points.toLocaleString()} 點，每月約 ${sb.videos} 支 · ${sb.storage_gb} GB 空間` : `每月 ${sb.points} 點，約 ${sb.videos} 支 · ${sb.storage_gb} GB 空間`, points: sb.points, twd: sb.twd, listTwd: sb.payg_twd } : null
         return item && <PayFlow item={item} onClose={() => { setPaying(null); reload(); onBought?.() }} onPaid={() => { setPaying(null); setToast(`完成！${item.title}已入帳`); setTimeout(() => setToast(''), 5000); reload(); onBought?.() }} />
       })()}
       <header>
@@ -317,42 +316,44 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
 
         {tab === 'plans' && (
           <>
-            {/* 第一層：三個方案並排，只放每支價格、折扣、兩個重點、按鈕 */}
+            {/* 第一層：三個訂閱方案（月繳／季繳切換），單次儲值另外一小塊 */}
             <section className="pl-head">
-              <h3>選一個方案</h3>
-              <span className="muted small">一支影片（含封面、2 輪修改）＝ {singlePts} 點</span>
+              <h3>訂閱方案</h3>
+              <div className="pl-bill" role="tablist">
+                <a className={billing === 'month' ? 'on' : ''} onClick={() => setBilling('month')}>月繳</a>
+                <a className={billing === 'quarter' ? 'on' : ''} onClick={() => setBilling('quarter')}>季繳<em>再省 15%</em></a>
+              </div>
             </section>
             <section className="pl-grid">
-              <div className={`pl card ${!sub && !inFree && me?.tier !== 'free' ? 'cur' : ''}`}>
-                <div className="pl-top"><b className="pl-name">{p.tiers.payg.label}</b><span className="pl-tag">單次購買</span></div>
-                <div className="pl-who">{p.tiers.payg.who}</div>
-                <div className="pl-price">{twd(single)}<small> / 支</small></div>
-                <div className="pl-pts">一次買 <b>{Math.min(...p.packs.map(k => k.points)).toLocaleString()}～{Math.max(...p.packs.map(k => k.points)).toLocaleString()}</b> 點</div>
-                <div className="pl-rate">1 點 <b>{twd(p.point_twd)}</b></div>
-                <div className="pl-sub"><b className="pl-hi">300 點起加送</b>，最多送 {Math.max(...p.packs.map(k => k.bonus ?? 0))} 點</div>
-                <ul className="pl-list"><li>點數永久有效</li><li>全部功能都能用</li></ul>
-                <button className="btn block" onClick={() => setTab('buy')}>{!sub && !inFree && me?.tier !== 'free' ? '再儲值' : '儲值點數'}</button>
-              </div>
-              {p.subscriptions.map(s => {
+              {p.subscriptions.filter(s => (s.billing ?? 'month') === billing).map(s => {
                 const isCur = sub?.id === s.id
-                const best = s.id === 'sub5'
+                const best = (s.base ?? s.id) === 'sub5'
+                const q = s.billing === 'quarter'
+                const off = Math.round((1 - s.per_video_twd / single) * 100)
                 return (
                   <div key={s.id} className={`pl card ${best ? 'best' : ''} ${isCur ? 'cur' : ''}`}>
                     {best && !isCur && <div className="pl-ribbon">最多人選</div>}
-                    <div className="pl-top"><b className="pl-name">{s.label}</b><span className="pl-tag">包月</span></div>
+                    {isCur && <div className="pl-ribbon cur">目前方案</div>}
+                    <div className="pl-top"><b className="pl-name">{s.label}</b></div>
                     <div className="pl-who">{s.who}</div>
-                    <div className="pl-price">{twd(s.per_video_twd)}<small> / 支</small></div>
-                    <div className="pl-pts">每月 <b>{s.points.toLocaleString()}</b> 點</div>
-                    <div className="pl-rate">1 點 <b>{twd(s.point_twd)}</b><span>比單次省 {Math.round((1 - s.point_twd / p.point_twd) * 100)}%</span></div>
-                    <div className="pl-sub">每月 {twd(s.twd)}，約 {s.videos} 支影片</div>
-                    <div className="pl-member">訂閱期間加買點數，不論買多少，<b>一律 1 點 {twd(s.point_twd)}</b>：付一樣的錢，點數多 {s.member_bonus_pct}%（例：{twd((p.packs.find(x => x.points === 1000) ?? p.packs[p.packs.length - 1]).twd)} 實得 <b>{gotPts(p.packs.find(x => x.points === 1000) ?? p.packs[p.packs.length - 1], s.id).toLocaleString()}</b> 點）</div>
-                    <ul className="pl-list"><li>每支含 2 輪修改</li><li>{s.storage_gb} GB 成品空間，一直保存</li></ul>
+                    <div className="pl-price">{twd(q ? s.monthly_twd ?? s.twd : s.twd)}<small> / 月</small></div>
+                    <div className="pl-sub">{q ? `每季 ${twd(s.twd)} · ` : ''}每月 {s.videos} 支 · 每支 {twd(s.per_video_twd)}</div>
+                    <div className="pl-off">比單次省 {off}%</div>
+                    <ul className="pl-list">
+                      <li>每月 {(s.month_points ?? s.points).toLocaleString()} 點，用不完會累積</li>
+                      <li>加買點數也是 1 點 {twd(s.point_twd)}</li>
+                      <li>{s.storage_gb} GB 成品空間，一直保存</li>
+                    </ul>
                     {isCur ? <button className="btn block" disabled>使用中</button>
                       : canBuy(s.checkout_url) ? <button className={`btn block ${best ? 'primary' : ''}`} onClick={() => buy(s.id)}>訂閱{s.label}</button>
                         : <button className="btn block" disabled>洽客服開通</button>}
                   </div>)
               })}
             </section>
+            <a className="pl-payg card" onClick={() => setTab('buy')}>
+              <span><b>不想訂閱？</b>單次儲值，1 點 {twd(p.point_twd)}，一支約 {twd(single)}</span>
+              <i>單次儲值 →</i>
+            </a>
 
             {/* 第二層：目前方案一行、成品空間 */}
             <section className={`pl-now ${me?.tier === 'free' ? 'free' : ''}`}>
@@ -443,7 +444,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                   {gotPts(k) >= FIRST + 2 * REV
                     ? <div className="packc-videos">約可剪 <b>{Math.floor(gotPts(k) / (FIRST + 2 * REV))}</b> 支<span className="muted small">（含封面與 2 輪修改）</span></div>
                     : <div className="packc-videos">補點用<span className="muted small">：約 {Math.floor(gotPts(k) / REV)} 輪修改，或補足第一支</span></div>}
-                  {!member && k.member_bonus && <div className="packc-tease">同樣 {twd(k.twd)}，訂閱後實得：{p.subscriptions.map(x => <span key={x.id}>{x.label}價 <b>{gotPts(k, x.id).toLocaleString()}</b> 點</span>)}</div>}
+                  {!member && k.member_bonus && <div className="packc-tease">同樣 {twd(k.twd)}，訂閱後實得：{p.subscriptions.filter(x => (x.billing ?? 'month') === 'month').map(x => <span key={x.id}>{x.label}價 <b>{gotPts(k, x.id).toLocaleString()}</b> 點</span>)}</div>}
                   <div className="muted small">點數不過期，用不完會累積</div>
                   {canBuy(k.checkout_url)
                     ? <button className="btn primary block" onClick={() => buy(k.id)}>購買</button>

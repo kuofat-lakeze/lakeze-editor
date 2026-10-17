@@ -65,7 +65,7 @@ def test_dashboard_and_users(client):
     assert t["cost_twd"] == 3 * P.TWD_PER_USD and t["conversion_pct"] == 25.0 and t["points_outstanding"] == 110 + 100 - 78 + 110 + 110
     assert d["period"]["revenue_twd"] == 700 and d["period"]["signups"] == 4 and d["period"]["exports"] == 1  # one export charge row
     assert len(d["daily"]) == 30 and d["daily"][-1]["revenue_twd"] == 700 and d["daily"][-1]["points_used"] == 78
-    assert d["tiers"] == {"free": 3, "payg": 1, "sub5": 0, "sub15": 0, "disabled": 0}
+    assert d["tiers"] == {"free": 3, "payg": 1, "sub3": 0, "sub5": 0, "sub15": 0, "disabled": 0}
     assert [f["n"] for f in d["funnel"]] == [4, 2, 1, 1, 0]
     assert next(x for x in d["by_category"] if x["id"] == "export")["points"] == 64
     assert d["top"][0]["email"] == "paying@x.y" and d["top"][0]["points_used"] == 78
@@ -260,7 +260,7 @@ def test_order_flow(client, monkeypatch):
     monkeypatch.setattr(C, "CHECKOUT_URLS", {"p100": "https://lakeze.lemonsqueezy.com/buy/abc"})
     r = c.post("/api/orders", json={"item": "p100", "method": "card"}).json()
     oid = r["order"]["id"]
-    assert r["order"]["status"] == "pending" and r["order"]["amount_twd"] == P.PACKS["p100"]["twd"] == 350 and f"checkout[custom][order_id]={oid}" in r["redirect"]
+    assert r["order"]["status"] == "pending" and r["order"]["amount_twd"] == P.PACKS["p100"]["twd"] == 390 and f"checkout[custom][order_id]={oid}" in r["redirect"]
     assert "success_url" in r["redirect"]
     import hashlib, hmac, json as J
     monkeypatch.setattr(C, "LS_WEBHOOK_SECRET", "s3")
@@ -276,7 +276,7 @@ def test_order_flow(client, monkeypatch):
     monkeypatch.setattr(C, "BANK_TRANSFER", {"bank": "國泰世華", "code": "013", "account": "123", "name": "人客多"})
     r = c.post("/api/orders", json={"item": "sub5", "method": "transfer"}).json()
     tid = r["order"]["id"]
-    assert r["bank"]["code"] == "013" and r["amount_twd"] == P.SUBSCRIPTIONS["sub5"]["twd"] == 1550 and r["order"]["kind"] == "sub"
+    assert r["bank"]["code"] == "013" and r["amount_twd"] == P.SUBSCRIPTIONS["sub5"]["twd"] == 1790 and r["order"]["kind"] == "sub"
     assert c.post(f"/api/orders/{tid}/transfer", json={"ref": " "}).status_code == 400
     assert c.post(f"/api/orders/{tid}/transfer", json={"ref": "12 345"}).json()["order"]["status"] == "reported"
     holder["u"] = admin
@@ -286,7 +286,7 @@ def test_order_flow(client, monkeypatch):
     assert c.post(f"/api/admin/orders/{tid}/approve").json()["already"] is True
     holder["u"] = b
     me = c.get("/api/me").json()
-    assert me["balance"] == bal0 + 100 + 500
+    assert me["balance"] == bal0 + P.PACKS["p100"]["total"] + P.SUBSCRIPTIONS["sub5"]["points"]
     # cancel + another user's order
     r = c.post("/api/orders", json={"item": "p50", "method": "transfer"}).json()
     assert c.post(f"/api/orders/{r['order']['id']}/cancel").json()["order"]["status"] == "cancelled"
@@ -350,9 +350,9 @@ def test_point_price_setting(client):
     assert c.get("/api/admin/pricing").status_code == 403
     holder["u"] = admin
     cur = c.get("/api/admin/pricing").json()
-    assert cur["point_twd"] == 3.5 and cur["rows"][0]["twd"] == 350 and cur["rows"][0]["points"] == 100
+    assert cur["point_twd"] == 3.9 and cur["rows"][0]["twd"] == 390 and cur["rows"][0]["points"] == 100
     pv = c.get("/api/admin/pricing?point_twd=7").json()   # preview only
-    assert [r["twd"] for r in pv["rows"]] == [700, 3150, 8550] and P.POINT_TWD == 3.5
+    assert pv["rows"][0]["twd"] == 700 and [r["id"] for r in pv["rows"]] == ["payg", "sub3", "sub3q", "sub5", "sub5q", "sub15", "sub15q"] and P.POINT_TWD == 3.9
     assert c.get("/api/admin/pricing?point_twd=0.5").status_code == 400
     try:
         r = c.put("/api/admin/pricing", json={"point_twd": 5}).json()
@@ -379,6 +379,6 @@ def test_pricing_uses_measured_cost_per_video(client):
     asyncio.run(more())
     r = c.get("/api/admin/pricing").json()
     assert r["cost_source"] == "measured" and r["measured"]["avg_twd"] == 3 * P.TWD_PER_USD == r["video_cost_twd"]
-    assert r["rows"][0]["cost_twd"] == 96 and r["rows"][0]["margin_pct"] == round((350 - 96) / 96 * 100)
+    assert r["rows"][0]["cost_twd"] == 96 and r["rows"][0]["margin_pct"] == round((390 - 96) / 96 * 100)
     d = c.get("/api/admin/costs?days=30").json()
     assert d["per_video"]["projects"] == 3 and d["per_video"]["avg_twd"] == 96

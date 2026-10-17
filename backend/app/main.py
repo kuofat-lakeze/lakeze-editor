@@ -396,6 +396,7 @@ def _sub_dict(u: User) -> dict | None:
         return None
     s = pricing.SUBSCRIPTIONS[u.subscription]
     return {"id": u.subscription, "label": s["label"], "points": s["points"], "videos": s["videos"], "storage_gb": s["storage_gb"],
+            "base": s.get("base", u.subscription), "billing": s.get("billing", "month"), "point_twd": s.get("point_twd"),
             "features": s.get("features", []),
             "period_start": u.sub_period_start.isoformat() if u.sub_period_start else None,
             "renews_at": u.sub_renews_at.isoformat() if u.sub_renews_at else None}
@@ -417,7 +418,7 @@ async def activate_subscription(user_id: str, plan_id: str, *, paid_twd: int = 0
         u = await s.get(User, user_id)
         u.subscription = plan_id
         u.sub_period_start = now
-        u.sub_renews_at = now + timedelta(days=pricing.SUBSCRIPTION_PERIOD_DAYS)
+        u.sub_renews_at = now + timedelta(days=sub.get("period_days", pricing.SUBSCRIPTION_PERIOD_DAYS))
         if pricing.STORAGE_PLANS[sub["storage_plan"]]["gb"] >= storage_quota_bytes(u) // GB or u.storage_plan == "free":
             u.storage_plan = sub["storage_plan"]
             u.storage_renews_at = None   # bundled: the storage loop never charges it
@@ -620,7 +621,7 @@ def _item(item: str, user: User) -> dict:
                 "amount_twd": pk["twd"], "list_twd": pk["twd"], "member": member}
     if item in pricing.SUBSCRIPTIONS:
         sb = pricing.SUBSCRIPTIONS[item]
-        return {"kind": "sub", "label": f"{sb['label']}（月繳）", "points": sb["points"], "amount_twd": sb["twd"], "list_twd": sb["payg_twd"], "member": ""}
+        return {"kind": "sub", "label": f"{sb['label']}（{'季繳' if sb.get('billing') == 'quarter' else '月繳'}）", "points": sb["points"], "amount_twd": sb["twd"], "list_twd": sb["payg_twd"], "member": ""}
     raise HTTPException(404, "沒有這個方案")
 
 

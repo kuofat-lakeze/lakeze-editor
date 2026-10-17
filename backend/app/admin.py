@@ -146,12 +146,13 @@ async def dashboard(days: int = 30, _: User = Admin):
             daily[k]["active"].add(uid)
     series = [{**v, "cost_twd": round(v["cost_twd"]), "active": len(v["active"])} for v in daily.values()]
     # tiers, funnel, categories
-    tiers = {"free": 0, "payg": 0, "sub5": 0, "sub15": 0, "disabled": 0}
+    tiers = {"free": 0, "payg": 0, **{k: 0 for k in pricing.SUB_SHAPE}, "disabled": 0}
     for u in users:
+        base = pricing.SUBSCRIPTIONS.get(u.subscription or "", {}).get("base")   # monthly and quarterly count together
         if u.disabled:
             tiers["disabled"] += 1
-        elif u.subscription in tiers:
-            tiers[u.subscription] += 1
+        elif base in tiers:
+            tiers[base] += 1
         elif u.id in by_user_pur:
             tiers["payg"] += 1
         else:
@@ -164,7 +165,7 @@ async def dashboard(days: int = 30, _: User = Admin):
         if t.kind == "charge" and in_period(t.created_at, since, ref + timedelta(seconds=1)):
             cats[pricing.TOOL_CATEGORY.get(t.reason, "subs")] += -t.delta + t.points_waived
     by_category = [{"id": c, "label": l, "points": cats.get(c, 0)} for c, l in pricing.CATEGORIES]
-    mrr = sum(pricing.SUBSCRIPTIONS[u.subscription]["twd"] for u in users if u.subscription in pricing.SUBSCRIPTIONS and not u.disabled)
+    mrr = sum(pricing.SUBSCRIPTIONS[u.subscription]["monthly_twd"] for u in users if u.subscription in pricing.SUBSCRIPTIONS and not u.disabled)
     # watch lists
     def row(u: User):
         n, ex, last = by_user_proj.get(u.id, (0, 0, None))
@@ -186,7 +187,7 @@ async def dashboard(days: int = 30, _: User = Admin):
     top = [{**by_id[uid], "points_used": p} for uid, p in sorted(used_by_user.items(), key=lambda x: -x[1])[:8] if uid in by_id]
     recent = [row(u) for u in sorted(users, key=lambda u: _utc(u.created_at), reverse=True)[:8]]
     return {"days": days, "generated_at": ref.isoformat(),
-            "totals": {"users": len(users), "paying_users": len(by_user_pur), "subscribers": tiers["sub5"] + tiers["sub15"], "mrr_twd": mrr,
+            "totals": {"users": len(users), "paying_users": len(by_user_pur), "subscribers": sum(tiers[k] for k in pricing.SUB_SHAPE), "mrr_twd": mrr,
                        "revenue_twd": int(totals or 0), "points_used": int(used_total or 0), "exports": int(exports_total or 0),
                        "cost_usd": round(cost_total or 0, 2), "cost_twd": round((cost_total or 0) * TWD_PER_USD),
                        "conversion_pct": round(len(by_user_pur) / len(users) * 100, 1) if users else 0,

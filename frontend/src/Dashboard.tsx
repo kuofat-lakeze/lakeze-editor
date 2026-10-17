@@ -106,10 +106,10 @@ function Overview({ d, onOpen, onCosts }: { d: Dashboard; onOpen: (id: string) =
         <div className="card">
           <div className="chart-h"><b>用戶分級</b><span className="muted small">目前</span></div>
           <div className="tier-bar">
-            {(['free', 'payg', 'sub5', 'sub15'] as const).map(k => d.tiers[k] > 0 && <i key={k} className={k} style={{ width: `${d.tiers[k] / tierTotal * 100}%` }} />)}
+            {(['free', 'payg', 'sub3', 'sub5', 'sub15'] as const).map(k => d.tiers[k] > 0 && <i key={k} className={k} style={{ width: `${d.tiers[k] / tierTotal * 100}%` }} />)}
           </div>
           <ul className="tier-legend">
-            {([['free', '背包客（免費）'], ['payg', '旅行者（單次）'], ['sub5', '專業旅人'], ['sub15', '超級玩家']] as const).map(([k, l]) => (
+            {([['free', '背包客（免費）'], ['payg', '旅行者（單次）'], ['sub3', '輕旅行'], ['sub5', '專業旅人'], ['sub15', '超級玩家']] as const).map(([k, l]) => (
               <li key={k}><i className={k} />{l}<b>{d.tiers[k]}</b><small className="muted">{Math.round(d.tiers[k] / tierTotal * 100)}%</small></li>))}
             {d.tiers.disabled > 0 && <li><i className="off" />停用<b>{d.tiers.disabled}</b></li>}
           </ul>
@@ -321,7 +321,9 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
                 await api.admin.subscription(id, plan, Number(f.get('subtwd') || 0)); load(); onChanged()
               }}>
                 <select name="plan" defaultValue={u.subscription || 'sub5'}>
-                  <option value="sub5">專業旅人（5 支／月）</option><option value="sub15">超級玩家（15 支／月）</option><option value="">結束訂閱</option>
+                  <option value="sub3">輕旅行・月繳（3 支／月）</option><option value="sub3q">輕旅行・季繳</option>
+                  <option value="sub5">專業旅人・月繳（6 支／月）</option><option value="sub5q">專業旅人・季繳</option>
+                  <option value="sub15">超級玩家・月繳（18 支／月）</option><option value="sub15q">超級玩家・季繳</option><option value="">結束訂閱</option>
                 </select>
                 <input name="subtwd" type="number" placeholder="實收 NT$" style={{ width: 110 }} />
                 <button className="btn small">{u.subscription ? '續約／變更' : '開通訂閱'}</button>
