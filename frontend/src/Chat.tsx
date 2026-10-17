@@ -4,7 +4,7 @@ import DOMPurify from 'dompurify'
 import { api, type Analysis, type Asset, type DriveCheck, type Me, type Msg, type ProjectDetail, type Voice } from './api'
 import { Deliverables } from './Deliverables'
 import { VoiceCloneDialog } from './VoiceClone'
-import { CLOUD_SECS_PER_VIDEO, CloudDl, DropZone, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
+import { CLOUD_SECS_PER_VIDEO, CloudDl, DropZone, PickGuide, needsPickGuide, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
 import { fmtBytes } from './Storage'
 import { ask } from './Dialog'
 import { SCRIPT_BLOCK, ScriptCard, Teleprompter, VoiceSwapCtx, parseScript, type Line, type VoiceSwap } from './Script'
@@ -421,6 +421,9 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
     } catch (e) { patchUp(id, { status: 'ok' }); setErr((e as Error).message) }
   }
   const [pickAt, setPickAt] = useState(0)
+  const [pickGuide, setPickGuide] = useState(false)   // composer 📎 on iPhone: picture guide before the picker
+  const attachInput = useRef<HTMLInputElement>(null)
+  const attachBypass = useRef(false)
   const [pickBack, setPickBack] = useState(false)   // the picker closed and the browser is still preparing the files
   const pick = () => { setPicking(true); setPickFail(false); setPickBack(false); setPickAt(Date.now()); api.clientLog('picker_open') }
   // iOS hides the page while the photo picker is open and, after 「加入」, can take a while to hand
@@ -524,16 +527,14 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                 {obStep === 0 && (
                   <>
                     <h3>先丟素材給剪輯師</h3>
-                    <p className="muted">手機裡的影片、照片都可以，不用先挑：幾段短片、一支長影片，或影片照片混著給都行。</p>
                     <div className={`spot ${!okUploads && !uploading && !linkOk ? 'on' : ''}`}>
                       {!okUploads && !uploading && !linkOk && <span className="coach">點這裡選影片</span>}
                       <DropZone onFiles={onFiles} onPick={pick} disabled={uploading} count={okUploads} />
                     </div>
-                    <div className="up-kinds" aria-hidden="true"><span>🎞 好幾段短片</span><span>🎬 一支長影片</span><span>🖼 照片也行</span></div>
-                    {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onDelete={deleteUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />}
+                    {uploads.length > 0 && <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onDelete={deleteUpload} onClose={() => setUploads([])} hint={IOS ? '別離開這頁' : undefined} />}
                     <div className={`link-chat ${drive.state}`}>
-                      <span className="lc-ic" aria-hidden="true">🔗</span>
-                      <input placeholder="素材在雲端？直接貼分享連結（Google 雲端、Dropbox、iCloud、OneDrive）" value={link}
+                      <span className="lc-ic" aria-hidden="true">☁️</span>
+                      <input placeholder="或貼雲端連結（Google、Dropbox、iCloud）" value={link}
                         onChange={e => setLink(e.target.value)} inputMode="url" autoComplete="off" />
                       {drive.state === 'checking' && <span className="spinner" />}
                       {drive.state === 'ok' && <span className="dg-ok">✓</span>}
@@ -543,7 +544,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                       ? <div className="lc-msg ok">{drive.info.label}：{drive.info.folder_zip ? '讀到一個資料夾，下載時自動解開' : `讀到 ${drive.info.media} 個素材（${drive.info.videos} 支影片、${drive.info.photos} 張照片）`}</div>
                       : <div className="lc-msg err">連結打得開，但裡面沒有影片或照片。</div>)}
                     {drive.state === 'err' && <div className="lc-msg err">{drive.error}</div>}
-                    {link && drive.state === 'idle' && <div className="lc-msg">請貼完整網址（https:// 開頭），並把分享設成「任何有連結的人都能檢視」。</div>}
+                    {link && drive.state === 'idle' && <div className="lc-msg">🔓 要 https:// 開頭，並開放「知道連結的人可檢視」</div>}
                     <div className="ob-nav">
                       <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : linkOk ? `${drive.info?.label}連結就緒` : uploading ? '上傳中…' : drive.state === 'checking' ? '讀取連結中…' : '還沒有素材'}</span>
                       <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading} onClick={() => goStep(1)}>下一步：解析素材 →</button>
@@ -752,16 +753,13 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         )}
         {pickFail && !uploads.length && (
           <div className="card need">
-            <b>沒有收到檔案。</b>{IOS ? '這是 iPhone 把影片交給瀏覽器這一步失敗，不是上傳失敗。請依序試：' : '請再試一次，或改貼 Google Drive 連結。'}
-            {IOS && (
-              <ol className="small">
-                {CRIOS && <li>改用 <b>Safari</b> 開這個網址（Chrome / Firefox 在 iPhone 上選影片常常失敗）。</li>}
-                <li>一次少選幾支（最多 6 支，每支 1 GB 內）。</li>
-                <li>先到「照片」App 把那支影片從頭播放一次（讓 iCloud 把原檔下載回手機），再回來選。</li>
-                <li>在「照片」App 分享 → 儲存到「檔案」，選檔時改選「瀏覽」從「檔案」App 選。</li>
-                <li>最穩：把影片丟到 Google Drive，貼資料夾連結給我。</li>
-              </ol>
-            )}
+            <b>沒收到檔案</b>
+            <div className="pf-tips">
+              {CRIOS && <span>🧭 改用 Safari 開</span>}
+              <span>🔢 一次少選幾支</span>
+              {IOS && <span>▶️ 先在「照片」播一次再選</span>}
+              <span>☁️ 或貼雲端連結</span>
+            </div>
             <a className="small" onClick={() => setPickFail(false)}>關閉</a>
           </div>
         )}
@@ -775,7 +773,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         )}
         {uploads.length > 0 && stage !== 'start' && (
           <div className="card uq-card">
-            <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onDelete={deleteUpload} onClose={() => setUploads([])} hint={IOS ? '請保持在這個畫面' : undefined} />
+            <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onDelete={deleteUpload} onClose={() => setUploads([])} hint={IOS ? '別離開這頁' : undefined} />
           </div>
         )}
         {err && <div className="error">{err}</div>}
@@ -793,19 +791,20 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
             return (
               <div className="pw-card">
                 <CloudDl />
-                <b>手機正在從雲端下載影片…</b>
-                <span className="pw-time">已等 {secs} 秒</span>
+                <b>準備影片中…</b>
+                <span className="pw-time">{secs} 秒</span>
                 <div className="pw-est">
-                  <div className="pw-est-row"><span>大約在處理第 <b>{nth}</b> 支</span><span className="muted">每支約 {CLOUD_SECS_PER_VIDEO} 秒</span></div>
+                  <div className="pw-est-row"><span>約第 <b>{nth}</b> 支</span><span className="muted">每支約 {CLOUD_SECS_PER_VIDEO} 秒</span></div>
                   <div className="pw-est-bar"><i style={{ width: `${lap}%` }} /></div>
                 </div>
-                <p>影片如果存在 <b>iCloud</b> 或 <b>Google 相簿</b>，手機要先把原檔下載回來才能上傳。選 4 支大約 1 分鐘，選越多等越久。<b>這不是當機</b>，請停在這個畫面讓它跑完。</p>
-                <ol className="pw-steps"><li className="done">選好影片</li><li className="on">雲端下載到手機</li><li>開始上傳</li></ol>
-                <a className="small" onClick={() => { setPicking(false); setPickBack(false) }}>其實我沒有選，關閉</a>
+                <ol className="pw-steps"><li className="done">✓ 選好</li><li className="on">⏳ 準備中</li><li>⬆ 上傳</li></ol>
+                <p className="pw-short">正常現象，別離開這頁</p>
+                <a className="small" onClick={() => { setPicking(false); setPickBack(false) }}>沒有選，關閉</a>
               </div>)
           })()}
         </div>
       )}
+      {pickGuide && <PickGuide onGo={() => { attachBypass.current = true; attachInput.current?.click() }} onClose={() => setPickGuide(false)} />}
       {cloning && <VoiceCloneDialog current={voices.find(v => v.custom)} onClose={() => { recloneForScript.current = false; setCloning(false) }} onDone={onCloned} />}
       {unseen && <a className="jump" onClick={jump}>↓ 有新內容</a>}
       {stage !== 'start' && CHIPS[stage].length > 0 && !uploading && (
@@ -824,9 +823,10 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
         </div>
       )}
       {stage !== 'start' && <footer className="composer">
-        <label className={`attach ${uploading ? 'busy' : ''}`} title="上傳影片（一次最多 6 支，每支 1 GB 內）" aria-label="上傳影片">
+        <label className={`attach ${uploading ? 'busy' : ''}`} title="上傳影片" aria-label="上傳影片"
+          onClick={e => { if (attachBypass.current) { attachBypass.current = false; return } if (!uploading && needsPickGuide()) { e.preventDefault(); setPickGuide(true) } }}>
           <ClipIcon />
-          <input type="file" multiple accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading} onClick={pick}
+          <input ref={attachInput} type="file" multiple accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading} onClick={pick}
             onChange={e => { onFiles(e.target.files); e.target.value = '' }} /></label>
         <textarea value={text} onChange={e => setText(e.target.value)} rows={2}
           placeholder={uploading ? '上傳中，完成後再送出…' : PLACEHOLDER[stage]}

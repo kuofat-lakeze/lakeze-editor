@@ -1452,3 +1452,41 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .cover-style { font-style: normal; margin-left: 6px; font-size: 11px; font-weight: 700; color: var(--muted); background: var(--panel2); padding: 1px 6px; border-radius: 6px; }
 .cover-hint { margin-bottom: 4px; }
 .cover-hint { grid-column: 1 / -1; }
+
+/* ---- iPhone 選片圖示引導 ---- */
+.pg-scrim { position: fixed; inset: 0; z-index: 110; background: rgba(30,25,20,.45); display: flex; align-items: flex-end; justify-content: center; padding: 12px; animation: dlgFade .15s; }
+@media (min-width: 640px) { .pg-scrim { align-items: center; } }
+.pg { width: min(100%, 460px); background: var(--panel); border-radius: 22px; padding: 18px 14px 14px; display: flex; flex-direction: column; gap: 12px; animation: dlgPop .2s; }
+.pg-steps { display: flex; align-items: center; justify-content: space-between; gap: 2px; }
+.pg-step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.pg-step b { font-size: 12px; white-space: nowrap; } .pg-step.wait b { color: var(--brand); }
+.pg-arrow { color: #C9C3B8; font-weight: 800; font-size: 13px; flex: none; }
+.pg-phone { width: 70px; height: 112px; border-radius: 12px; border: 2.5px solid #22262E; background: #1c1c1e; padding: 5px 4px; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+.pg-bar { position: relative; display: flex; align-items: center; justify-content: space-between; height: 14px; }
+.pg-bar span { width: 18px; height: 3px; border-radius: 2px; background: #555; }
+.pg-back { width: 9px; height: 9px; border-radius: 50%; background: #3a3a3c; }
+.pg-ok { width: 13px; height: 13px; border-radius: 50%; background: #0A84FF; position: relative; }
+.pg-ok::after { content: ""; position: absolute; left: 4px; top: 2px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
+.pg-ok.idle { opacity: .45; }
+.pg-ok.tap { box-shadow: 0 0 0 0 rgba(10,132,255,.7); animation: pgPulse 1.4s infinite; }
+.pg-ok.spin::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid transparent; border-top-color: #F5921E; animation: pgSpin .9s linear infinite; }
+.pg-hand { position: absolute; right: -6px; top: 9px; font-size: 15px; font-style: normal; animation: pgTap 1.4s infinite; }
+.pg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
+.pg-grid i { aspect-ratio: 1; background: #48484a; border-radius: 2px; position: relative; }
+.pg-grid i.sel::after { content: ""; position: absolute; right: 1px; bottom: 1px; width: 6px; height: 6px; border-radius: 50%; background: #0A84FF; border: 1px solid #fff; }
+.pg-hold { flex: 1; display: flex; align-items: center; justify-content: center; background: repeating-linear-gradient(90deg, #3a3a3c 0 18px, #2c2c2e 18px 20px); border-radius: 3px; opacity: .9; }
+.pg-hourglass { font-size: 22px; animation: pgFlip 1.6s ease-in-out infinite; }
+.pg-up { display: flex; align-items: center; gap: 4px; background: #fff; border-radius: 4px; padding: 4px; margin-top: 4px; }
+.pg-thumb { width: 14px; height: 18px; border-radius: 2px; background: linear-gradient(160deg, #4fa3b8, #1e3f57); flex: none; } .pg-thumb.b { background: linear-gradient(160deg, #e9b87a, #7a3b1d); }
+.pg-up span { flex: 1; height: 4px; border-radius: 2px; background: #E6E1D9; overflow: hidden; }
+.pg-up span i { display: block; height: 100%; background: #46B9BD; animation: pgFill 2.4s ease-in-out infinite; } .pg-up span i.late { animation-delay: .6s; }
+.pg-note { margin: 0; text-align: center; font-size: 13px; color: var(--muted); } .pg-note b { color: var(--text); }
+@keyframes pgPulse { 70% { box-shadow: 0 0 0 7px rgba(10,132,255,0); } 100% { box-shadow: 0 0 0 0 rgba(10,132,255,0); } }
+@keyframes pgSpin { to { transform: rotate(360deg); } }
+@keyframes pgTap { 0%, 100% { transform: translate(0, 0); } 40% { transform: translate(-2px, -3px); } }
+@keyframes pgFlip { 0%, 40% { transform: rotate(0); } 50%, 90% { transform: rotate(180deg); } 100% { transform: rotate(360deg); } }
+@keyframes pgFill { from { width: 5%; } to { width: 100%; } }
+.dz-kinds { font-size: 12.5px; color: var(--muted); }
+.uq-hint { margin-left: 6px; font-weight: 700; color: var(--brand); }
+.pw-short { font-size: 13px !important; font-weight: 700; color: var(--text) !important; }
+.pf-tips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; } .pf-tips span { font-size: 13px; background: var(--panel2); padding: 4px 10px; border-radius: 999px; }

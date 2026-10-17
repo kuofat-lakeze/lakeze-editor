@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 
 /* Upload UI: a drop zone that is also the file picker, and a queue with a real thumbnail per clip,
    per-file progress, overall ring + ETA, retry/remove. State lives in Chat (it owns the network). */
@@ -36,9 +36,54 @@ const FilmIcon = () => (
   </svg>
 )
 
+const IOS_PICK = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent)
+const GUIDE_KEY = 'lk_pick_guide_seen'
+const guideSeen = () => { try { return Number(localStorage.getItem(GUIDE_KEY) || 0) } catch { return 3 } }
+const guideMark = () => { try { localStorage.setItem(GUIDE_KEY, String(guideSeen() + 1)) } catch { /* private mode */ } }
+/** iPhone: show the picture guide the first 3 times someone opens the picker. */
+export const needsPickGuide = () => IOS_PICK && guideSeen() < 3
+
+/* iPhone's photo picker freezes for a few seconds after the blue ✓ while it prepares (or downloads from
+   iCloud) the videos, and the ✓ looks like nothing happened. The page can't draw over the picker, so the
+   picture guide comes first: pick → tap ✓ → it pauses, that's normal → it comes back and uploads. */
+export function PickGuide({ onGo, onClose }: { onGo: () => void; onClose: () => void }) {
+  return (
+    <div className="pg-scrim" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="pg" role="dialog" aria-label="選影片的小提醒">
+        <div className="pg-steps">
+          <div className="pg-step"><div className="pg-phone">
+            <div className="pg-bar"><i className="pg-back" /><span /><i className="pg-ok idle" /></div>
+            <div className="pg-grid">{[0, 1, 2, 3, 4, 5].map(i => <i key={i} className={i === 1 || i === 4 ? 'sel' : ''} />)}</div>
+          </div><b>選影片</b></div>
+          <div className="pg-arrow" aria-hidden="true">→</div>
+          <div className="pg-step"><div className="pg-phone">
+            <div className="pg-bar"><i className="pg-back" /><span /><i className="pg-ok tap" /><em className="pg-hand">👆</em></div>
+            <div className="pg-grid">{[0, 1, 2, 3, 4, 5].map(i => <i key={i} className={i === 1 || i === 4 ? 'sel' : ''} />)}</div>
+          </div><b>按右上 ✓</b></div>
+          <div className="pg-arrow" aria-hidden="true">→</div>
+          <div className="pg-step wait"><div className="pg-phone">
+            <div className="pg-bar"><i className="pg-back" /><span /><i className="pg-ok spin" /></div>
+            <div className="pg-hold"><span className="pg-hourglass">⏳</span></div>
+          </div><b>停幾秒，正常</b></div>
+          <div className="pg-arrow" aria-hidden="true">→</div>
+          <div className="pg-step"><div className="pg-phone">
+            <div className="pg-up"><i className="pg-thumb" /><span><i /></span></div>
+            <div className="pg-up"><i className="pg-thumb b" /><span><i className="late" /></span></div>
+          </div><b>自動上傳</b></div>
+        </div>
+        <p className="pg-note">按 ✓ 後畫面不動是在準備影片，<b>別重按、別離開</b></p>
+        <button type="button" className="btn primary block pg-go" onClick={() => { guideMark(); onClose(); onGo() }}>知道了，選影片</button>
+      </div>
+    </div>
+  )
+}
+
 export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false }:
   { onFiles: (f: FileList | File[] | null) => void; onPick?: () => void; disabled?: boolean; count?: number; compact?: boolean }) {
   const [drag, setDrag] = useState(false)
+  const [guide, setGuide] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
+  const bypass = useRef(false)   // the click the guide forwards to the input must not open the guide again
   const over = (e: DragEvent) => { e.preventDefault(); if (!disabled) setDrag(true) }
   const drop = (e: DragEvent) => {
     e.preventDefault(); setDrag(false)
@@ -46,20 +91,22 @@ export function DropZone({ onFiles, onPick, disabled, count = 0, compact = false
     const fs = Array.from(e.dataTransfer.files).filter(f => /^(video|image)\//.test(f.type) || /\.(mp4|mov|m4v|jpe?g|png|webp|heic|heif)$/i.test(f.name))
     if (fs.length) onFiles(fs)
   }
-  return (
+  return (<>
     <label className={`dz ${drag ? 'drag' : ''} ${disabled ? 'off' : ''} ${compact ? 'compact' : ''}`}
-      onDragOver={over} onDragEnter={over} onDragLeave={() => setDrag(false)} onDrop={drop}>
+      onDragOver={over} onDragEnter={over} onDragLeave={() => setDrag(false)} onDrop={drop}
+      onClick={e => { if (bypass.current) { bypass.current = false; return } if (!disabled && needsPickGuide()) { e.preventDefault(); setGuide(true) } }}>
       <span className="dz-icon"><FilmIcon /></span>
       <span className="dz-text">
-        <b>{disabled ? '上傳中…' : count ? `再加素材（已 ${count} 個）` : drag ? '放開就開始上傳' : '從手機選影片或照片'}</b>
-        <span className="muted small">影片、照片都可以 · 可以多選，也可以只給一支長影片 · 每個 1 GB 內、最多 {MAX_FILES} 個</span>
-        {MOBILE_DZ && !disabled && !count && <span className="dz-ios"><CloudDl small /><span>影片存在 <b>iCloud</b> 或 <b>Google 相簿</b>？選完後手機會先從雲端下載回來，<b>每支約 {CLOUD_SECS_PER_VIDEO} 秒</b>，請等它跑完</span></span>}
+        <b>{disabled ? '上傳中…' : count ? `再加素材（已 ${count} 個）` : drag ? '放開就上傳' : '選影片或照片'}</b>
+        <span className="dz-kinds" aria-label="影片、照片、可多選">🎞 影片 · 📷 照片 · 可多選</span>
+        {MOBILE_DZ && !disabled && !count && <span className="dz-ios"><CloudDl small /><span>iCloud 影片每支約等 {CLOUD_SECS_PER_VIDEO} 秒</span></span>}
       </span>
       <span className="dz-cta">選擇</span>
-      <input type="file" multiple accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp,.heic" hidden disabled={disabled} onClick={onPick}
+      <input ref={input} type="file" multiple accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp,.heic" hidden disabled={disabled} onClick={onPick}
         onChange={e => { onFiles(e.target.files); e.target.value = '' }} />
     </label>
-  )
+    {guide && <PickGuide onGo={() => { bypass.current = true; input.current?.click() }} onClose={() => setGuide(false)} />}
+  </>)
 }
 
 const TrashIcon = () => (
@@ -127,8 +174,8 @@ export function UploadQueue({ ups, onRetry, onRemove, onDelete, onClose, hint }:
         <span className="uq-title">
           <b>{!busy && !ups.length ? '素材都刪掉了' : busy ? `上傳中 ${ok}/${ups.length}` : failed ? `${ok} 個完成，${failed} 個失敗` : `${ok} 個素材上傳完成`}</b>
           <span className="muted small">
-            {busy ? <>{fmtMB(loaded)} / {fmtMB(total)}{rate > 0 && <> · {fmtMB(rate)}/s</>}{eta !== null && <> · 約剩 {fmtEta(eta)}</>}</> : <>共 {fmtMB(total)}</>}
-            {busy && hint ? ` · ${hint}` : ''}
+            {busy ? <>{fmtMB(loaded)} / {fmtMB(total)}{eta !== null && <> · 約剩 {fmtEta(eta)}</>}</> : <>共 {fmtMB(total)}</>}
+            {busy && hint ? <span className="uq-hint">📱 {hint}</span> : null}
           </span>
         </span>
         {!busy && <a className="small uq-close" onClick={onClose}>關閉</a>}
