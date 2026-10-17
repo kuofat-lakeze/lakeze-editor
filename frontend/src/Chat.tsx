@@ -77,12 +77,21 @@ const PLACEHOLDER: Record<Stage, string> = {
 const CHIPS: Record<Stage, string[]> = {
   start: [], working: [],
   progress: ['照建議做', '先給我看分鏡', '旁白稿先給我看'],
-  revise: ['價格字幕放大一點', '換一張封面畫面', '旁白慢一點', '配樂小聲一點', '第一句換成游泳池畫面'],
+  revise: ['價格字幕放大一點', '換一張封面畫面', '旁白慢一點', '配樂小聲一點', '再剪一支 15 秒短版'],
 }
 // The chip that is the default answer for a stage: shown as the main button, and sent when the box is empty.
 const DEFAULT_CHIP: Partial<Record<Stage, string>> = { progress: '照建議做' }
 const NO_VOICE = 'none'
 const OB_STEPS = ['給素材', '解析素材', '風格與賣點']
+// 影片長度：travel short-form. 標準 is the default; each brief line goes into the first message.
+const LENGTHS = [
+  { id: 'short', name: '短版', secs: '15–20 秒', icon: '⚡', desc: '一個最強亮點＋優惠，最容易被看完。適合投廣告、限時優惠、限動。',
+    brief: '長度：短版 15–20 秒（目標 18 秒），4–6 個鏡頭，只講最強賣點和優惠。' },
+  { id: 'std', name: '標準', secs: '30–40 秒', icon: '★', tag: '預設', desc: '賣點、氛圍、價格一次講完。適合 Reels／抖音日常貼文。',
+    brief: '長度：標準 30–40 秒（目標 36–37 秒）。' },
+  { id: 'long', name: '完整導覽', secs: '55–60 秒', icon: '🧭', desc: '照入住動線走一圈：房型、設施、周邊。適合包棟、多房型、一日行程。',
+    brief: '長度：完整導覽 55–60 秒（目標 57–58 秒，不超過 60 秒），照入住動線分段導覽。' },
+]
 const ANALYZE_POINTS = 14   // = backend analyze.ANALYZE_POINTS (probe_footage)
 const ROLE_LABEL: Record<string, string> = { hook: '開場', feature: '賣點', price: '價格', cta: '行動' }
 const AN_PHASES = ['看每個畫面', '找出賣點', '排分鏡', '寫旁白稿', '估算點數']
@@ -164,6 +173,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [picking, setPicking] = useState(false)
   const [pickFail, setPickFail] = useState(false)
   const [style, setStyle] = useState('travel')
+  const [length, setLength] = useState('std')   // 影片長度，預設標準 30–40 秒
   const [obStep, setObStep] = useState(0)
   const [link, setLink] = useState('')
   const [drive, setDrive] = useState<{ state: 'idle' | 'checking' | 'ok' | 'err'; info?: DriveCheck; error?: string }>({ state: 'idle' })
@@ -316,14 +326,16 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
     if (!canStart || running) return
     const st = STYLES.find(x => x.id === style) ?? STYLES[0]
     const v = voices.find(x => x.voice_id === voice)
+    const len = LENGTHS.find(x => x.id === length) ?? LENGTHS[1]
     const parts = [
       analysis ? `素材已上傳並解析過（${analysis.n_clips} 個）。` : linkOk ? `素材在這個雲端分享連結（${drive.info?.label}）：${link.trim()} 。請用 list_drive_folder 讀取再下載。` : `我上傳了 ${okUploads} 支素材。`,
       text.trim(),
       st.brief,
+      len.brief,
       voice === NO_VOICE ? '不要配音：只要配樂和字幕，賣點用字幕呈現。'
         : v ? `旁白用 ${v.name}（voice_id ${v.voice_id}），直接做到輸出影片和封面，不用再問我選聲音或確認稿子。` : '',
     ]
-    api.clientLog('start_project', { style: st.id, voice, link: linkOk, uploads: okUploads, analysis: !!analysis })
+    api.clientLog('start_project', { style: st.id, length: len.id, voice, link: linkOk, uploads: okUploads, analysis: !!analysis })
     await submit(parts.filter(Boolean).join('\n'), !!analysis)
   }
   const runAnalyze = async () => {
@@ -649,7 +661,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                 )}
                 {obStep === 2 && (
                   <>
-                    <h3>最後：賣點、風格、聲音</h3>
+                    <h3>最後：賣點、風格、長度、聲音</h3>
                     <p className="muted">{analysis ? '賣點已經幫你填好，想改就改；加上價格、店名、語氣更好。' : '地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。'}</p>
                     <div className={`spot ${!text.trim() ? 'on' : ''}`}>
                       {!text.trim() && <span className="coach">在這裡打字</span>}
@@ -669,6 +681,17 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                         <div key={st.id} className={`stylec ${style === st.id ? 'sel' : ''}`} onClick={() => setStyle(st.id)}>
                           <div className="stylec-name">{st.name}{st.tag && <span className="pill">{st.tag}</span>}</div>
                           <div className="muted small">{st.desc}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="muted small ob-sub">影片長度</div>
+                    <div className="lens">
+                      {LENGTHS.map(l => (
+                        <div key={l.id} className={`lenc ${length === l.id ? 'sel' : ''}`} onClick={() => setLength(l.id)} role="radio" aria-checked={length === l.id}>
+                          <div className="lenc-top"><span className="lenc-ic" aria-hidden="true">{l.icon}</span><b>{l.name}</b>{l.tag && <span className="pill">{l.tag}</span>}</div>
+                          <div className="lenc-secs">{l.secs}</div>
+                          <i className="lenc-bar" style={{ width: `${l.id === 'short' ? 30 : l.id === 'std' ? 62 : 100}%` }} />
+                          <div className="muted small">{l.desc}</div>
                         </div>
                       ))}
                     </div>
@@ -710,7 +733,7 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                   </>
                 )}
               </section>
-              <ObPreview step={obStep} style={style} voiceName={voice === NO_VOICE ? null : voices.find(v => v.voice_id === voice)?.name ?? null} uploads={uploads.filter(u => u.status === 'ok').length} linkOk={linkOk} text={text} analysis={analysis} analyzing={analyzing} />
+              <ObPreview step={obStep} style={style} length={length} voiceName={voice === NO_VOICE ? null : voices.find(v => v.voice_id === voice)?.name ?? null} uploads={uploads.filter(u => u.status === 'ok').length} linkOk={linkOk} text={text} analysis={analysis} analyzing={analyzing} />
             </div>
           </div>
         )}
@@ -922,8 +945,8 @@ export function AssetCard({ a, onOpenFiles }: { a: Asset; onOpenFiles?: () => vo
 
 
 /* Right-hand "this is what you'll get" panel of the onboarding wizard: changes with the step and the choices. */
-function ObPreview({ step, style, voiceName, uploads, linkOk, text, analysis, analyzing }:
-  { step: number; style: string; voiceName: string | null; uploads: number; linkOk: boolean; text: string; analysis: Analysis | null; analyzing: boolean }) {
+function ObPreview({ step, style, length, voiceName, uploads, linkOk, text, analysis, analyzing }:
+  { step: number; style: string; length: string; voiceName: string | null; uploads: number; linkOk: boolean; text: string; analysis: Analysis | null; analyzing: boolean }) {
   const st = STYLES.find(x => x.id === style) ?? STYLES[0]
   const textPlace = (text.match(/^(.{2,12}?)(的|，|、|。)/) || [])[1]
   const sumPlace = (analysis?.summary.match(/^(.{2,12}?)(的|，|、|。|$)/) || [])[1]
@@ -965,7 +988,7 @@ function ObPreview({ step, style, voiceName, uploads, linkOk, text, analysis, an
       )}
       {step === 2 && (
         <div className="ob-prev-done">
-          <div className="ps-vhead"><b>v1</b><span className="ps-pill">成品</span><small>影片＋封面 · {st.name}</small></div>
+          <div className="ps-vhead"><b>v1</b><span className="ps-pill">成品</span><small>影片＋封面 · {st.name} · {(LENGTHS.find(l => l.id === length) ?? LENGTHS[1]).secs}</small></div>
           <div className="ps-result">
             <div className={`ps-video ob-style ${style}`}>
               <div className="ps-super">{st.id === 'promo' ? '限時優惠 · 只到月底' : st.id === 'premium' ? place : analysis?.selling_points.slice(1, 3).join(' · ') || 'KTV · 電動麻將 · 寵物友善'}</div>

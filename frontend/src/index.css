@@ -1642,3 +1642,15 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .hero-plan { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
 .hero-plan b { font-size: 14px; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 3px 10px; border-radius: 999px; }
 .hero-plan a { font-weight: 700; color: var(--brand); cursor: pointer; }
+/* 影片長度 */
+.lens { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.lenc { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; background: var(--panel); display: flex; flex-direction: column; gap: 4px; }
+.lenc:hover { border-color: var(--brand-2); }
+.lenc.sel { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 2px var(--brand-soft); }
+.lenc-top { display: flex; align-items: center; gap: 6px; } .lenc-top b { font-weight: 700; }
+.lenc-top .pill { background: var(--brand); color: #fff; }
+.lenc-ic { width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; background: var(--panel2); }
+.lenc-secs { font-size: 20px; font-weight: 800; letter-spacing: -.3px; font-variant-numeric: tabular-nums; }
+.lenc-bar { display: block; height: 4px; border-radius: 4px; background: linear-gradient(90deg, var(--brand), var(--brand-2)); opacity: .35; }
+.lenc.sel .lenc-bar { opacity: 1; }
+@media (max-width: 760px) { .lens { grid-template-columns: 1fr; } }
