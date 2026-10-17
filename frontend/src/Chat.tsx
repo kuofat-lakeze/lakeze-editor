@@ -94,6 +94,8 @@ const LENGTHS = [
 ]
 const ANALYZE_POINTS = 14   // = backend analyze.ANALYZE_POINTS (probe_footage)
 const ROLE_LABEL: Record<string, string> = { hook: '開場', feature: '賣點', price: '價格', cta: '行動' }
+const STAR_MAX = 3            // more than this and nothing is a highlight
+const REWRITE = '\u0000rewrite'   // edits[n] marker: let the editor rewrite the line
 const AN_PHASES = ['看每個畫面', '找出賣點', '排分鏡', '寫旁白稿', '估算點數']
 const EXAMPLE_BRIEF = '宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑，結尾請大家點連結查空房。'
 const STYLES = [
@@ -195,6 +197,17 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const [anNeed, setAnNeed] = useState<{ needed: number; balance: number } | null>(null)
   const [skipAn, setSkipAn] = useState(false)
   const [picked, setPicked] = useState<string[] | null>(null)   // selling points the user kept (null = all)
+  // 調整 on the analysed plan: all one tap, compiled into the first message as 「調整：」 lines.
+  const [extraPts, setExtraPts] = useState<string[]>([])            // selling points the user added
+  const [addingPt, setAddingPt] = useState(false)
+  const [newPt, setNewPt] = useState('')
+  const [stars, setStars] = useState<number[]>([])                  // ⭐ shots (max STAR_MAX)
+  const [drops, setDrops] = useState<number[]>([])                  // ✕ shots
+  const [edits, setEdits] = useState<Record<number, string>>({})    // ✎ narration line: text, or REWRITE
+  const [editing, setEditing] = useState<number | null>(null)
+  const [editText, setEditText] = useState('')
+  const [pins, setPins] = useState<number[]>([])                    // 📌 clips that must be used
+  const [sheet, setSheet] = useState<number | null>(null)           // shot open in the bottom sheet
   const [voices, setVoices] = useState<Voice[]>([])
   const [voice, setVoice] = useState<string | null>(null)   // voice_id, NO_VOICE, or null = not loaded yet
   const [me, setMe] = useState<Me | null>(null)
@@ -332,10 +345,11 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
       text.trim(),
       st.brief,
       len.brief,
+      ...adjustLines(),
       voice === NO_VOICE ? '不要配音：只要配樂和字幕，賣點用字幕呈現。'
         : v ? `旁白用 ${v.name}（voice_id ${v.voice_id}），直接做到輸出影片和封面，不用再問我選聲音或確認稿子。` : '',
     ]
-    api.clientLog('start_project', { style: st.id, length: len.id, voice, link: linkOk, uploads: okUploads, analysis: !!analysis })
+    api.clientLog('start_project', { style: st.id, length: len.id, adjust: nAdjust, voice, link: linkOk, uploads: okUploads, analysis: !!analysis })
     await submit(parts.filter(Boolean).join('\n'), !!analysis)
   }
   const runAnalyze = async () => {
@@ -356,11 +370,28 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
   const goStep = (i: number) => { setObStep(i); requestAnimationFrame(() => threadRef.current?.scrollTo({ top: 0 })) }
   const pickedPoints = analysis ? (picked ?? analysis.selling_points) : []
   const togglePoint = (s: string) => setPicked(p => { const cur = p ?? analysis?.selling_points ?? []; return cur.includes(s) ? cur.filter(x => x !== s) : [...cur, s] })
+  const toggleIn = (set: (f: (a: number[]) => number[]) => void, n: number) => set(a => a.includes(n) ? a.filter(x => x !== n) : [...a, n])
+  const addPoint = () => { const t = newPt.trim(); if (t && !extraPts.includes(t)) { setExtraPts(a => [...a, t]); setPicked(p => [...(p ?? analysis?.selling_points ?? []), t]) } setNewPt(''); setAddingPt(false) }
+  const usedClips = new Set((analysis?.storyboard ?? []).map(s => s.clip))
+  const nAdjust = extraPts.length + stars.length + drops.length + Object.keys(edits).length + pins.length
+  const resetAdjust = () => { setExtraPts([]); setStars([]); setDrops([]); setEdits({}); setPins([]); setEditing(null) }
+  const adjustLines = (): string[] => {
+    if (!analysis) return []
+    const shot = (n: number) => analysis.storyboard.find(x => x.n === n)
+    const out: string[] = []
+    for (const n of stars) { const x = shot(n); if (x && !drops.includes(n)) out.push(`調整：第 ${n} 段（#${String(x.clip).padStart(2, '0')} ${x.shot}）是重點，多講一句、鏡頭多停 1–2 秒、字幕放大。`) }
+    for (const n of drops) { const x = shot(n); if (x) out.push(`調整：不要第 ${n} 段（#${String(x.clip).padStart(2, '0')} ${x.shot}），用其他素材補時長。`) }
+    for (const [k, v] of Object.entries(edits)) { const n = Number(k); if (drops.includes(n)) continue; out.push(v === REWRITE ? `調整：第 ${n} 段的旁白請重寫一句。` : `調整：第 ${n} 段的旁白改成「${v}」，照這句念（數字可改國字）。`) }
+    for (const c of pins) { const cl = analysis.clips.find(x => x.n === c); out.push(`調整：素材 #${String(c).padStart(2, '0')}${cl ? `（${cl.photo ? '照片' : `${Math.round(cl.dur)} 秒影片`}）` : ''} 一定要用，請排進分鏡。`) }
+    return out
+  }
   // Step 2 → 3: the kept selling points become the brief (the user can still edit it).
   const useAnalysis = () => {
     if (analysis && !text.trim()) {
       const miss = analysis.missing.filter(m => /價格|店名|名稱/.test(m)).map(m => `${m.replace(/^補充?/, '')}：`)
       setText([`賣點：${pickedPoints.join('、')}`, ...miss].join('\n'))
+    } else if (analysis && extraPts.length && !extraPts.every(x => text.includes(x))) {
+      setText(t => t.replace(/\s*$/, '\n') + `也要講：${extraPts.filter(x => !text.includes(x)).join('、')}`)
     }
     goStep(2)
   }
@@ -606,29 +637,67 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
                 {obStep === 1 && analysis && (
                   <>
                     <h3>剪輯師看完了：{analysis.summary || `${analysis.n_clips} 個素材`}</h3>
-                    <p className="muted">點掉不想主打的賣點，其餘會帶進下一步。分鏡和旁白稿是草案，正式剪的時候剪輯師會再微調。</p>
+                    <p className="muted">覺得可以就直接下一步。想調：點掉不要的賣點，或點一段分鏡標重點、改旁白、拿掉。</p>
                     <div className="an-sec">
                       <div className="an-h"><b>賣點</b><span className="muted small">留 {pickedPoints.length} 個</span></div>
                       <div className="an-chips">
                         {analysis.selling_points.map((s, i) => (
                           <a key={s} className={`an-chip ${pickedPoints.includes(s) ? 'on' : ''} ${i === 0 ? 'top' : ''}`} onClick={() => togglePoint(s)}>{i === 0 && <em>最強</em>}{s}</a>))}
+                        {extraPts.map(s => (
+                          <a key={s} className={`an-chip mine ${pickedPoints.includes(s) ? 'on' : ''}`} onClick={() => togglePoint(s)}><em>我加的</em>{s}</a>))}
+                        {addingPt
+                          ? <span className="an-chip add-in"><input autoFocus value={newPt} placeholder="例：老闆手沖咖啡" maxLength={20} onChange={e => setNewPt(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) addPoint(); if (e.key === 'Escape') { setNewPt(''); setAddingPt(false) } }} onBlur={addPoint} /></span>
+                          : <a className="an-chip add" onClick={() => setAddingPt(true)}>＋ 加一個</a>}
                       </div>
                     </div>
                     <div className="an-sec">
-                      <div className="an-h"><b>分鏡與旁白稿</b><span className="muted small">{analysis.storyboard.length} 個鏡頭 · 約 {Math.round(analysis.total_seconds)} 秒</span><a className="small" onClick={copyScript}>複製逐字稿</a></div>
+                      <div className="an-h"><b>分鏡與旁白稿</b><span className="muted small">{analysis.storyboard.length} 個鏡頭 · 約 {Math.round(analysis.total_seconds)} 秒 · 點一段可以調</span><a className="small" onClick={copyScript}>複製逐字稿</a></div>
                       <ol className="an-sb">
                         {analysis.storyboard.map(s => {
                           const line = analysis.script.find(l => l.n === s.n)
+                          const star = stars.includes(s.n), drop = drops.includes(s.n), ed = edits[s.n]
                           return (
-                            <li key={s.n} className={`an-shot ${s.role}`}>
-                              <span className="an-fr"><img src={api.frameUrl(projectId, s.clip, s.t)} alt="" loading="lazy" /><i>#{String(s.clip).padStart(2, '0')} · {s.dur}s</i></span>
+                            <li key={s.n} className={`an-shot ${s.role} ${star ? 'star' : ''} ${drop ? 'drop' : ''}`} onClick={() => editing === s.n ? null : setSheet(s.n)}>
+                              <span className="an-fr"><img src={api.frameUrl(projectId, s.clip, s.t)} alt="" loading="lazy" /><i>#{String(s.clip).padStart(2, '0')} · {s.dur}s</i>{star && <b className="an-star">⭐</b>}</span>
                               <span className="an-shot-main">
-                                <span className="an-shot-top"><b>{s.n}</b><em className={`an-role ${s.role}`}>{ROLE_LABEL[s.role]}</em><span>{s.shot}</span></span>
-                                {line && <span className="an-line">「{line.text}」</span>}
+                                <span className="an-shot-top"><b>{s.n}</b><em className={`an-role ${s.role}`}>{ROLE_LABEL[s.role]}</em><span>{s.shot}</span>
+                                  {drop ? <span className="an-badge drop">不要這段</span> : star ? <span className="an-badge star">重點</span> : null}
+                                  {ed !== undefined && !drop && <span className="an-badge ed">{ed === REWRITE ? '請剪輯師重寫' : '已改'}</span>}
+                                </span>
+                                {editing === s.n ? (
+                                  <span className="an-edit" onClick={e => e.stopPropagation()}>
+                                    <textarea rows={2} autoFocus value={editText} onChange={e => setEditText(e.target.value)} maxLength={60} />
+                                    <span className="an-edit-btns">
+                                      <button type="button" className="btn primary small" onClick={() => { const t = editText.trim(); setEdits(m => { const c = { ...m }; if (t && t !== line?.text) c[s.n] = t; else delete c[s.n]; return c }); setEditing(null) }}>好了</button>
+                                      <button type="button" className="btn small" onClick={() => { setEdits(m => ({ ...m, [s.n]: REWRITE })); setEditing(null) }}>讓剪輯師重寫</button>
+                                      <a className="small muted" onClick={() => setEditing(null)}>取消</a>
+                                    </span>
+                                  </span>
+                                ) : line && <span className={`an-line ${ed !== undefined && ed !== REWRITE ? 'ed' : ''}`}>「{ed !== undefined && ed !== REWRITE ? ed : line.text}」</span>}
                               </span>
+                              <span className="an-more" aria-hidden="true">⋯</span>
                             </li>)
                         })}
                       </ol>
+                      {analysis.clips.length > 0 && (
+                        <div className="an-clips">
+                          <div className="an-h"><b>素材</b><span className="muted small">{analysis.clips.length} 個 · 灰的沒用到，點一下就一定會用</span></div>
+                          <div className="an-strip">
+                            {analysis.clips.map(c => {
+                              const used = usedClips.has(c.n), pin = pins.includes(c.n)
+                              return (
+                                <a key={c.n} className={`an-clip ${used ? 'used' : ''} ${pin ? 'pin' : ''}`} onClick={() => !used && toggleIn(setPins, c.n)} title={c.name}>
+                                  <img src={api.frameUrl(projectId, c.n, c.photo ? 0 : Math.min(1, c.dur / 2))} alt="" loading="lazy" />
+                                  <i>#{String(c.n).padStart(2, '0')}{c.photo ? '' : ` · ${Math.round(c.dur)}s`}</i>
+                                  {pin && <b>📌 一定要用</b>}
+                                  {used && !pin && <b className="ok">✓</b>}
+                                </a>)
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {nAdjust > 0 && <div className="an-adj"><b>已調整 {nAdjust} 處</b><span className="muted small">會一起交給剪輯師</span><a className="small" onClick={resetAdjust}>全部還原</a></div>}
                       {analysis.transcript_notes && <div className="muted small">現場音：{analysis.transcript_notes}</div>}
                     </div>
                     {analysis.missing.length > 0 && (
@@ -835,6 +904,27 @@ export function Chat({ projectId, name, onUsage, onTopUp, onCredits, onStorage, 
           })()}
         </div>
       )}
+      {sheet !== null && analysis && (() => {
+        const s = analysis.storyboard.find(x => x.n === sheet); if (!s) return null
+        const line = analysis.script.find(l => l.n === s.n)
+        const star = stars.includes(s.n), drop = drops.includes(s.n), full = !star && stars.length >= STAR_MAX
+        return (
+          <div className="sh-scrim" onClick={e => { if (e.target === e.currentTarget) setSheet(null) }}>
+            <div className="sh" role="dialog" aria-label={`第 ${s.n} 段`}>
+              <div className="sh-head">
+                <img src={api.frameUrl(projectId, s.clip, s.t)} alt="" />
+                <div><b>第 {s.n} 段 · {s.shot}</b>{line && <div className="muted small">「{line.text}」</div>}</div>
+              </div>
+              <button type="button" className={`sh-act ${star ? 'on' : ''}`} disabled={full || drop} onClick={() => { toggleIn(setStars, s.n); setSheet(null) }}>
+                <i>⭐</i><span><b>{star ? '取消重點' : '這段是重點'}</b><small>{full ? `最多 ${STAR_MAX} 個重點，先取消一個` : '多停一點、多講一句、字幕放大'}</small></span></button>
+              <button type="button" className="sh-act" disabled={drop || !line} onClick={() => { setEditText(edits[s.n] && edits[s.n] !== REWRITE ? edits[s.n] : line?.text ?? ''); setEditing(s.n); setSheet(null) }}>
+                <i>✎</i><span><b>改這句旁白</b><small>自己改，或讓剪輯師重寫</small></span></button>
+              <button type="button" className={`sh-act ${drop ? 'on' : ''}`} onClick={() => { toggleIn(setDrops, s.n); setSheet(null) }}>
+                <i>✕</i><span><b>{drop ? '這段還是要' : '不要這段'}</b><small>剪輯師會用別的素材補</small></span></button>
+              <a className="sh-cancel" onClick={() => setSheet(null)}>關閉</a>
+            </div>
+          </div>)
+      })()}
       {pickGuide && <PickGuide onGo={() => { attachBypass.current = true; attachInput.current?.click() }} onClose={() => setPickGuide(false)} />}
       {cloning && <VoiceCloneDialog current={voices.find(v => v.custom)} onClose={() => { recloneForScript.current = false; setCloning(false) }} onDone={onCloned} />}
       {unseen && <a className="jump" onClick={jump}>↓ 有新內容</a>}
