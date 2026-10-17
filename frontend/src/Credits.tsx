@@ -322,31 +322,34 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
             )}
             {/* 主方案是包月；單次購買放第一張，點進去才是零碎的點數包 */}
             <section className="pl-head"><h3>選一個方案</h3><span className="muted small">一支影片（含封面、2 輪修改）＝ 100 點</span></section>
+            <div className="pl-free">✓ 包月隨時可取消，不綁約</div>
             <section className="pl-grid four">
               <div className="pl card payg">
                 <div className="pl-top"><b className="pl-name">單次購買</b></div>
                 <div className="pl-who">偶爾剪一支</div>
-                <div className="pl-price">{twd(single)}<small> / 支</small></div>
-                <div className="pl-sub">1 點 {twd(p.point_twd)}，用多少買多少</div>
-                <ul className="pl-list"><li>不用綁約</li><li>點數不過期</li></ul>
+                <div className="pl-label">平均一支</div>
+                <div className="pl-price">{twd(single)}</div>
+                <div className="pl-pt"><b>1 點 {twd(p.point_twd)}</b></div>
+                <ul className="pl-list"><li>用多少買多少</li><li>點數不過期</li></ul>
                 <button className="btn block" onClick={() => setTab('buy')}>單次儲值</button>
               </div>
               {p.subscriptions.map(s => {
                 const isCur = sub?.id === s.id
                 const best = s.id === 'sub5'
-                const off = Math.round((1 - s.per_video_twd / single) * 100)
+                const off = Math.round((1 - s.point_twd / p.point_twd) * 100)
                 return (
                   <div key={s.id} className={`pl card sub ${best ? 'best' : ''} ${isCur ? 'cur' : ''}`}>
                     {best && !isCur && <div className="pl-ribbon">最多人選</div>}
                     {isCur && <div className="pl-ribbon cur">目前方案</div>}
                     <div className="pl-top"><b className="pl-name">{s.label}</b><span className="pl-tag">包月</span></div>
-                    <div className="pl-who">{s.who}</div>
-                    <div className="pl-price">{twd(s.twd)}<small> / 月</small></div>
-                    <div className="pl-sub">每月 {s.videos} 支 · 每支 {twd(s.per_video_twd)}</div>
-                    <div className="pl-off">比單次省 {off}%</div>
+                    <div className="pl-who">{twd(s.twd)} / 月 · {s.videos} 支</div>
+                    <div className="pl-label">平均一支</div>
+                    <div className="pl-price">{twd(s.per_video_twd)}</div>
+                    <div className="pl-pt"><b>1 點 {twd(s.point_twd)}</b><span>省 {off}%</span></div>
                     <ul className="pl-list">
-                      <li>每月 {s.points.toLocaleString()} 點，用不完會累積</li>
-                      <li>{s.storage_gb} GB 成品空間，一直保存</li>
+                      <li>之後儲值都用這個點數價</li>
+                      <li>點數用不完會累積</li>
+                      <li>{s.storage_gb} GB 成品空間</li>
                     </ul>
                     {isCur ? <button className="btn block" disabled>使用中</button>
                       : canBuy(s.checkout_url) ? <button className={`btn block ${best ? 'primary' : ''}`} onClick={() => buy(s.id)}>訂閱{s.label}</button>
@@ -384,6 +387,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                   </tbody>
                 </table>
                 <ul className="muted small pl-rules">
+                  <li>包月隨時可取消、不綁約，取消後已有的點數照樣保留。</li>
                   <li>訂閱立即生效，每 30 天續約；沒用完的點數（訂閱附的、自己買的）都會一直累積，不會重置。</li>
                   <li>點數包 300 點起加送。訂閱期間加買點數，一律用該方案的每點價格：{p.subscriptions.map(x => `${x.label} 1 點 ${twd(x.point_twd)}`).join('、')}（付一樣的錢，用多給點數的方式計算）。</li>
                   <li>免費空間的成品保留 {p.free_retention_days} 天後自動移除；加購空間（從點數扣，每 30 天續扣）就一直保存。點數不夠續扣時降回免費空間，從那天起再保留 {p.free_retention_days} 天。</li>
