@@ -1722,3 +1722,17 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .tu .btn.lg s { font-size: 13px; font-weight: 500; opacity: .75; margin-left: 8px; }
 .tu-save { text-align: center; font-size: 13.5px; font-weight: 800; color: #1E7A4C; margin-top: -4px; }
 @media (max-width: 420px) { .tu-out b { font-size: 16px; } .tu-out b s { display: block; margin: 0; } }
+/* 側欄：作品庫是一個地方，專案是清單；清單多了自己捲，不被壓扁 */
+.sidebar nav a { flex: none; display: flex; align-items: center; gap: 8px; }
+.sidebar nav .pj-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pj-dot { width: 8px; height: 8px; border-radius: 50%; background: #D8D2C8; flex: none; }
+.pj-dot.done { background: var(--ok); box-shadow: 0 0 0 2px #DFF3E8; }
+.gal-link { display: flex; align-items: center; gap: 8px; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); cursor: pointer; }
+.gal-link b { font-size: 14.5px; } .gal-link .small { margin-left: auto; }
+.gal-link.active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+.gal-ic { width: 26px; height: 26px; border-radius: 8px; background: var(--text); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+.gal-link.active .gal-ic { background: var(--brand); }
+.gal-arr { color: var(--muted); font-weight: 700; }
+.proj-sec { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 4px 0; }
+.proj-sec-t { font-size: 12.5px; font-weight: 800; color: var(--muted); letter-spacing: .04em; }
+.proj-sec-t small { margin-left: 6px; font-size: 11px; font-weight: 700; background: var(--panel2); padding: 1px 7px; border-radius: 999px; }

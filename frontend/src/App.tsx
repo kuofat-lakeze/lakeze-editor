@@ -119,12 +119,21 @@ function Workspace() {
           <div className="side-sub small"><a onClick={e => { e.stopPropagation(); showCredits('plans') }}>{me.subscription ? `訂閱中 · ${me.subscription.label}` : '看方案'}</a></div>
         </div>
         {me.storage && <div className="side-storage" onClick={() => showCredits('storage')}><StorageMeter s={me.storage} compact /></div>}
-        <button className="btn block" onClick={newProject}>＋ 新專案</button>
-        <a className={`navlink ${view === 'gallery' ? 'active' : ''}`} onClick={() => { setView('gallery'); setMenu(false) }}>作品庫</a>
-        <nav>
+        {/* 作品庫 is one place (finished videos); the list below is the working projects. */}
+        <a className={`gal-link ${view === 'gallery' ? 'active' : ''}`} onClick={() => { setView('gallery'); setMenu(false) }}>
+          <span className="gal-ic" aria-hidden="true">▣</span><b>作品庫</b><span className="muted small">已完成 {projects.filter(p => p.final_version != null).length} 支</span><span className="gal-arr">›</span>
+        </a>
+        <div className="proj-sec">
+          <span className="proj-sec-t">專案<small>{projects.length}</small></span>
+          <button className="btn primary small" onClick={newProject}>＋ 新專案</button>
+        </div>
+        <nav aria-label="專案">
+          {projects.length === 0 && <span className="muted small" style={{ padding: '6px 10px' }}>還沒有專案，按上面「＋ 新專案」開始。</span>}
           {projects.map(p => (
             <a key={p.id} className={p.id === current && view === 'chat' ? 'active' : ''} onClick={() => openProject(p.id)}>
-              {p.final_version != null && <span className="done-mark" title="已交付">✓</span>}{p.name}{p.id === me.free_project_id && <span className="tag">免費</span>}
+              <i className={`pj-dot ${p.final_version != null ? 'done' : ''}`} aria-hidden="true" />
+              <span className="pj-name">{p.name}</span>
+              {p.id === me.free_project_id && <span className="tag">免費</span>}
               {(notes?.by_project[p.id] ?? 0) > 0 && <span className="fb-badge" title="朋友的新反饋">{notes!.by_project[p.id]}</span>}
             </a>
           ))}
