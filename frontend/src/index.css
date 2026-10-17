@@ -1529,3 +1529,28 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 @keyframes pgaHand { 0% { transform: translate(14px, 30px); opacity: 0; } 35% { transform: translate(0, 0); opacity: 1; } 60% { transform: translate(-2px, -4px); } 100% { transform: translate(0, 0); opacity: 1; } }
 @keyframes pgaWait { to { width: 100%; } }
 @keyframes pgaUp { to { width: 100%; } }
+/* ---- 選片引導：一張圖、一個動畫（點 ✓ → 圈圈跑滿＝等待 → 變上傳） ---- */
+.pg1 { display: flex; justify-content: center; padding: 6px 0 0; }
+.pg1-phone { position: relative; width: 170px; height: 220px; border-radius: 26px 26px 0 0; border: 4px solid #22262E; border-bottom: 0; background: #1c1c1e; padding: 14px 10px 0; overflow: hidden; }
+.pg1-bar { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; height: 40px; }
+.pg1-bar span { width: 46px; height: 6px; border-radius: 3px; background: #555; }
+.pg1-back { width: 22px; height: 22px; border-radius: 50%; background: #3a3a3c; }
+.pg1-ok { position: relative; width: 40px; height: 40px; border-radius: 50%; background: #0A84FF; animation: pg1Ok 5.2s infinite; }
+.pg1-ok::after { content: ""; position: absolute; left: 14px; top: 8px; width: 9px; height: 16px; border: solid #fff; border-width: 0 3.5px 3.5px 0; transform: rotate(45deg); animation: pg1Tick 5.2s infinite; }
+.pg1-ok svg { position: absolute; inset: -7px; width: 54px; height: 54px; transform: rotate(-90deg); overflow: visible; }
+.pg1-ok circle { fill: none; stroke: #F5921E; stroke-width: 4.5; stroke-linecap: round; stroke-dasharray: 113.1; stroke-dashoffset: 113.1; animation: pg1Ring 5.2s infinite; }
+.pg1-up { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 24px; font-weight: 900; opacity: 0; animation: pg1Up 5.2s infinite; }
+.pg1-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 10px; }
+.pg1-grid i { aspect-ratio: 1; border-radius: 4px; background: #48484a; position: relative; }
+.pg1-grid i:nth-child(3n+1) { background: #4d5b63; } .pg1-grid i:nth-child(4n+2) { background: #6b5a4a; }
+.pg1-grid i.sel::after { content: ""; position: absolute; right: 4px; bottom: 4px; width: 13px; height: 13px; border-radius: 50%; background: #0A84FF; border: 2px solid #fff; }
+.pg1-dim { position: absolute; inset: 0; z-index: 2; background: rgba(0,0,0,.55); opacity: 0; animation: pg1Dim 5.2s infinite; }
+.pg1-hand { position: absolute; z-index: 4; right: 0; top: 46px; font-size: 34px; font-style: normal; animation: pg1Hand 5.2s infinite; }
+.pg1-line { margin: 2px 0 0; text-align: center; font-size: 17px; font-weight: 800; }
+.pg1-chip { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; background: #0A84FF; color: #fff; align-items: center; justify-content: center; font-size: 15px; vertical-align: 2px; }
+@keyframes pg1Hand { 0% { transform: translate(30px, 70px); opacity: 0; } 10% { transform: translate(0, 0); opacity: 1; } 14% { transform: translate(-2px, -5px); } 18% { transform: translate(0, 0); opacity: 1; } 26%, 100% { transform: translate(24px, 60px); opacity: 0; } }
+@keyframes pg1Ok { 0%, 13% { transform: scale(1); } 15% { transform: scale(.82); } 19% { transform: scale(1); } 76% { background: #0A84FF; } 82%, 96% { background: #2E9E6B; transform: scale(1.08); } 100% { background: #0A84FF; transform: scale(1); } }
+@keyframes pg1Ring { 0%, 18% { stroke-dashoffset: 113.1; opacity: 1; } 76% { stroke-dashoffset: 0; opacity: 1; } 82%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes pg1Dim { 0%, 17% { opacity: 0; } 22%, 76% { opacity: 1; } 84%, 100% { opacity: 0; } }
+@keyframes pg1Tick { 0%, 78% { opacity: 1; } 80%, 96% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes pg1Up { 0%, 78% { opacity: 0; transform: translateY(6px); } 82%, 96% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; } }

@@ -46,41 +46,21 @@ export const needsPickGuide = () => IOS_PICK && guideSeen() < 3
 /* iPhone's photo picker freezes for a few seconds after the blue ✓ while it prepares (or downloads from
    iCloud) the videos, and the ✓ looks like nothing happened. The page can't draw over the picker, so the
    picture guide comes first: pick → tap ✓ → it pauses, that's normal → it comes back and uploads. */
-/* One phone that plays the whole thing on a loop, the wait step longest (that's the point):
-   pick → tap ✓ → it pauses (a bar fills: "wait") → back here, uploading by itself. */
-const GUIDE_STEPS = [
-  { t: '選影片', ms: 1400 },
-  { t: '按 ✓', ms: 1300 },
-  { t: '等幾秒', ms: 3200 },
-  { t: '自動上傳', ms: 1800 },
-]
+/* One picture, one animation: the hand taps the picker's blue ✓, a ring fills around it while the screen
+   dims (that's the wait), then it turns into an upload arrow. Loops; pure CSS. */
 export function PickGuide({ onGo, onClose }: { onGo: () => void; onClose: () => void }) {
-  const [step, setStep] = useState(0)
-  useEffect(() => {
-    const t = setTimeout(() => setStep(x => (x + 1) % GUIDE_STEPS.length), GUIDE_STEPS[step].ms)
-    return () => clearTimeout(t)
-  }, [step])
   return (
     <div className="pg-scrim" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="pg" role="dialog" aria-label="選影片的小提醒">
-        <div className={`pga s${step}`} aria-hidden="true">
-          <div className="pga-phone">
-            {step < 3 ? <>
-              <div className="pga-bar"><i className="pga-back" /><span /><i className="pga-ok" /></div>
-              <div className="pga-grid">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => <i key={i} className={`t${i}`} />)}</div>
-              {step === 2 && <div className="pga-wait"><span>⏳</span><div className="pga-fill"><i /></div></div>}
-            </> : <div className="pga-app">
-              <b>旅剪</b>
-              <div className="pga-up"><i className="pga-th" /><span><i /></span></div>
-              <div className="pga-up"><i className="pga-th b" /><span><i className="late" /></span></div>
-            </div>}
-            {step === 1 && <em className="pga-hand">👆</em>}
+      <div className="pg" role="dialog" aria-label="按勾勾後等它跑完">
+        <div className="pg1" aria-hidden="true">
+          <div className="pg1-phone">
+            <div className="pg1-bar"><i className="pg1-back" /><span /><i className="pg1-ok"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" /></svg><b className="pg1-up">↑</b></i></div>
+            <div className="pg1-grid">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => <i key={i} className={i === 1 || i === 5 ? 'sel' : ''} />)}</div>
+            <div className="pg1-dim" />
+            <em className="pg1-hand">👆</em>
           </div>
         </div>
-        <div className="pga-cap">
-          {GUIDE_STEPS.map((x, i) => <span key={i} className={i === step ? 'on' : i < step ? 'done' : ''}><i>{i + 1}</i>{x.t}</span>)}
-        </div>
-        <p className="pg-note">按 ✓ 後畫面不動是在準備影片，<b>別重按、別離開</b></p>
+        <p className="pg1-line">按 <span className="pg1-chip">✓</span> 後，等它跑完</p>
         <button type="button" className="btn primary block pg-go" onClick={() => { guideMark(); onClose(); onGo() }}>知道了，選影片</button>
       </div>
     </div>
