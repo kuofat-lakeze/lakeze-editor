@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type Asset, type DeliverableVersion, type DeliverablesData, type ShareLink, type StorageState } from './api'
 import { StorageMeter, fmtBytes } from './Storage'
 import { ask } from './Dialog'
-import { FbIcon, LineIcon, promoText, shareToFacebook, shareToLine } from './share'
+import { FbIcon, LineIcon, MessengerIcon, promoText, shareToFacebook, shareToLine, shareToMessenger } from './share'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 /* 給朋友的一句話: six ready-made lines. Shown in grey as the default; sent as-is unless the user edits. */
@@ -174,6 +174,7 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
   const noteToSend = edited ? note.trim() : NOTE_PRESETS[preset]
   const changed = edited && note.trim() !== NOTE_PRESETS[preset]
   const [made, setMade] = useState<ShareLink | null>(null)
+  const [tip, setTip] = useState('')
   const [busy, setBusy] = useState(false)
   const create = async () => {
     setBusy(true)
@@ -190,7 +191,7 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
         <div className="modal-head"><h3>分享給朋友</h3><a onClick={onClose}>✕</a></div>
         {!made ? (
           <>
-            <p className="muted small share-lead">朋友不用登入，點開就能看。都幫你設定好了，寫一句話（或用預設的）就能分享。</p>
+            <p className="muted small share-lead">朋友不用登入，點開就能看。</p>
             <div className="note-box">
               <div className="note-h">
                 <b>給朋友的一句話</b>
@@ -237,7 +238,7 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
               )}
             </div>
             <button className="btn primary block lg share-go" disabled={busy} onClick={create}>{busy ? '產生中…' : '產生連結，分享出去 →'}</button>
-            <div className="muted small" style={{ textAlign: 'center' }}>下一步可以直接發到 Facebook、LINE，或複製連結。</div>
+            <div className="muted small" style={{ textAlign: 'center' }}>下一步可以發到 Facebook、Messenger、LINE。</div>
           </>
         ) : (
           <>
@@ -250,14 +251,15 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
               </div>
             </div>
             <div className="post-box">
-              <div className="post-h"><b>發成貼文</b><span className="muted small">貼文會帶封面預覽，文案順便推廣旅剪和註冊優惠。可以改。</span></div>
+              <div className="post-h"><b>發貼文、傳給朋友</b></div>
               <textarea rows={4} value={promo} onChange={e => setPromo(e.target.value)} />
               <div className="row">
-                <button className="btn fb" onClick={() => { shareToFacebook(url, promo); flash('promo') }}><FbIcon /> 分享到 Facebook</button>
-                <button className="btn line" onClick={() => shareToLine(promo)}><LineIcon /> 分享到 LINE</button>
-                <button className="btn" onClick={() => { navigator.clipboard?.writeText(promo); flash('promo') }}>{copied === 'promo' ? '文案已複製' : '複製文案'}</button>
+                <button className="btn fb" onClick={() => { setTip(shareToFacebook(url, promo, made.fb_app_id) === 'sheet' ? '在跳出的選單選「Facebook」，文案已複製，貼上就好' : '文案已複製，在 FB 視窗貼上就好') }}><FbIcon /> Facebook</button>
+                <button className="btn msg" onClick={() => setTip(shareToMessenger(url, made.fb_app_id) === 'copied' ? '連結已複製，貼到 Messenger 對話' : '')}><MessengerIcon /> Messenger</button>
+                <button className="btn line" onClick={() => shareToLine(promo)}><LineIcon /> LINE</button>
+                <button className="btn" onClick={() => { navigator.clipboard?.writeText(promo); flash('promo') }}>{copied === 'promo' ? '已複製' : '複製文案'}</button>
               </div>
-              <div className="muted small">Facebook 不讓網站預填貼文內容，按下去會先把文案複製好，到 FB 視窗貼上即可。</div>
+              <div className="muted small">{tip || 'FB 不能預填文字，按下去會先幫你複製文案。'}</div>
             </div>
             <button className="btn block" onClick={onCreated}>完成</button>
           </>

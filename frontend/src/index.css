@@ -1927,3 +1927,8 @@ body.easy .theme-o { min-height: 104px; } body.easy .theme-o b { font-size: 18px
 .ld-footer a, .auth-legal a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
 .social-note { text-align: center; padding: 4px 6px; line-height: 1.5; }
 .pay-bank .pb-row span { white-space: nowrap; }
+
+/* Messenger button + share-page toast */
+.btn.msg { background: linear-gradient(135deg, #0A7CFF, #A033FF 70%, #FF5280); border-color: transparent; color: #fff; display: inline-flex; align-items: center; gap: 6px; } .btn.msg:hover { filter: brightness(1.05); }
+.share-social { justify-content: center; }
+.share-tip { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: #222; color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px; max-width: calc(100vw - 32px); text-align: center; z-index: 50; box-shadow: 0 6px 20px rgba(0,0,0,.2); }

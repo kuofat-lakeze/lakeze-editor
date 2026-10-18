@@ -241,8 +241,8 @@ def test_share_og_page_and_default_admins(client):
     asyncio.run(seed())
     r = TestClient(M.app).get("/api/og/s/ogtok")
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
-    assert 'og:title" content="A1｜用旅剪 15 分鐘剪好的短影音"' in r.text and "註冊送 110 點" in r.text
-    assert 'og:image" content="https://editor.lakeze.com/api/s/ogtok/file/' in r.text and 'refresh" content="0;url=https://editor.lakeze.com/s/ogtok"' in r.text
+    assert 'og:title" content="A1｜旅剪 Tripcut"' in r.text and "註冊送 110 點" in r.text
+    assert 'og:image" content="https://editor.lakeze.com/api/s/ogtok/file/' in r.text and 'location.replace("https://editor.lakeze.com/s/ogtok")' in r.text and 'http-equiv="refresh"' not in r.text
     assert TestClient(M.app).get("/api/og/s/nope").status_code == 404
 
 

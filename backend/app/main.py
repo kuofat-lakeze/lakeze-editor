@@ -1630,7 +1630,7 @@ def _versions(assets: list[Asset], owner: User | None = None) -> list[dict]:
 def _share_dict(sh: Share) -> dict:
     return {"id": sh.id, "token": sh.token, "url": f"/s/{sh.token}", "version": sh.version, "allow_download": sh.allow_download,
             "note": sh.note, "expires_at": sh.expires_at.isoformat() if sh.expires_at else None, "revoked": sh.revoked,
-            "views": sh.views, "created_at": sh.created_at.isoformat()}
+            "views": sh.views, "created_at": sh.created_at.isoformat(), "fb_app_id": config.FACEBOOK_APP_ID or None}
 
 
 class PosterBody(BaseModel):
@@ -1748,7 +1748,8 @@ async def share_view(token: str):
         await s.commit()
     return {"project_name": p.name, "note": sh.note, "allow_download": sh.allow_download,
             "brand": {"name": "人客多", "tagline": "專業旅遊剪輯 AI"}, "versions": _share_versions(sh, p, assets),
-            "signup_url": f"/signup?ref={sh.token}", "signup_points": pricing.SIGNUP_POINTS, **await _thread(p.id)}
+            "signup_url": f"/signup?ref={sh.token}", "signup_points": pricing.SIGNUP_POINTS, "fb_app_id": config.FACEBOOK_APP_ID or None,
+            **await _thread(p.id)}
 
 
 async def _thread(project_id: str) -> dict:
@@ -1767,8 +1768,8 @@ async def share_thread(token: str):
     return await _thread(p.id)
 
 
-PROMO_TITLE = "{name}｜用旅剪 15 分鐘剪好的短影音"
-PROMO_DESC = "旁白、配樂、字幕、封面全自動。你也想做一支？註冊送 {points} 點，第一支免費，不用綁卡。"
+PROMO_TITLE = "{name}｜旅剪 Tripcut"
+PROMO_DESC = "15 分鐘剪好的短影音。註冊送 {points} 點，第一支免費。"
 
 
 def _esc(s: str) -> str:
@@ -1796,6 +1797,8 @@ async def share_og(token: str):
             f'<meta property="og:url" content="{_esc(url)}">', '<meta property="og:type" content="video.other">',
             '<meta property="og:site_name" content="旅剪 Tripcut · 人客多 Lakeze">', '<meta property="og:locale" content="zh_TW">',
             '<meta name="twitter:card" content="summary_large_image">', f'<meta name="description" content="{_esc(desc)}">']
+    if config.FACEBOOK_APP_ID:
+        tags.append(f'<meta property="fb:app_id" content="{_esc(config.FACEBOOK_APP_ID)}">')
     if cover:
         img = f"{config.PUBLIC_URL}{cover['url']}"   # already the public /api/s/<token>/file/<id> form
         tags += [f'<meta property="og:image" content="{_esc(img)}">', '<meta property="og:image:width" content="1080">', '<meta property="og:image:height" content="1920">']
@@ -1803,7 +1806,8 @@ async def share_og(token: str):
         vid = f"{config.PUBLIC_URL}{video['url']}"
         tags += [f'<meta property="og:video" content="{_esc(vid)}">', '<meta property="og:video:type" content="video/mp4">']
     html = ("<!doctype html><html lang=\"zh-Hant\"><head><meta charset=\"utf-8\">" f"<title>{_esc(title)}</title>" + "".join(tags)
-            + f'<meta http-equiv="refresh" content="0;url={_esc(url)}"></head><body><a href="{_esc(url)}">{_esc(title)}</a></body></html>')
+            # no <meta refresh>: Facebook's crawler follows it back to /s/<token> and loses the tags; people get a JS redirect
+            + f'<script>location.replace({json.dumps(url)})</script></head><body><a href="{_esc(url)}">{_esc(title)}</a></body></html>')
     return HTMLResponse(html, headers={"Cache-Control": "public, max-age=300"})
 
 
