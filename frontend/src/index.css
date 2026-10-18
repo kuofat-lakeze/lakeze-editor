@@ -1819,3 +1819,37 @@ body.easy .btn { font-size: 16px; }
 .btn.danger { background: #D64545; color: #fff; border-color: #D64545; }
 .voice.add.rec { border: 1.5px dashed var(--brand); background: var(--brand-soft); }
 .voice .pill.rec { background: var(--brand); color: #fff; margin-right: 6px; }
+/* 校對台 v3：句子就是輸入框 */
+.pf-whole { font-weight: 700; color: var(--brand); cursor: pointer; white-space: nowrap; }
+.pf-head .spacer { flex: 1; } .pf-head .pf-x { margin-left: 0; }
+.pf-line.cur { border-color: var(--blue); }
+.pf-line.on { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); background: var(--panel); }
+.pf-line.added { border-style: dashed; }
+.pf-row { grid-template-columns: 46px 1fr; align-items: start; padding: 8px 10px 8px 8px; cursor: default; }
+.pf-tc { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 0; border-radius: 8px; cursor: pointer; color: var(--muted); }
+.pf-tc:hover { background: var(--panel2); } .pf-tc b { font-size: 13px; color: var(--text); } .pf-tc span { font-size: 11px; font-variant-numeric: tabular-nums; }
+.pf-line.cur .pf-tc { color: var(--blue); } .pf-line.cur .pf-tc b { color: var(--blue); }
+.pf-txt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pf-badges:empty { display: none; } .pf-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.pf-badge.add { background: #E3F0FA; color: #1B5E8F; }
+.pf-txt textarea { width: 100%; font: inherit; font-size: 16px; line-height: 1.5; padding: 4px 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; resize: none; overflow: hidden; color: var(--text); }
+.pf-txt textarea:hover { border-color: var(--line); background: var(--panel2); }
+.pf-txt textarea:focus { outline: 0; border-color: var(--brand); background: var(--panel); box-shadow: 0 0 0 3px var(--brand-soft); }
+.pf-txt textarea:disabled { text-decoration: line-through; color: var(--muted); }
+.pf-line.cur .pf-txt textarea { font-weight: 700; }
+.pf-undo { font-size: 12px; color: var(--muted); cursor: pointer; align-self: flex-start; padding: 0 6px; }
+.pf-saybox { display: flex; flex-direction: column; gap: 4px; margin: 0 10px 6px 54px; padding: 8px 10px; border-radius: 10px; background: #F3F8FD; font-size: 12.5px; font-weight: 700; color: #1B5E8F; }
+.pf-saybox small { font-weight: 500; color: var(--muted); margin-left: 6px; }
+.pf-saybox input { width: 100%; font: inherit; font-size: 15px; padding: 7px 10px; border-radius: 8px; border: 1.5px solid #CFE3F4; background: var(--panel); }
+.pf-saybox input:focus { outline: 0; border-color: var(--blue); }
+.pf-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 2px 10px 10px 54px; }
+.pf-tb { display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); font: inherit; font-size: 13px; font-weight: 700; color: var(--text); cursor: pointer; }
+.pf-tb i { font-style: normal; font-size: 12px; width: 16px; text-align: center; color: var(--muted); }
+.pf-tb:hover:not(:disabled) { border-color: #D9D2C7; background: var(--panel2); }
+.pf-tb:disabled { opacity: .5; cursor: default; }
+.pf-tb.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); } .pf-tb.on i { color: var(--brand); }
+.pf-tb.rec { background: #D64545; border-color: #D64545; color: #fff; } .pf-tb.rec i { color: #fff; }
+.pf-wholebox { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; overflow: auto; }
+.pf-wholebox textarea { width: 100%; font: inherit; font-size: 16px; line-height: 1.7; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--panel); resize: vertical; }
+.pf-wholebox textarea:focus { outline: 0; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+@media (max-width: 640px) { .pf-tools, .pf-saybox { padding-left: 10px; margin-left: 10px; } .pf-tb { height: 38px; } .pf-txt textarea { font-size: 17px; } }
