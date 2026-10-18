@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { api, type Analysis, type Asset, type DeliverableVersion, type DriveCheck, type Me, type Msg, type ProjectDetail, type Voice } from './api'
-import { Proof } from './Proof'
+import { Proof, Tweak } from './Proof'
 import { Deliverables } from './Deliverables'
 import { VoiceCloneDialog } from './VoiceClone'
 import { CLOUD_SECS_PER_VIDEO, CloudDl, DropZone, PickGuide, needsPickGuide, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
@@ -78,7 +78,7 @@ const PLACEHOLDER: Record<Stage, string> = {
 const CHIPS: Record<Stage, string[]> = {
   start: [], working: [],
   progress: ['照建議做', '先給我看分鏡', '旁白稿先給我看'],
-  revise: ['價格字幕放大一點', '換一張封面畫面', '旁白慢一點', '配樂小聲一點', '再剪一支 15 秒短版'],
+  revise: ['微調字幕、配樂、速度', '校對旁白', '換一張封面畫面', '再剪一支 15 秒短版'],
 }
 // The chip that is the default answer for a stage: shown as the main button, and sent when the box is empty.
 const DEFAULT_CHIP: Partial<Record<Stage, string>> = { progress: '照建議做' }
@@ -241,6 +241,8 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [adv, setAdv] = useState(false)                             // 輕鬆模式: 風格／長度／聲音 are behind 更多選項
   const [cheer, setCheer] = useState<number | null>(null)           // 輕鬆模式: 影片完成 celebration (export count)
   const [proof, setProof] = useState<{ version: DeliverableVersion | null; lines?: Line[] } | null>(null)   // 導演模式: 校對台
+  const [tweak, setTweak] = useState(false)   // 微調 panel (quick re-render without the editor)
+  const afterQuick = () => { reload(); onProjectsChanged?.(); onUsage(); setTab('files') }
   const openProof = async (lines?: Line[], version?: DeliverableVersion) => {
     let v = version ?? null
     if (!v) { try { v = (await api.deliverables(projectId)).versions[0] ?? null } catch { v = null } }
@@ -591,8 +593,9 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
           </aside>
         </>
       )}
-      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} onProof={easy || running ? undefined : v => openProof(undefined, v)} />}
-      {proof && <Proof projectId={projectId} version={proof.version} lines={proof.lines} onClose={() => setProof(null)} onUsage={onUsage} onSend={t => { setTab('chat'); submit(t) }} />}
+      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} onProof={easy || running ? undefined : v => openProof(undefined, v)} onTweak={running ? undefined : () => setTweak(true)} />}
+      {proof && <Proof projectId={projectId} version={proof.version} lines={proof.lines} onClose={() => setProof(null)} onUsage={onUsage} onDone={afterQuick} onSend={t => { setTab('chat'); submit(t) }} />}
+      {tweak && <Tweak projectId={projectId} onClose={() => setTweak(false)} onDone={afterQuick} onUsage={onUsage} />}
       {tab === 'chat' && <>
       <VoiceSwapCtx.Provider value={voiceSwap}>
       <div className="thread" ref={threadRef} onScroll={onScroll}>
@@ -1001,7 +1004,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
             {CHIPS[stage].map(c => {
               const main = c === DEFAULT_CHIP[stage]
               return (
-                <button key={c} type="button" className={`qrb ${main ? 'main' : ''}`} disabled={running} onClick={() => submit(c)}>
+                <button key={c} type="button" className={`qrb ${main ? 'main' : ''}`} disabled={running} onClick={() => c === '微調字幕、配樂、速度' ? setTweak(true) : c === '校對旁白' ? openProof() : submit(c)}>
                   {main && <em>建議</em>}<span>{c}</span>
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </button>)

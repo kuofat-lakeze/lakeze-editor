@@ -214,6 +214,26 @@ def _search_voices(inp, ctx):
     return [_text(_j(v))]
 
 
+def plan_path(root: Path) -> Path:
+    return root / "work" / "plan.json"
+
+
+def plan_load(root: Path) -> dict:
+    try:
+        return json.loads(plan_path(root).read_text())
+    except Exception:
+        return {}
+
+
+def plan_update(root: Path, section: str, data: dict) -> None:
+    """The 成品配方: what compose / captions / export were last run with, so a 微調 (quick re-render) can
+    redo them without the editor. Kept per project, overwritten by each run."""
+    p = plan_load(root)
+    p[section] = data
+    plan_path(root).parent.mkdir(parents=True, exist_ok=True)
+    plan_path(root).write_text(json.dumps(p, ensure_ascii=False))
+
+
 def _voice(inp, ctx):
     vo_dir = ctx.root / "work" / "vo"
     trial = ctx.voice_trial(inp["voice_id"])
@@ -229,6 +249,10 @@ def _voice(inp, ctx):
                               speed=inp.get("speed", 1.0))
     chars = sum(len(l["text"]) * r["takes"] for l, r in zip(inp["lines"], res))
     ctx.record_usage("elevenlabs_tts_chars", chars, {"voice_id": inp["voice_id"]})
+    pv = plan_load(ctx.root).get("voice") or {}
+    lines = {**(pv.get("lines") or {}), **{l["key"]: l["text"] for l in inp["lines"]}}
+    plan_update(ctx.root, "voice", {"voice_id": inp["voice_id"], "model": inp.get("model", "eleven_v3"), "tags": inp.get("tags", "[excited]"),
+                                    "stability": inp.get("stability", 0.5), "speed": inp.get("speed", 1.0), "lines": lines})
     if trial:
         ctx.voice_used(sum(r["duration"] for r in res))
     if inp.get("deliver"):
@@ -279,6 +303,8 @@ def _compose(inp, ctx):
     r = mix.compose(ctx.root, inp["placements"], music, dur, music_gain=inp.get("music_gain", 0.55),
                     duck_ratio=inp.get("duck_ratio", 6.0), sfx=sfx)
     ctx.record_usage("elevenlabs_stt_sec", round(dur), None)
+    plan_update(ctx.root, "compose", {"placements": inp["placements"], "music": inp.get("music"), "music_gain": inp.get("music_gain", 0.55),
+                                      "duck_ratio": inp.get("duck_ratio", 6.0), "sfx": inp.get("sfx") or [], "duration": dur})
     words = " ".join(f"{w['text']}{w['start']:.2f}-{w['end']:.2f}" for w in r["words"])
     return [_text(f"混音完成（{dur:.1f}s）。整條旁白辨識：{r['transcript']}\n分句：{_j(r['lines'])}\n逐字：{words}")]
 
@@ -286,6 +312,7 @@ def _compose(inp, ctx):
 def _captions(inp, ctx):
     base = ctx.root / "work" / "base.mp4"
     ass = subs.build_ass(inp["vo"], inp.get("supers") or [], inp.get("counter"), ctx.root / "work" / "subs.ass")
+    plan_update(ctx.root, "captions", {"vo": inp["vo"], "supers": inp.get("supers") or [], "counter": inp.get("counter")})
     dark = None
     if inp.get("counter"):
         dark = (float(inp["counter"]["start"]) - 0.6, float(inp["counter"]["end"]))
@@ -303,6 +330,7 @@ def _export(inp, ctx):
     if not mixw.exists():
         return [_text("還沒有混音，先 compose_audio")]
     r = mix.mux_and_export(video, mixw, ctx.root / "out", inp.get("stem", "final"))
+    plan_update(ctx.root, "export", {"stem": inp.get("stem", "final")})
     sizes = {k: round(p.stat().st_size / 2**20, 1) for k, p in r.items()}  # before add_asset moves the files
     ids = {k: ctx.add_asset(p, "video", {"master": "母帶", "upload": "上傳用 1080p", "preview": "預覽 720p"}[k],
                             {"size_mb": sizes[k], "role": k, "deliverable": True})["id"] for k, p in r.items()}

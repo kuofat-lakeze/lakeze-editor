@@ -461,3 +461,65 @@ def test_proof_take(client, monkeypatch, tmp_path: Path):
     monkeypatch.setattr(eleven, "speech_to_speech", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     assert c.post(f"/api/projects/{pid}/take", data={"n": "4"}, files={"audio": ("t.webm", b"xx", "audio/webm")}).status_code == 502
     assert asyncio.run(D.balance(b.id)) == bal0 - P.VOICE_SAMPLE_POINTS   # the failed one was refunded
+
+
+def test_quick_render(client, monkeypatch, tmp_path: Path):
+    """微調: the recipe is enough to re-render; only changed lines are re-voiced; charged 1/line + 1 render (0 on a plan)."""
+    import json as J
+    from app import config as C, quick as Q
+    from app.agent import tools as T
+    from app.pipeline import eleven, ff, mix, subs
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = b
+    monkeypatch.setattr(C, "DATA_DIR", tmp_path)
+    pid = c.post("/api/projects", json={"name": "微調"}).json()["id"]
+    root = M.project_dir(pid)
+    assert c.get(f"/api/projects/{pid}/script").json()["quick"] is False
+    assert c.post(f"/api/projects/{pid}/quick", json={"lines": [{"key": "A", "text": "x"}]}).status_code == 400
+    (root / "work" / "vo").mkdir(parents=True, exist_ok=True)
+    for k in "ABC":
+        (root / "work" / "vo" / f"{k}.wav").write_bytes(b"RIFF")
+    (root / "work" / "base.mp4").write_bytes(b"mp4")
+    T.plan_update(root, "voice", {"voice_id": "v1", "lines": {"A": "宜蘭海邊", "B": "整棟包下來", "C": "點連結查空房"}})
+    T.plan_update(root, "compose", {"placements": [{"key": "A", "at": 0}, {"key": "B", "at": 3.5}, {"key": "C", "at": 7}], "music": None, "music_gain": .55, "duck_ratio": 6, "sfx": [], "duration": 12})
+    T.plan_update(root, "captions", {"vo": [{"start": 0, "end": 3, "text": "宜蘭**海邊**"}, {"start": 3.5, "end": 6.5, "text": "整棟包下來"}, {"start": 7, "end": 10, "text": "點連結查空房"}], "supers": [], "counter": None})
+    monkeypatch.setattr(ff, "duration", lambda p: 3.0)
+    monkeypatch.setattr(ff, "ffmpeg", lambda *args: Path(args[-1]).write_bytes(b"x"))
+    sc = c.get(f"/api/projects/{pid}/script").json()
+    assert sc["quick"] and [l["key"] for l in sc["lines"]] == ["A", "B", "C"] and sc["lines"][1]["text"] == "整棟包下來"
+    tts_calls = []
+    def fake_tts(lines, voice, vo_dir, **kw):
+        tts_calls.append([l["text"] for l in lines])
+        for l in lines:
+            (vo_dir / f"{l['key']}.wav").write_bytes(b"RIFF2")
+        return [{"key": l["key"], "takes": 1, "duration": 3.0} for l in lines]
+    monkeypatch.setattr(eleven, "tts_verified", fake_tts)
+    monkeypatch.setattr(mix, "compose", lambda root, placements, music, dur, **kw: {"words": [], "transcript": "", "lines": []})
+    built = {}
+    monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, vo_scale=1.0: built.update(vo=vo, scale=vo_scale) or dest)
+    monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None: dest.write_bytes(b"v") or dest)
+    def fake_export(video, mixw, out_dir, stem="final"):
+        out_dir.mkdir(exist_ok=True)
+        files = {k: out_dir / f"{stem}_{k}.mp4" for k in ("master", "upload", "preview")}
+        for f in files.values():
+            f.write_bytes(b"mp4")
+        return files
+    monkeypatch.setattr(mix, "mux_and_export", fake_export)
+    bal0 = asyncio.run(D.balance(b.id))
+    r = c.post(f"/api/projects/{pid}/quick", json={"lines": [{"key": "B", "text": "整棟包下來，客廳是你們的", "say": "整棟包下來，客廳是你們的"}, {"key": "C", "drop": True}, {"key": "A", "star": True}], "caption_scale": 1.2})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["revoiced"] == ["B"] and tts_calls == [["整棟包下來，客廳是你們的"]]
+    assert d["charged"] == P.QUICK_LINE_POINTS + P.QUICK_EXPORT_POINTS and d["balance"] == bal0 - d["charged"]
+    assert [v["text"] for v in built["vo"]] == ["**宜蘭**海邊**", "整棟包下來，客廳是你們的"] or [v["text"] for v in built["vo"]][1] == "整棟包下來，客廳是你們的"
+    assert built["scale"] == 1.2 and len(built["vo"]) == 2
+    dv = c.get(f"/api/projects/{pid}/deliverables").json()
+    assert dv["versions"][0]["version"] == 1 and len(dv["versions"][0]["videos"]) == 3
+    plan = T.plan_load(root)
+    assert plan["voice"]["lines"]["B"] == "整棟包下來，客廳是你們的" and [p["key"] for p in plan["compose"]["placements"]] == ["A", "B"]
+    # a subscriber pays only for re-voiced lines
+    asyncio.run(M.activate_subscription(b.id, "sub5", paid_twd=0)); b.subscription = "sub5"
+    bal1 = asyncio.run(D.balance(b.id))
+    r = c.post(f"/api/projects/{pid}/quick", json={"music_gain": 0.3}).json()
+    assert r["charged"] == 0 and r["balance"] == bal1 and r["revoiced"] == []

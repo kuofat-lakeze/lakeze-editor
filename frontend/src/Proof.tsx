@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type DeliverableVersion } from './api'
+import { api, type DeliverableVersion, type Voice } from './api'
 import type { Line } from './Script'
 
 /* 校對台 (導演模式): the finished video and its narration side by side, and the copy is edited right
@@ -7,19 +7,21 @@ import type { Line } from './Script'
    我唸這句 (speech-to-speech in the video's voice), 唸法 (homophones for the voice only), ⭐ 重點, ✕ 刪掉,
    ＋ 加一句. 整篇改 opens the whole script as one text. The edits become one 校對結果 message; only the
    changed lines are re-voiced. */
-type Row = { id: number; n: number | null; start: number; end: number; text: string }   // n: original line number (null = added here)
+type Row = { id: number; n: number | null; key?: string; start: number; end: number; text: string }   // n: original line number (null = added here); key: VO key when the recipe is known
 type Edit = { text?: string; say?: string; star?: boolean; drop?: boolean; take?: string; rewrite?: boolean }
 type Shot = { i: number; clip: number; start: number; dur: number; at: number }
 const STAR_MAX = 3
 const tc = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
-export function Proof({ projectId, version, lines: given, onClose, onSend, onUsage }:
-  { projectId: string; version: DeliverableVersion | null; lines?: Line[]; onClose: () => void; onSend: (text: string) => void; onUsage?: () => void }) {
-  const toRows = (ls: Line[]): Row[] => ls.map((l, i) => ({ id: i + 1, n: i + 1, start: l.start, end: l.end, text: l.text }))
+export function Proof({ projectId, version, lines: given, onClose, onSend, onUsage, onDone }:
+  { projectId: string; version: DeliverableVersion | null; lines?: Line[]; onClose: () => void; onSend: (text: string) => void; onUsage?: () => void; onDone?: () => void }) {
+  const toRows = (ls: (Line & { key?: string })[]): Row[] => ls.map((l, i) => ({ id: i + 1, n: i + 1, key: l.key, start: l.start, end: l.end, text: l.text }))
+  const [quickOK, setQuickOK] = useState(false)      // the recipe is known: small changes re-render without the editor
+  const [applying, setApplying] = useState(false)
   const [rows, setRows] = useState<Row[]>(toRows(given ?? []))
   const nextId = useRef(1000)
   const [voiceId, setVoiceId] = useState('')
-  const [sayPts, setSayPts] = useState(1)
+  const [, setSayPts] = useState(1)
   const [shots, setShots] = useState<Shot[]>([])
   const [loading, setLoading] = useState(!given)
   const [edits, setEdits] = useState<Record<number, Edit>>({})
@@ -36,7 +38,7 @@ export function Proof({ projectId, version, lines: given, onClose, onSend, onUsa
   const chunks = useRef<Blob[]>([])
   const listRef = useRef<HTMLOListElement>(null)
   useEffect(() => {
-    api.script(projectId).then(r => { if (!given?.length) setRows(toRows(r.lines)); setVoiceId(r.voice_id); setSayPts(r.say_points); setShots(r.shots ?? []) }).catch(() => {}).finally(() => setLoading(false))
+    api.script(projectId).then(r => { if (r.quick || !given?.length) setRows(toRows(r.lines)); setQuickOK(!!r.quick); setVoiceId(r.voice_id); setSayPts(r.say_points); setShots(r.shots ?? []) }).catch(() => {}).finally(() => setLoading(false))
   }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { audio.current?.pause(); mr.current?.stream.getTracks().forEach(t => t.stop()) }, [])
   const total = useMemo(() => Math.max(rows[rows.length - 1]?.end ?? 0, shots.length ? shots[shots.length - 1].at + shots[shots.length - 1].dur : 0, video.current?.duration || 0), [rows, shots, cur])
@@ -125,6 +127,18 @@ export function Proof({ projectId, version, lines: given, onClose, onSend, onUsa
     setWhole(null)
   }
 
+  // 微調 or 剪輯師? Everything on an existing line (text, 唸法, drop, take, star) re-renders from the recipe;
+  // a new line or a rewrite needs the editor.
+  const needsEditor = added.length > 0 || Object.values(edits).some(e => e.rewrite) || rows.some(r => edits[r.id] && !r.key)
+  const quickable = quickOK && !needsEditor && changed > 0
+  const applyQuick = async () => {
+    setApplying(true); setErr('')
+    try {
+      const lines = rows.filter(r => r.key && edits[r.id]).map(r => { const e = edits[r.id]; return { key: r.key!, text: e.text?.trim(), say: e.say?.trim(), drop: e.drop, take: e.take, star: e.star } })
+      await api.quick(projectId, { lines })
+      onUsage?.(); onDone?.(); onClose()
+    } catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? '點數不足，先儲值再套用' : ex.message); setApplying(false) }
+  }
   const message = () => {
     const out: string[] = ['校對結果，請照著修改後重新輸出（只重配有改的句子，其他句子的音檔沿用；畫面盡量沿用）：']
     if (rows.length && rows.every(r => r.n === null)) {
@@ -219,10 +233,10 @@ export function Proof({ projectId, version, lines: given, onClose, onSend, onUsa
                     {on && (
                       <div className="pf-tools" onClick={ev => ev.stopPropagation()}>
                         {!e.drop && <>
-                          <button type="button" className="pf-tb" disabled={saying !== null || !txt.trim()} onClick={() => say(r.id)}><i>▶</i>{saying === r.id ? '播放中' : `試聽 ${sayPts} 點`}</button>
+                          <button type="button" className="pf-tb" disabled={saying !== null || !txt.trim()} onClick={() => say(r.id)}><i>▶</i>{saying === r.id ? '播放中' : '試聽'}</button>
                           {rec?.id === r.id && rec.phase === 'rec' ? <button type="button" className="pf-tb rec" onClick={takeStop}><i>■</i>唸完了</button>
                             : rec?.id === r.id && rec.phase === 'up' ? <button type="button" className="pf-tb" disabled><i>…</i>轉換中</button>
-                            : <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={rec !== null && rec.phase !== 'done'} onClick={() => takeStart(r.id)} title="自己唸這一句，配音會用影片的聲音照你的唸法再念一次"><i>🎙</i>{e.take ? '再唸' : `我唸 ${sayPts} 點`}</button>}
+                            : <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={rec !== null && rec.phase !== 'done'} onClick={() => takeStart(r.id)} title="自己唸這一句，配音會用影片的聲音照你的唸法再念一次"><i>🎙</i>{e.take ? '再唸' : '我唸這句'}</button>}
                           <button type="button" className={`pf-tb ${sayOpen === r.id || e.say !== undefined ? 'on' : ''}`} onClick={() => setSayOpen(sayOpen === r.id ? null : r.id)}><i>ㄅ</i>唸法</button>
                           <button type="button" className={`pf-tb ${e.star ? 'on' : ''}`} disabled={!e.star && stars >= STAR_MAX} onClick={() => patch(r.id, { star: !e.star })} title={stars >= STAR_MAX && !e.star ? `重點最多 ${STAR_MAX} 句` : ''}><i>⭐</i>重點</button>
                           {r.n !== null && <button type="button" className={`pf-tb ${e.rewrite ? 'on' : ''}`} onClick={() => patch(r.id, { rewrite: !e.rewrite })}><i>✨</i>請剪輯師重寫</button>}
@@ -242,10 +256,64 @@ export function Proof({ projectId, version, lines: given, onClose, onSend, onUsa
         </div>
         {err && <div className="error small pf-err">{err}</div>}
         <div className="pf-foot">
-          <span>{changed > 0 ? <><b>已改 {changed} 句</b><small className="muted">會算一輪修改</small></> : <span className="muted small">還沒有改動 · 點句子就能改</span>}</span>
+          <span>{changed > 0 ? <><b>已改 {changed} 句</b><small className="muted">{quickable ? '直接套用，不用等剪輯師' : needsEditor && quickOK ? '有加句或重寫，要請剪輯師' : ''}</small></> : <span className="muted small">還沒有改動 · 點句子就能改</span>}</span>
           <span className="spacer" />
-          {changed > 0 && <a className="small muted" onClick={() => { setEdits({}); setRows(rs => rs.filter(r => r.n !== null)) }}>全部還原</a>}
-          <button className="btn primary" disabled={changed === 0 || rows.some(r => r.n === null && !shown(r).trim())} onClick={() => { onSend(message()); onClose() }}>重新輸出 →</button>
+          {changed > 0 && !applying && <a className="small muted" onClick={() => { setEdits({}); setRows(rs => rs.filter(r => r.n !== null)) }}>全部還原</a>}
+          {quickable
+            ? <button className="btn primary" disabled={applying} onClick={applyQuick}>{applying ? '重新輸出中…（約 1–2 分鐘）' : '套用修改 →'}</button>
+            : <button className="btn primary" disabled={changed === 0 || applying || rows.some(r => r.n === null && !shown(r).trim())} onClick={() => { onSend(message()); onClose() }}>請剪輯師修改 →</button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+/* 微調: the knobs that never need the editor — caption size, music level, narration speed, price colour,
+   the voice. One tap each, then 套用 re-renders from the recipe. */
+export function Tweak({ projectId, onClose, onDone, onUsage }: { projectId: string; onClose: () => void; onDone?: () => void; onUsage?: () => void }) {
+  const [scale, setScale] = useState<number | null>(null)
+  const [gain, setGain] = useState<number | null>(null)
+  const [speed, setSpeed] = useState<number | null>(null)
+  const [color, setColor] = useState<string | null>(null)
+  const [voice, setVoice] = useState<string | null>(null)
+  const [voices, setVoices] = useState<Voice[]>([])
+  const [cur, setCur] = useState('')
+  const [ok, setOk] = useState<boolean | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    api.script(projectId).then(r => { setOk(!!r.quick); setCur(r.voice_id) }).catch(() => setOk(false))
+    api.voices().then(setVoices).catch(() => {})
+  }, [projectId])
+  const n = [scale, gain, speed, color, voice].filter(x => x !== null).length
+  const apply = async () => {
+    setBusy(true); setErr('')
+    try {
+      await api.quick(projectId, { ...(scale !== null && { caption_scale: scale }), ...(gain !== null && { music_gain: gain }), ...(speed !== null && { speed }), ...(color !== null && { counter_color: color }), ...(voice !== null && { voice_id: voice }) })
+      onUsage?.(); onDone?.(); onClose()
+    } catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? '點數不足，先儲值再套用' : ex.message); setBusy(false) }
+  }
+  const Opt = <T,>({ v, set, options }: { v: T | null; set: (x: T | null) => void; options: { v: T; l: string; d?: boolean }[] }) => (
+    <div className="tw-opts">{options.map(o => <button key={String(o.v)} type="button" className={`tw-o ${v === o.v || (v === null && o.d) ? 'on' : ''}`} onClick={() => set(o.d ? null : o.v)}>{o.l}</button>)}</div>)
+  return (
+    <div className="pf-scrim" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="tw" role="dialog" aria-label="微調">
+        <div className="pf-head"><b>微調</b><span className="muted small">不用等剪輯師，改完直接重出</span><span className="spacer" /><a className="pf-x" onClick={onClose} aria-label="關閉">✕</a></div>
+        {ok === false ? <div className="pf-novideo muted small" style={{ margin: 14 }}>這支還沒有可以微調的版本，請先讓剪輯師重新輸出一次。</div> : (
+          <div className="tw-body">
+            <label><span>字幕大小</span><Opt v={scale} set={setScale} options={[{ v: .85, l: '小' }, { v: 1, l: '標準', d: true }, { v: 1.2, l: '大' }]} /></label>
+            <label><span>配樂音量</span><Opt v={gain} set={setGain} options={[{ v: .32, l: '小聲' }, { v: .55, l: '標準', d: true }, { v: .8, l: '大聲' }]} /></label>
+            <label><span>旁白速度</span><Opt v={speed} set={setSpeed} options={[{ v: .93, l: '慢一點' }, { v: 1, l: '標準', d: true }, { v: 1.12, l: '快一點' }]} /></label>
+            <label><span>價格字幕顏色</span><Opt v={color} set={setColor} options={[{ v: 'gold', l: '金', d: true }, { v: 'white', l: '白' }, { v: 'red', l: '紅' }, { v: 'blue', l: '藍' }]} /></label>
+            {voices.length > 0 && <label><span>旁白聲音<small>換聲音會整支重配</small></span>
+              <Opt v={voice} set={setVoice} options={voices.map(v => ({ v: v.voice_id, l: (v.custom ? '我的聲音 ' : '') + v.name, d: v.voice_id === cur }))} /></label>}
+          </div>
+        )}
+        {err && <div className="error small pf-err">{err}</div>}
+        <div className="pf-foot">
+          <span className="muted small">{n > 0 ? `改了 ${n} 項` : '選一項就能套用'}</span><span className="spacer" />
+          <button className="btn primary" disabled={!ok || n === 0 || busy} onClick={apply}>{busy ? '重新輸出中…（約 1–2 分鐘）' : '套用 →'}</button>
         </div>
       </div>
     </div>

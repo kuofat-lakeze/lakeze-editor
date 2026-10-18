@@ -26,11 +26,15 @@ TWD_PER_USD = 32
 # a first version lands around US$4.5 (NT$145), a revision round around NT$40 including the turn's tokens.
 COST_TWD: dict[str, float] = {
     "list_drive_folder": 0, "download_footage": 0, "probe_footage": 30, "sample_frames": 0,
-    "build_cut": 38, "search_voices": 0, "generate_voice": 20, "generate_music": 8, "generate_sfx": 3,
-    "preview_video": 0, "compose_audio": 5, "render_captions": 8, "export_video": 14, "make_cover": 12,
+    "build_cut": 48, "search_voices": 0, "generate_voice": 20, "generate_music": 8, "generate_sfx": 3,
+    "preview_video": 0, "compose_audio": 5, "render_captions": 8, "export_video": 2, "make_cover": 12,
     "voice_sample": 3,      # one delivered sample line
-    "revision_turn": 13,    # the conversation tokens of a revision turn (charged once per turn)
+    "revision_turn": 24,    # the conversation tokens of a revision turn (charged once per turn)
+    "quick_export": 2,      # 微調: a re-render without the editor (ffmpeg only) — the cheap path for small changes
 }
+# Note on the split: export_video is ffmpeg compute (NT$2); the thinking that used to be booked on it sits
+# on build_cut (first version) and revision_turn (a revision), so the totals stay 64 / 18 / 100 while a
+# 微調 (quick re-render, no editor turn) costs 1 點 plus 1 點 per re-voiced line.
 
 
 PRICE_STEP_TWD = 7   # the point value the schedule was sized at; the schedule doesn't move with the point price
@@ -43,6 +47,8 @@ def _pts(cost_twd: float, margin: float = MARGIN_PAYG) -> int:
 
 # Points per tool call at pay-as-you-go margin. 0 = included.
 TOOL_POINTS: dict[str, int] = {k: _pts(v) for k, v in COST_TWD.items() if k not in ("voice_sample", "revision_turn")}
+QUICK_EXPORT_POINTS = TOOL_POINTS["quick_export"]             # 微調 re-render (0 for subscribers)
+QUICK_LINE_POINTS = 1                                         # per re-voiced line in a 微調
 VOICE_SAMPLE_POINTS = _pts(COST_TWD["voice_sample"])          # per delivered sample line
 REVISION_TURN_POINTS = _pts(COST_TWD["revision_turn"])        # once per revision turn that does tool work
 
@@ -61,12 +67,13 @@ TOOL_LABELS: dict[str, str] = {
     "generate_sfx": "音效", "preview_video": "預覽", "compose_audio": "混音", "render_captions": "字幕",
     "export_video": "輸出影片", "make_cover": "封面", "revision_turn": "修改回合", "storage": "成品空間月費",
     "subscription": "訂閱方案", "expire": "訂閱點數到期",
+    "quick_export": "微調輸出", "quick_voice": "微調重配旁白",
 }
 TOOL_CATEGORY: dict[str, str] = {
     "probe_footage": "cut", "sample_frames": "cut", "build_cut": "cut", "list_drive_folder": "cut", "download_footage": "cut",
     "search_voices": "audio", "generate_voice": "audio", "generate_music": "audio", "generate_sfx": "audio",
     "compose_audio": "subs", "render_captions": "subs", "preview_video": "subs", "revision_turn": "subs",
-    "export_video": "export", "make_cover": "cover", "storage": "storage",
+    "export_video": "export", "make_cover": "cover", "storage": "storage", "quick_export": "export", "quick_voice": "audio",
 }
 CATEGORIES = [("cut", "素材與剪輯"), ("audio", "旁白與配樂"), ("subs", "字幕與混音"), ("export", "輸出"), ("cover", "封面"), ("storage", "成品空間")]
 

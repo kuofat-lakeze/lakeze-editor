@@ -31,7 +31,7 @@ function ExpiryPill({ at, onKeep }: { at: string; onKeep?: () => void }) {
   return <button type="button" className={`pill exp ${days <= 2 ? 'soon' : ''}`} onClick={onKeep} title="免費空間的成品保留 7 天；加購空間就一直保存">⏳ {txt}</button>
 }
 
-export function Deliverables({ projectId, onChanged, onStorage, onProof }: { projectId: string; onChanged?: () => void; onStorage?: () => void; onProof?: (v: DeliverableVersion) => void }) {
+export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak }: { projectId: string; onChanged?: () => void; onStorage?: () => void; onProof?: (v: DeliverableVersion) => void; onTweak?: () => void }) {
   const [data, setData] = useState<DeliverablesData | null>(null)
   const [st, setSt] = useState<StorageState | null>(null)
   const [sharing, setSharing] = useState<number | null | 'final'>(null)  // version being shared ('final' = follow final)
@@ -90,6 +90,7 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof }: { pro
                   ? <button className="btn small" onClick={() => setFinal(null)}>取消最終版</button>
                   : <button className="btn small" onClick={() => setFinal(v.version)}>標成最終版</button>}
                 {onProof && v.main && <button className="btn small" onClick={() => onProof(v)}>校對</button>}
+                {onTweak && v.main && v === versions[0] && <button className="btn small" onClick={onTweak}>微調</button>}
                 <button className="btn primary small" onClick={() => setSharing(v.version)}>分享給朋友</button>
                 <button className="btn small ghost danger" disabled={isFinal || busy === v.version} title={isFinal ? '先取消最終版才能刪' : '刪除這一版，釋放空間'}
                   onClick={() => del(v.version)}>{busy === v.version ? '刪除中…' : '刪除'}</button>

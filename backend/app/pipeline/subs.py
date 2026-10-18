@@ -46,13 +46,14 @@ def _markup(text: str, hl_size: int = 124) -> str:
     return out.replace("\n", "\\N")
 
 
-def build_ass(vo: list[dict], supers: list[dict], counter: dict | None, dest: Path) -> Path:
+def build_ass(vo: list[dict], supers: list[dict], counter: dict | None, dest: Path, vo_scale: float = 1.0) -> Path:
     """vo: [{start,end,text,y?}]  supers: [{start,end,text,y?}]
     counter: {start,end,amount,prefix,label,y?} – animated count-up (price reveal)."""
     ev = []
+    fs = f"\\fs{int(round(100 * vo_scale))}" if abs(vo_scale - 1.0) > 1e-3 else ""
     for c in vo:
         y = int(c.get("y", 1300))
-        ev.append(f"Dialogue: 1,{_t(c['start'])},{_t(c['end'])},VO,,0,0,0,,{{\\pos(540,{y})}}{POP}{_markup(c['text'])}")
+        ev.append(f"Dialogue: 1,{_t(c['start'])},{_t(c['end'])},VO,,0,0,0,,{{\\pos(540,{y}){fs}}}{POP}{_markup(c['text'], int(round(124 * vo_scale)))}")
     for s in supers:
         y = int(s.get("y", 330))
         txt = s["text"].replace("**", "").replace("\n", "\\N")  # highlight markup is VO-only

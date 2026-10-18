@@ -1866,3 +1866,14 @@ body.easy .btn { font-size: 16px; }
 .miao-logo.light .miao-en > span:not(.tc-i), .miao-logo.light .tc-i { background: #FFD9C4; -webkit-background-clip: text; background-clip: text; }
 .miao-logo.light .tc-pin { color: #FFD9C4; }
 .topbar .miao-en { font-size: 12px; }
+/* 微調面板 */
+.tw { width: 100%; max-width: 520px; background: var(--bg); border-radius: 22px 22px 0 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 -10px 50px rgba(34,38,46,.3); animation: shUp .25s cubic-bezier(.2,.8,.2,1); max-height: 92vh; }
+@media (min-width: 900px) { .tw { border-radius: 22px; } }
+.tw-body { display: flex; flex-direction: column; gap: 14px; padding: 14px 16px; overflow: auto; }
+.tw-body label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.tw-body label small { font-weight: 500; margin-left: 6px; }
+.tw-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.tw-o { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); font: inherit; font-size: 14px; font-weight: 700; color: var(--text); cursor: pointer; }
+.tw-o.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+.ver-actions { flex-wrap: wrap; } .ver-actions .btn { white-space: nowrap; }
+@media (max-width: 640px) { .pf-foot small { display: none; } .pf-foot b { font-size: 14px; } }

@@ -17,9 +17,9 @@ import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from . import config, pricing
+from . import config, pricing, quick
 from .admin import router as admin_router
-from .agent import analyze
+from .agent import analyze, tools
 from .agent.runner import TurnRunner
 from .auth import CurrentUser, check_pw, clear_session, hash_pw, set_session
 from .oauth import router as oauth_router
@@ -1054,6 +1054,10 @@ async def project_script(project_id: str, user: User = CurrentUser):
         rows = (await s.execute(select(Message).where(Message.project_id == project_id).order_by(Message.id.desc()))).scalars().all()
     lines: list[dict] = []
     voice_id = ""
+    from_plan = quick.script_lines(project_dir(project_id))
+    if from_plan:
+        lines = from_plan
+        voice_id = (tools.plan_load(project_dir(project_id)).get("voice") or {}).get("voice_id", "")
     for m in rows:
         try:
             content = json.loads(m.content)
@@ -1075,7 +1079,59 @@ async def project_script(project_id: str, user: User = CurrentUser):
     except Exception:
         pass
     return {"lines": lines, "voice_id": voice_id or user.voice_id or (config.VOICE_PRESETS[0]["voice_id"] if config.VOICE_PRESETS else ""),
-            "say_points": pricing.VOICE_SAMPLE_POINTS, "shots": shots}
+            "say_points": pricing.VOICE_SAMPLE_POINTS, "shots": shots, "quick": bool(from_plan)}
+
+
+class QuickBody(BaseModel):
+    lines: list[dict] = []
+    voice_id: str | None = None
+    music_gain: float | None = None
+    speed: float | None = None
+    caption_scale: float | None = None
+    counter_color: str | None = None
+
+
+@app.post("/api/projects/{project_id}/quick")
+async def quick_render(project_id: str, body: QuickBody, user: User = CurrentUser):
+    """微調: re-render from the recipe without an editor turn. Charged quietly: 1 點 per re-voiced line and
+    1 點 for the render (the render is free on a subscription). Produces a new version."""
+    await _own(project_id, user)
+    root = project_dir(project_id)
+    edits = body.model_dump(exclude_none=True)
+    try:
+        info = quick.plan_changes(root, edits)
+    except quick.QuickError as e:
+        raise HTTPException(400, str(e))
+    store = Store(user.id)
+    st = await store.storage_state()
+    if st["over"]:
+        raise HTTPException(409, "成品空間已滿，先刪掉舊版本或升級空間")
+    export_pts = 0 if user.subscription else pricing.QUICK_EXPORT_POINTS
+    line_pts = pricing.QUICK_LINE_POINTS * len(info["revoice"])
+    charged: list[tuple[int, str]] = []
+    for pts, reason in ((line_pts, "quick_voice"), (export_pts, "quick_export")):
+        if pts:
+            ok, bal = await store.charge(project_id, pts, reason)
+            if not ok:
+                for p2, r2 in charged:
+                    await add_credits(user.id, p2, "refund", f"{r2}_failed", project_id=project_id)
+                return JSONResponse({"detail": f"點數不足：需要 {line_pts + export_pts} 點，目前 {bal} 點", "needed": line_pts + export_pts, "balance": bal}, 402)
+            charged.append((pts, reason))
+    loop = asyncio.get_running_loop()
+    try:
+        r = await asyncio.to_thread(quick.render, root, edits, record_usage=lambda k, u, m: asyncio.run_coroutine_threadsafe(
+            store.record_usage(project_id, k, u, 0.0, m), loop).result())
+    except Exception as e:
+        for p2, r2 in charged:
+            await add_credits(user.id, p2, "refund", f"{r2}_failed", project_id=project_id)
+        log.exception("quick render failed")
+        raise HTTPException(502, f"微調失敗，點數已退回：{type(e).__name__}: {str(e)[:200]}")
+    sizes = {k: round(p.stat().st_size / 2**20, 1) for k, p in r["files"].items()}
+    names = {"master": "母帶", "upload": "上傳用 1080p", "preview": "預覽 720p"}
+    for k, p in r["files"].items():
+        await store.add_asset(project_id, p, "video", names[k], {"size_mb": sizes[k], "role": k, "deliverable": True, "quick": True})
+    await store.note_export(project_id)
+    return {"ok": True, "revoiced": r["revoiced"], "charged": sum(p for p, _ in charged), "balance": await balance(user.id)}
 
 
 @app.post("/api/projects/{project_id}/take")
