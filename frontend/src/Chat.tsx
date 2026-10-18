@@ -206,6 +206,10 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [pickFail, setPickFail] = useState(false)
   const [style, setStyle] = useState('travel')
   const [length, setLength] = useState('std')   // 影片長度，預設標準 30–40 秒
+  // 主題: decided before the editor looks — 旅遊／住宿 (default) or a few words of the customer's own
+  const [theme, setTheme] = useState<'travel' | 'custom'>('travel')
+  const [themeText, setThemeText] = useState('')
+  const themeLine = () => theme === 'custom' && themeText.trim() ? `主題：${themeText.trim()}` : '主題：旅遊／住宿（民宿、飯店、景點、行程）'
   const [obStep, setObStep] = useState(0)
   const [link, setLink] = useState('')
   const [drive, setDrive] = useState<{ state: 'idle' | 'checking' | 'ok' | 'err'; info?: DriveCheck; error?: string }>({ state: 'idle' })
@@ -389,6 +393,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     const v = voices.find(x => x.voice_id === voice)
     const len = LENGTHS.find(x => x.id === length) ?? LENGTHS[1]
     const parts = [
+      themeLine(),
       analysis ? `素材已上傳並解析過（${analysis.n_clips} 個）。` : linkOk ? `素材在這個雲端分享連結（${drive.info?.label}）：${link.trim()} 。請用 list_drive_folder 讀取再下載。` : `我上傳了 ${okUploads} 支素材。`,
       text.trim(),
       st.brief,
@@ -397,7 +402,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
       voice === NO_VOICE ? '不要配音：只要配樂和字幕，賣點用字幕呈現。'
         : v ? `旁白用 ${v.name}（voice_id ${v.voice_id}），直接做到輸出影片和封面，不用再問我選聲音或確認稿子。` : '',
     ]
-    api.clientLog('start_project', { style: st.id, length: len.id, adjust: nAdjust, voice, link: linkOk, uploads: okUploads, analysis: !!analysis })
+    api.clientLog('start_project', { style: st.id, length: len.id, theme, adjust: nAdjust, voice, link: linkOk, uploads: okUploads, analysis: !!analysis })
     await submit(parts.filter(Boolean).join('\n'), !!analysis)
   }
   const runAnalyze = async () => {
@@ -405,7 +410,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     setAnalyzing(true); setAnErr(''); setAnNeed(null); setAnStart(Date.now())
     api.clientLog('analyze_start', { link: linkOk && !okUploads, uploads: okUploads })
     try {
-      const a = await api.analyze(projectId, { brief: text.trim(), drive_url: linkOk && !okUploads ? link.trim() : '' })
+      const a = await api.analyze(projectId, { brief: [themeLine(), text.trim()].filter(Boolean).join('\n'), drive_url: linkOk && !okUploads ? link.trim() : '' })
       atBottom.current = false   // land on the selling points, not the bottom of the card
       setProj(p => p && { ...p, analysis: a }); setPicked(null); setSkipAn(false)
       onUsage()
@@ -639,9 +644,24 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                       : <div className="lc-msg err">連結打得開，但裡面沒有影片或照片。</div>)}
                     {drive.state === 'err' && <div className="lc-msg err">{drive.error}</div>}
                     {link && drive.state === 'idle' && <div className="lc-msg">🔓 要 https:// 開頭，並開放「知道連結的人可檢視」</div>}
+                    <div className="theme">
+                      <div className="theme-h"><b>這支影片要講什麼？</b><span className="muted small">剪輯師會照這個抓重點</span></div>
+                      <div className="theme-opts" role="radiogroup" aria-label="主題">
+                        <button type="button" className={`theme-o ${theme === 'travel' ? 'on' : ''}`} role="radio" aria-checked={theme === 'travel'} onClick={() => setTheme('travel')}>
+                          <i aria-hidden="true">🧳</i><b>旅遊 · 住宿</b><small>民宿、飯店、景點、行程</small></button>
+                        <button type="button" className={`theme-o ${theme === 'custom' ? 'on' : ''}`} role="radio" aria-checked={theme === 'custom'} onClick={() => setTheme('custom')}>
+                          <i aria-hidden="true">✏️</i><b>自己定主題</b><small>打幾個字就好</small></button>
+                      </div>
+                      {theme === 'custom' && (
+                        <div className="theme-in">
+                          <input autoFocus value={themeText} maxLength={30} placeholder="例如：老屋改建、親子一日遊、手沖咖啡" onChange={e => setThemeText(e.target.value)} />
+                          <div className="chips inline">{['老屋改建', '親子一日遊', '手沖咖啡', '夜市美食', '露營車', '婚禮花絮'].map(x => <a key={x} className={`chipbtn ${themeText === x ? 'on' : ''}`} onClick={() => setThemeText(x)}>{x}</a>)}</div>
+                        </div>
+                      )}
+                    </div>
                     <div className="ob-nav">
                       <span className="muted small">{analysis ? `已有 ${analysis.n_clips} 個素材（已解析）` : okUploads > 0 ? `已上傳 ${okUploads} 個素材` : linkOk ? `${drive.info?.label}連結就緒` : uploading ? '上傳中…' : drive.state === 'checking' ? '讀取連結中…' : '還沒有素材'}</span>
-                      <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading} onClick={() => { goStep(1); if (easy && !analysis) setTimeout(runAnalyze, 50) }}>{easy ? `讓剪輯師先看一遍 →` : '下一步：解析素材 →'}</button>
+                      <button className={`btn primary ${hasFootage && !uploading ? 'glow' : ''}`} disabled={!hasFootage || uploading || (theme === 'custom' && !themeText.trim())} onClick={() => { goStep(1); if (easy && !analysis) setTimeout(runAnalyze, 50) }}>{easy ? `讓剪輯師先看一遍 →` : '下一步：解析素材 →'}</button>
                     </div>
                   </>
                 )}

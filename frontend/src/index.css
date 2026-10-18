@@ -1897,3 +1897,16 @@ body.easy .pf-ez-text { font-size: 19px; } body.easy .pf-tb { height: 44px; font
 .pf-own { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px; border-radius: 14px; border: 1.5px dashed var(--brand); background: var(--brand-soft); margin-bottom: 4px; }
 .pf-own > div { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 180px; } .pf-own span { font-size: 13px; color: var(--muted); }
 .social-btn.line { background: #06C755; border-color: #06C755; color: #fff; } .social-btn.line:hover { background: #05b34c; }
+/* 主題：剪輯師看之前先決定 */
+.theme { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding: 14px; border-radius: 16px; background: var(--panel2); }
+.theme-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } .theme-h b { font-size: 16px; }
+.theme-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.theme-o { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 14px 14px 12px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); font: inherit; text-align: left; cursor: pointer; color: var(--text); min-height: 92px; }
+.theme-o i { font-style: normal; font-size: 22px; line-height: 1; margin-bottom: 4px; }
+.theme-o b { font-size: 16px; } .theme-o small { font-size: 12.5px; color: var(--muted); }
+.theme-o.on { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 3px var(--brand-soft); }
+.theme-o.on b { color: var(--brand); }
+.theme-in { display: flex; flex-direction: column; gap: 8px; }
+.theme-in input { width: 100%; font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--brand); background: var(--panel); }
+.theme-in input:focus { outline: 0; box-shadow: 0 0 0 3px var(--brand-soft); }
+body.easy .theme-o { min-height: 104px; } body.easy .theme-o b { font-size: 18px; }
