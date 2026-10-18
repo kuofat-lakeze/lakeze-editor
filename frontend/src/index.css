@@ -1853,3 +1853,8 @@ body.easy .btn { font-size: 16px; }
 .pf-wholebox textarea { width: 100%; font: inherit; font-size: 16px; line-height: 1.7; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--panel); resize: vertical; }
 .pf-wholebox textarea:focus { outline: 0; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 @media (max-width: 640px) { .pf-tools, .pf-saybox { padding-left: 10px; margin-left: 10px; } .pf-tb { height: 38px; } .pf-txt textarea { font-size: 17px; } }
+/* 英文名 Tripcut 跟在 旅剪 後面，小一號、品牌橘 */
+.miao-word { display: inline-flex; align-items: baseline; gap: calc(var(--mj, 40px) * .22); }
+.miao-en { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; font-weight: 800; font-size: calc(var(--mj, 40px) * .42); letter-spacing: .02em; color: var(--brand); }
+.miao-logo.light .miao-en { color: #FFD9C4; }
+.topbar .miao-en { font-size: 11px; }

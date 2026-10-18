@@ -6,10 +6,13 @@
   <rect x=".5" y=".5" width="63" height="63" rx="16" fill="#fff" stroke="#E6E1D9" stroke-width="1"/>
   <g stroke="url(#tr)" stroke-width="3.2" stroke-linecap="round"><line x1="4" y1="33" x2="18" y2="33"/><line x1="8" y1="41" x2="19" y2="41"/><line x1="5" y1="49" x2="17" y2="49"/></g>
   <g transform="skewX(-10) translate(7 0)">
-    <g transform="rotate(-16 16 25)"><rect x="14" y="16" width="38" height="10.5" rx="2.5" fill="#22262E"/>
-      <g fill="#fff"><polygon points="20,16 25,16 21,26.5 16,26.5"/><polygon points="32,16 37,16 33,26.5 28,26.5"/><polygon points="44,16 49,16 45,26.5 40,26.5"/></g></g>
+    <g transform="rotate(-16 16 25)">
+      <rect x="14" y="16" width="38" height="10.5" rx="2.5" fill="#22262E"/>
+      <g fill="#fff"><polygon points="20,16 25,16 21,26.5 16,26.5"/><polygon points="32,16 37,16 33,26.5 28,26.5"/><polygon points="44,16 49,16 45,26.5 40,26.5"/></g>
+    </g>
     <rect x="14" y="27" width="38" height="25" rx="3" fill="url(#og)"/>
-    <polygon points="29,33 41,39.5 29,46" fill="#fff"/>
+    <path d="M34 30.5c-4.4 0-7.6 3.3-7.6 7.4 0 5.2 7.6 12.1 7.6 12.1s7.6-6.9 7.6-12.1c0-4.1-3.2-7.4-7.6-7.4z" fill="#fff"/>
+    <polygon points="31.6,34.6 38.2,38 31.6,41.4" fill="url(#og)"/>
   </g>
   <g stroke="#46B9BD" stroke-width="2.4" stroke-linecap="round"><line x1="55" y1="11" x2="59" y2="7"/><line x1="57.5" y1="18" x2="62" y2="17"/><line x1="50" y1="8" x2="51" y2="3.5"/></g>
 </svg>

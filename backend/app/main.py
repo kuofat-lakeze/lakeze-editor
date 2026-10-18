@@ -1766,7 +1766,7 @@ async def share_og(token: str):
     desc = PROMO_DESC.format(points=pricing.SIGNUP_POINTS)
     tags = [f'<meta property="og:title" content="{_esc(title)}">', f'<meta property="og:description" content="{_esc(desc)}">',
             f'<meta property="og:url" content="{_esc(url)}">', '<meta property="og:type" content="video.other">',
-            '<meta property="og:site_name" content="旅剪 · 人客多 Lakeze">', '<meta property="og:locale" content="zh_TW">',
+            '<meta property="og:site_name" content="旅剪 Tripcut · 人客多 Lakeze">', '<meta property="og:locale" content="zh_TW">',
             '<meta name="twitter:card" content="summary_large_image">', f'<meta name="description" content="{_esc(desc)}">']
     if cover:
         img = f"{config.PUBLIC_URL}{cover['url']}"   # already the public /api/s/<token>/file/<id> form

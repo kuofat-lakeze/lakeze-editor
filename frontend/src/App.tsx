@@ -72,7 +72,7 @@ function Workspace() {
     document.addEventListener('visibilitychange', onVis)
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis) }
   }, [me?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { document.title = (notes?.unread ? `(${notes.unread}) ` : '') + '旅剪 · 人客多 Lakeze' }, [notes?.unread])
+  useEffect(() => { document.title = (notes?.unread ? `(${notes.unread}) ` : '') + '旅剪 Tripcut · 人客多 Lakeze' }, [notes?.unread])
 
   const refreshMe = () => api.me().then(setMe)
   // 輕鬆模式 / 導演模式: an account setting; the body class scales type for the easy mode.

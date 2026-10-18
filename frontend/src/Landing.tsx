@@ -4,7 +4,7 @@ import { HowItWorks } from './HowItWorks'
 import { useEffect, useState } from 'react'
 import { api } from './api'
 
-export const PRODUCT = { name: '旅剪', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
+export const PRODUCT = { name: '旅剪', en: 'Tripcut', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
 const MARKET = { days: 3, low: 2000, high: 3000 }      // what a studio charges today
 // One video with cover and 2 revision rounds (the usual path to a final cut). The NT$ numbers follow the
 // point price set on the dashboard (/api/pricing); these are only the first paint before it loads.
