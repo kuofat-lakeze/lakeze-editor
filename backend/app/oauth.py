@@ -1,4 +1,4 @@
-"""Sign in with Google / Facebook (OAuth 2.0 authorization-code flow, server side).
+"""Sign in with Google / Facebook / LINE (OAuth 2.0 authorization-code flow, server side).
 
 /api/auth/providers            → which buttons to show
 /api/auth/{provider}/start     → redirect to the provider (state in a signed, short-lived cookie)
@@ -42,7 +42,17 @@ PROVIDERS = {
         "scope": "public_profile,email",
         "id": lambda: config.FACEBOOK_APP_ID, "secret": lambda: config.FACEBOOK_APP_SECRET,
     },
+    # LINE Login v2.1: the email comes in the id_token (the channel needs the email permission approved);
+    # the name and user id from the profile endpoint.
+    "line": {
+        "auth": "https://access.line.me/oauth2/v2.1/authorize",
+        "token": "https://api.line.me/oauth2/v2.1/token",
+        "me": "https://api.line.me/v2/profile",
+        "scope": "profile openid email",
+        "id": lambda: config.LINE_CHANNEL_ID, "secret": lambda: config.LINE_CHANNEL_SECRET,
+    },
 }
+LABELS = {"google": "Google", "facebook": "Facebook", "line": "LINE"}
 
 
 def configured(name: str) -> bool:
@@ -82,6 +92,8 @@ async def start(name: str, request: Request, mode: str = "login", next: str = "/
     q = {"client_id": p["id"](), "redirect_uri": redirect_uri(name), "response_type": "code", "scope": p["scope"], "state": nonce}
     if name == "google":
         q.update(access_type="online", prompt="select_account")
+    if name == "line":
+        q.update(bot_prompt="normal")   # offer to add the official account on the consent screen
     resp = RedirectResponse(f"{p['auth']}?{urlencode(q)}", status_code=302)
     resp.set_cookie(STATE_COOKIE, _state.sign(f"{nonce}:{name}:{mode}:{ref.strip()[:64].replace(chr(58), '')}:{_safe_next(next)}").decode(), max_age=600, httponly=True,
                     samesite="lax", secure=request.url.scheme == "https")
@@ -102,7 +114,8 @@ def _fetch_profile(name: str, code: str) -> dict:
     r = requests.post(p["token"], data=data, timeout=20)
     if r.status_code != 200:
         raise RuntimeError(f"token exchange failed: HTTP {r.status_code}")
-    token = r.json().get("access_token")
+    tok = r.json()
+    token = tok.get("access_token")
     if not token:
         raise RuntimeError("no access token")
     r = requests.get(p["me"], headers={"Authorization": f"Bearer {token}"}, timeout=20)
@@ -111,6 +124,13 @@ def _fetch_profile(name: str, code: str) -> dict:
     j = r.json()
     if name == "google":
         return {"id": j.get("sub"), "email": j.get("email"), "verified": bool(j.get("email_verified")), "name": j.get("name")}
+    if name == "line":
+        email = ""
+        if tok.get("id_token"):   # LINE verifies the id_token for us and returns its claims
+            v = requests.post("https://api.line.me/oauth2/v2.1/verify", data={"id_token": tok["id_token"], "client_id": p["id"]()}, timeout=20)
+            if v.status_code == 200:
+                email = v.json().get("email") or ""
+        return {"id": j.get("userId"), "email": email, "verified": bool(email), "name": j.get("displayName")}
     return {"id": j.get("id"), "email": j.get("email"), "verified": bool(j.get("email")), "name": j.get("name")}
 
 
@@ -131,11 +151,11 @@ async def callback(name: str, request: Request, code: str = "", state: str = "",
         prof = await asyncio.to_thread(_fetch_profile, name, code)
     except Exception as e:
         log.warning("%s oauth failed: %s", name, e)
-        return _fail("跟 Google / Facebook 連線失敗，請再試一次")
+        return _fail(f"跟 {LABELS.get(name, name)} 連線失敗，請再試一次")
     email = (prof.get("email") or "").strip().lower()
     if not email or not prof.get("verified"):
-        return _fail("沒有拿到你的 Email（Facebook 帳號需要有已驗證的 Email），請改用 Email 註冊")
-    label = "Google" if name == "google" else "Facebook"
+        return _fail("沒有拿到你的 Email（Facebook／LINE 帳號要有已驗證的 Email，LINE 要在同意畫面勾選提供 Email），請改用 Email 註冊")
+    label = LABELS.get(name, name)
     async with Session() as s:
         u = (await s.execute(select(User).where(User.email == email))).scalar_one_or_none()
         created = u is None

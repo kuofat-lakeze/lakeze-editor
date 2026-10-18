@@ -1877,3 +1877,23 @@ body.easy .btn { font-size: 16px; }
 .tw-o.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
 .ver-actions { flex-wrap: wrap; } .ver-actions .btn { white-space: nowrap; }
 @media (max-width: 640px) { .pf-foot small { display: none; } .pf-foot b { font-size: 14px; } }
+/* 輕鬆模式：字再大一點、需求收起、校對只聽與重唸 */
+body.easy { font-size: 18px; }
+body.easy .bubble { font-size: 18px; line-height: 1.7; }
+body.easy .btn { font-size: 17px; min-height: 46px; }
+body.easy textarea, body.easy input { font-size: 17px; }
+body.easy .ez-head { font-size: 21px; }
+body.easy .qrb.ez { height: 56px; font-size: 18px; }
+body.easy .ob-card h3 { font-size: 24px; } body.easy .ob-card p.muted { font-size: 17px; }
+body.easy .pf-ez-text { font-size: 19px; } body.easy .pf-tb { height: 44px; font-size: 15px; padding: 0 14px; }
+.ez-user { align-self: flex-end; max-width: 80%; margin: 2px 0; }
+.ez-user summary { list-style: none; cursor: pointer; font-size: 13px; color: var(--muted); background: var(--panel2); padding: 6px 12px; border-radius: 999px; display: inline-block; }
+.ez-user summary::before { content: "▸ "; } .ez-user[open] summary::before { content: "▾ "; }
+.ez-user div { margin-top: 6px; padding: 10px 14px; border-radius: 14px; background: var(--panel2); font-size: 14px; color: var(--muted); white-space: pre-wrap; }
+.pf-lines.ez { gap: 8px; }
+.pf-line.ez .pf-row { cursor: pointer; }
+.pf-ez-text { font-size: 17px; line-height: 1.55; font-weight: 600; }
+.pf-line.ez .pf-tools { padding-top: 0; }
+.pf-own { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px; border-radius: 14px; border: 1.5px dashed var(--brand); background: var(--brand-soft); margin-bottom: 4px; }
+.pf-own > div { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 180px; } .pf-own span { font-size: 13px; color: var(--muted); }
+.social-btn.line { background: #06C755; border-color: #06C755; color: #fff; } .social-btn.line:hover { background: #05b34c; }

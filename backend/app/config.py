@@ -61,6 +61,8 @@ GOOGLE_CLIENT_ID = _env("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = _env("GOOGLE_CLIENT_SECRET")
 FACEBOOK_APP_ID = _env("FACEBOOK_APP_ID")
 FACEBOOK_APP_SECRET = _env("FACEBOOK_APP_SECRET")
+LINE_CHANNEL_ID = _env("LINE_CHANNEL_ID")           # LINE Login channel (not the Messaging API one)
+LINE_CHANNEL_SECRET = _env("LINE_CHANNEL_SECRET")
 # Test accounts: "buying" a pack or a subscription credits the account directly, no payment provider involved.
 DEFAULT_TEST_EMAILS = {"kuofat@gmail.com", "lodestar0115@gmail.com"}
 TEST_EMAILS = DEFAULT_TEST_EMAILS | {e.strip().lower() for e in _env("TEST_EMAILS").split(",") if e.strip()}

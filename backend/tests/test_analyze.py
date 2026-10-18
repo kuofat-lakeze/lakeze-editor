@@ -134,7 +134,7 @@ def test_analyze_insufficient_points(client, monkeypatch):
 def test_oauth_creates_then_links(monkeypatch):
     monkeypatch.setattr(C, "GOOGLE_CLIENT_ID", "id"); monkeypatch.setattr(C, "GOOGLE_CLIENT_SECRET", "sec")
     c = TestClient(M.app)
-    assert c.get("/api/auth/providers").json() == {"google": True, "facebook": False}
+    assert c.get("/api/auth/providers").json() == {"google": True, "facebook": False, "line": False}
     assert c.get("/api/auth/facebook/start", follow_redirects=False).status_code == 404
     r = c.get("/api/auth/google/start", follow_redirects=False)
     assert r.status_code == 302 and "accounts.google.com" in r.headers["location"] and "editor.lakeze.com%2Fapi%2Fauth%2Fgoogle%2Fcallback" in r.headers["location"]

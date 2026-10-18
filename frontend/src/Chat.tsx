@@ -85,10 +85,10 @@ const DEFAULT_CHIP: Partial<Record<Stage, string>> = { progress: '照建議做' 
 const NO_VOICE = 'none'
 const OB_STEPS = ['給素材', '解析素材', '風格與賣點']
 // 輕鬆模式: two big answers per stage instead of five chips. `send` goes to the editor; `focus` opens the box; `files` opens 成品.
-const EASY_CHIPS: Record<Stage, { label: string; send?: string; focus?: boolean; files?: boolean; main?: boolean }[]> = {
+const EASY_CHIPS: Record<Stage, { label: string; send?: string; focus?: boolean; files?: boolean; proof?: boolean; main?: boolean }[]> = {
   start: [], working: [],
   progress: [{ label: '好，就這樣 ✓', send: '照建議做', main: true }, { label: '要改一下', focus: true }],
-  revise: [{ label: '很好，看成品 👍', files: true, main: true }, { label: '要改一下', focus: true }],
+  revise: [{ label: '很好，看成品 👍', files: true, main: true }, { label: '旁白有唸錯', proof: true }, { label: '要改別的', focus: true }],
 }
 const EASY_SAVING_TWD = 2500 - 100 * 3.9   // 市場平均一支 vs 100 點; refined from /api/pricing when loaded
 /** 輕鬆模式: the editor's reply as one conclusion line + the rest (shown behind 看細節). The editor is asked to put
@@ -298,10 +298,16 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     if (fresh) api.me().then(setMe).catch(() => {})
   }, [proj?.id, proj?.messages.length === 0]) // eslint-disable-line react-hooks/exhaustive-deps
   const recloneForScript = useRef(false)   // the clone was (re)recorded from a 旁白稿 card: re-voice with it
+  const recloneQuick = useRef(false)   // cloned from the 校對台: re-voice the finished video with the new voice via 微調
   const onCloned = (v: Voice) => {
     setCloning(false)
     setVoices(vs => [v, ...vs.filter(x => !x.custom)]); setVoice(v.voice_id)
     api.me().then(setMe).catch(() => {})
+    if (recloneQuick.current) {
+      recloneQuick.current = false
+      api.quick(projectId, { voice_id: v.voice_id }).then(afterQuick).catch(() => submit(`旁白改用我的聲音「${v.name}」（voice_id ${v.voice_id}）重新生成，稿子、秒數和其他都不變，配好後重新輸出影片。`))
+      return
+    }
     if (recloneForScript.current) {
       recloneForScript.current = false
       submit(`我重新錄了自己的聲音。旁白改用我的聲音「${v.name}」（voice_id ${v.voice_id}）重新生成，稿子、秒數和其他都不變，配好後重新輸出影片。`)
@@ -536,7 +542,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     onReclone: () => { recloneForScript.current = true; setCloning(true) },
     onPick: v => { setVoice(v.voice_id); submit(`旁白改用「${v.name}」的聲音（voice_id ${v.voice_id}）重新生成，稿子、秒數和其他都不變，配好後重新輸出影片。`) },
     onMore: () => submit('這份旁白稿想換個聲音：請再找 3 個台灣腔的聲音，各用稿子第一句做試聽給我選，先不要重新輸出。'),
-    onProof: easy || running ? undefined : lines => openProof(lines),
+    onProof: running ? undefined : lines => openProof(lines),
   }
   const stage: Stage = running ? 'working' : proj.messages.length === 0 ? 'start' : proj.credits.exports > 0 ? 'revise' : 'progress'
   const anPhase = analyzing ? Math.min(AN_PHASES.length - 1, Math.floor((now - anStart) / 9000)) : 0
@@ -593,8 +599,8 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
           </aside>
         </>
       )}
-      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} onProof={easy || running ? undefined : v => openProof(undefined, v)} onTweak={running ? undefined : () => setTweak(true)} />}
-      {proof && <Proof projectId={projectId} version={proof.version} lines={proof.lines} onClose={() => setProof(null)} onUsage={onUsage} onDone={afterQuick} onSend={t => { setTab('chat'); submit(t) }} />}
+      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} onProof={running ? undefined : v => openProof(undefined, v)} onTweak={running || easy ? undefined : () => setTweak(true)} />}
+      {proof && <Proof projectId={projectId} version={proof.version} lines={proof.lines} easy={easy} hasOwnVoice={voices.some(v => v.custom)} onClone={() => { setProof(null); recloneQuick.current = true; setCloning(true) }} onClose={() => setProof(null)} onUsage={onUsage} onDone={afterQuick} onSend={t => { setTab('chat'); submit(t) }} />}
       {tweak && <Tweak projectId={projectId} onClose={() => setTweak(false)} onDone={afterQuick} onUsage={onUsage} />}
       {tab === 'chat' && <>
       <VoiceSwapCtx.Provider value={voiceSwap}>
@@ -864,7 +870,14 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
           </div>
         )}
         {proj.messages.map((m, i) => <Bubble key={m.id} m={m} easy={easy} assets={assetsFor(m, i)} onOpenFiles={() => setTab('files')} onRecord={running ? undefined : setPrompter} />)}
-        {running && (
+        {running && easy && (
+          <div className="bubble assistant ez">
+            <div className="working"><span className="spinner" /><b>剪輯師正在做</b>{turnStart.current && <span className="muted">· 已 {fmtDur(now - turnStart.current)}</span>}</div>
+            <div className="muted">做好會直接出現在這裡，可以先離開，回來看就好。</div>
+            {liveAssets.current.map(a => <AssetCard key={a.id} a={a} onOpenFiles={() => setTab('files')} />)}
+          </div>
+        )}
+        {running && !easy && (
           <div className="bubble assistant">
             {(() => { const cur = [...live.tools].reverse().find(t => t.status === 'run'); return (
               <div className="working">
@@ -993,7 +1006,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
           <div className="qr-row">
             {EASY_CHIPS[stage].map(c => (
               <button key={c.label} type="button" className={`qrb ez ${c.main ? 'main' : ''}`} disabled={running}
-                onClick={() => { if (c.send) submit(c.send); else if (c.files) setTab('files'); else taRef.current?.focus() }}>{c.label}</button>))}
+                onClick={() => { if (c.send) submit(c.send); else if (c.files) setTab('files'); else if (c.proof) openProof(); else taRef.current?.focus() }}>{c.label}</button>))}
           </div>
         </div>
       )}
@@ -1044,6 +1057,10 @@ function Bubble({ m, assets, onOpenFiles, onRecord, easy = false }: { m: Msg; as
     if (p.type === 'text') groups.push({ kind: 'text', text: p.text })
     else if (last && last.kind === 'tools') last.names.push(p.name)
     else groups.push({ kind: 'tools', names: [p.name] })
+  }
+  if (easy && m.role === 'user') {
+    const t = m.parts.filter(p => p.type === 'text').map(p => (p as { text: string }).text).join('\n')
+    return <details className="ez-user"><summary>你送出的需求</summary><div>{t}</div></details>
   }
   if (easy && m.role === 'assistant') {
     // 輕鬆模式: one conclusion line, the deliverables, and everything else behind 看細節.

@@ -48,8 +48,8 @@ export type StorageInfo = StorageState & {
 }
 export type Me = { id: string; email: string; is_admin: boolean; balance: number; free_project_id: string | null; storage?: StorageState; subscription?: MySubscription | null
   can_clone_voice?: boolean; voice?: MyVoice | null; tier?: string; voice_trial?: { used: number; limit: number } | null
-  provider?: 'google' | 'facebook' | null; name?: string | null; test_account?: boolean; ui_mode?: 'easy' | 'pro' }
-export type Providers = { google: boolean; facebook: boolean }
+  provider?: 'google' | 'facebook' | 'line' | null; name?: string | null; test_account?: boolean; ui_mode?: 'easy' | 'pro' }
+export type Providers = { google: boolean; facebook: boolean; line?: boolean }
 export type CheckoutResult = { url: string | null; test?: boolean; granted?: number; subscription?: string; balance?: number }
 export type Pack = { id: string; twd: number; points: number; bonus?: number; total?: number; member_bonus?: Record<string, number>; label: string; checkout_url: string | null; member_twd: Record<string, number>; member_checkout_url?: Record<string, string | null> }
 export type Subscription = { member_bonus_pct?: number; base?: string; billing?: 'month' | 'quarter'; monthly_twd?: number; month_points?: number; months?: number; id: string; label: string; who: string; desc: string; features: string[]; videos: number; revisions: number; points: number; storage_gb: number; storage_plan: string
@@ -111,7 +111,7 @@ export const api = {
   markCommentsRead: (id: string) => post(`/api/projects/${id}/comments/read`, {}).then(j<{ ok: boolean; marked: number }>),
   logout: () => post('/api/auth/logout', {}),
   authProviders: () => fetch('/api/auth/providers').then(j<Providers>).catch(() => ({ google: false, facebook: false } as Providers)),
-  oauthStart: (p: 'google' | 'facebook', mode: 'login' | 'signup', next?: string, ref = '') => `/api/auth/${p}/start?mode=${mode}${next ? `&next=${encodeURIComponent(next)}` : ''}${ref ? `&ref=${encodeURIComponent(ref)}` : ''}`,
+  oauthStart: (p: 'google' | 'facebook' | 'line', mode: 'login' | 'signup', next?: string, ref = '') => `/api/auth/${p}/start?mode=${mode}${next ? `&next=${encodeURIComponent(next)}` : ''}${ref ? `&ref=${encodeURIComponent(ref)}` : ''}`,
   analyze: async (id: string, body: { brief?: string; drive_url?: string }) => {
     const r = await post(`/api/projects/${id}/analyze`, body)
     if (r.status === 402) { const d = await r.json(); throw Object.assign(new Error(d.detail), { needed: d.needed as number, balance: d.balance as number }) }

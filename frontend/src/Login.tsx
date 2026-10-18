@@ -9,6 +9,9 @@ const STEPS = [
   { n: '3', t: '選風格、開始剪', d: '一路做到輸出影片與封面，再分享給朋友' },
 ]
 
+const LineIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M12 3C6.9 3 2.8 6.4 2.8 10.6c0 3.7 3.3 6.9 7.8 7.5.3.1.7.2.8.5.1.2.1.6 0 .9l-.1.8c0 .2-.2.9.8.5s5.3-3.1 7.2-5.3c1.3-1.4 1.9-2.9 1.9-4.9C21.2 6.4 17.1 3 12 3zm-3.6 9.9H6.6c-.3 0-.5-.2-.5-.5V8.7c0-.3.2-.5.5-.5s.5.2.5.5v3.2h1.3c.3 0 .5.2.5.5s-.2.5-.5.5zm1.8-.5c0 .3-.2.5-.5.5s-.5-.2-.5-.5V8.7c0-.3.2-.5.5-.5s.5.2.5.5v3.7zm4.4 0c0 .2-.1.4-.3.5h-.2c-.2 0-.3-.1-.4-.2l-1.9-2.6v2.3c0 .3-.2.5-.5.5s-.5-.2-.5-.5V8.7c0-.2.1-.4.3-.5h.2c.2 0 .3.1.4.2l1.9 2.6V8.7c0-.3.2-.5.5-.5s.5.2.5.5v3.7zm3-2.4c.3 0 .5.2.5.5s-.2.5-.5.5h-1.3v.9h1.3c.3 0 .5.2.5.5s-.2.5-.5.5h-1.8c-.3 0-.5-.2-.5-.5V8.7c0-.3.2-.5.5-.5h1.8c.3 0 .5.2.5.5s-.2.5-.5.5h-1.3V10h1.3z"/></svg>
+)
 const GoogleIcon = () => (
   <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true">
     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -33,7 +36,7 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
   const [busy, setBusy] = useState(false)
   const [prov, setProv] = useState<Providers | null>(null)
   useEffect(() => { api.authProviders().then(setProv) }, [])
-  const social = prov && (prov.google || prov.facebook)
+  const social = prov && (prov.google || prov.facebook || prov.line)
 
   const go = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('')
@@ -65,6 +68,7 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
             <>
               <div className="social">
                 {prov.google && <a className="btn social-btn google" href={api.oauthStart('google', mode, next, refToken)}><GoogleIcon />用 Google {verb}</a>}
+                {prov.line && <a className="btn social-btn line" href={api.oauthStart('line', mode, next, refToken)}><LineIcon />用 LINE {verb}</a>}
                 {prov.facebook && <a className="btn social-btn facebook" href={api.oauthStart('facebook', mode, next, refToken)}><FacebookIcon />用 Facebook {verb}</a>}
               </div>
               <div className="or"><span>或用 Email</span></div>

@@ -13,8 +13,9 @@ type Shot = { i: number; clip: number; start: number; dur: number; at: number }
 const STAR_MAX = 3
 const tc = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
-export function Proof({ projectId, version, lines: given, onClose, onSend, onUsage, onDone }:
-  { projectId: string; version: DeliverableVersion | null; lines?: Line[]; onClose: () => void; onSend: (text: string) => void; onUsage?: () => void; onDone?: () => void }) {
+export function Proof({ projectId, version, lines: given, onClose, onSend, onUsage, onDone, easy = false, hasOwnVoice = true, onClone }:
+  { projectId: string; version: DeliverableVersion | null; lines?: Line[]; onClose: () => void; onSend: (text: string) => void; onUsage?: () => void; onDone?: () => void
+    easy?: boolean; hasOwnVoice?: boolean; onClone?: () => void }) {
   const toRows = (ls: (Line & { key?: string })[]): Row[] => ls.map((l, i) => ({ id: i + 1, n: i + 1, key: l.key, start: l.start, end: l.end, text: l.text }))
   const [quickOK, setQuickOK] = useState(false)      // the recipe is known: small changes re-render without the editor
   const [applying, setApplying] = useState(false)
@@ -169,9 +170,9 @@ export function Proof({ projectId, version, lines: given, onClose, onSend, onUsa
       <div className="pf" role="dialog" aria-label="校對台">
         <div className="pf-head">
           <b>校對台</b>{version && <span className="pf-ver">v{version.version}</span>}
-          <span className="muted small">點句子直接改字 · 點秒數跳到那段</span>
+          <span className="muted small">{easy ? '點一句聽聽看，唸錯的自己唸一次就好' : '點句子直接改字 · 點秒數跳到那段'}</span>
           <span className="spacer" />
-          {rows.length > 0 && <a className="pf-whole" onClick={() => setWhole(whole === null ? rows.map(shown).join('\n') : null)}>{whole === null ? '整篇改' : '回到逐句'}</a>}
+          {!easy && rows.length > 0 && <a className="pf-whole" onClick={() => setWhole(whole === null ? rows.map(shown).join('\n') : null)}>{whole === null ? '整篇改' : '回到逐句'}</a>}
           <a className="pf-x" onClick={onClose} aria-label="關閉">✕</a>
         </div>
         <div className="pf-body">
@@ -203,10 +204,32 @@ export function Proof({ projectId, version, lines: given, onClose, onSend, onUsa
               <div className="pf-acts"><button className="btn primary" onClick={applyWhole}>套用</button><a className="small muted" onClick={() => setWhole(null)}>取消</a></div>
             </div>
           ) : (
-            <ol className="pf-lines" ref={listRef}>
+            <ol className={`pf-lines ${easy ? 'ez' : ''}`} ref={listRef}>
+              {easy && !hasOwnVoice && onClone && !loading && rows.length > 0 && (
+                <li className="pf-own"><div><b>想讓旁白變成你自己的聲音？</b><span>錄 30 秒就好，整支影片會換成你的聲音</span></div><button type="button" className="btn primary" onClick={onClone}>🎙 錄我的聲音</button></li>
+              )}
               {loading && <li className="muted small pf-empty">載入旁白稿…</li>}
               {!loading && rows.length === 0 && <li className="muted small pf-empty">找不到這支的旁白稿。剪輯師交付時會附旁白稿，之後再來校對。</li>}
-              {rows.map((r, i) => {
+              {easy && rows.map((r, i) => {
+                const e = ed(r.id)
+                return (
+                  <li key={r.id} data-id={r.id} className={`pf-line ez ${i === cur ? 'cur' : ''} ${e.take ? 'star' : ''}`}>
+                    <div className="pf-row" onClick={() => seek(r.start)}>
+                      <a className="pf-tc"><b>{i + 1}</b><span>{tc(r.start)}</span></a>
+                      <div className="pf-txt"><div className="pf-ez-text">{r.text}</div>
+                        {e.take && <em className="pf-badge take">✓ 已換成你唸的</em>}
+                      </div>
+                    </div>
+                    <div className="pf-tools" onClick={ev => ev.stopPropagation()}>
+                      <button type="button" className="pf-tb" onClick={() => seek(r.start)}><i>▶</i>聽這句</button>
+                      {rec?.id === r.id && rec.phase === 'rec' ? <button type="button" className="pf-tb rec" onClick={takeStop}><i>■</i>唸完了</button>
+                        : rec?.id === r.id && rec.phase === 'up' ? <button type="button" className="pf-tb" disabled><i>…</i>轉換中</button>
+                        : <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={rec !== null && rec.phase !== 'done'} onClick={() => takeStart(r.id)}><i>🎙</i>{e.take ? '再唸一次' : '唸錯了，我自己唸'}</button>}
+                      {e.take && rec?.id === r.id && rec.url && <a className="small" onClick={() => { audio.current?.pause(); const a = new Audio(rec.url!); audio.current = a; a.play().catch(() => {}) }}>▶ 聽我唸的</a>}
+                    </div>
+                  </li>)
+              })}
+              {!easy && rows.map((r, i) => {
                 const e = ed(r.id); const on = active === r.id; const txt = shown(r)
                 return (
                   <li key={r.id} data-id={r.id} className={`pf-line ${i === cur ? 'cur' : ''} ${on ? 'on' : ''} ${e.drop ? 'drop' : ''} ${e.star ? 'star' : ''} ${r.n === null ? 'added' : ''}`} onClick={() => setActive(r.id)}>
@@ -256,12 +279,12 @@ export function Proof({ projectId, version, lines: given, onClose, onSend, onUsa
         </div>
         {err && <div className="error small pf-err">{err}</div>}
         <div className="pf-foot">
-          <span>{changed > 0 ? <><b>已改 {changed} 句</b><small className="muted">{quickable ? '直接套用，不用等剪輯師' : needsEditor && quickOK ? '有加句或重寫，要請剪輯師' : ''}</small></> : <span className="muted small">還沒有改動 · 點句子就能改</span>}</span>
+          <span>{changed > 0 ? <><b>{easy ? `重唸了 ${changed} 句` : `已改 ${changed} 句`}</b><small className="muted">{quickable ? '直接套用，不用等剪輯師' : needsEditor && quickOK ? '有加句或重寫，要請剪輯師' : ''}</small></> : <span className="muted small">{easy ? '唸得都對就不用改' : '還沒有改動 · 點句子就能改'}</span>}</span>
           <span className="spacer" />
           {changed > 0 && !applying && <a className="small muted" onClick={() => { setEdits({}); setRows(rs => rs.filter(r => r.n !== null)) }}>全部還原</a>}
           {quickable
             ? <button className="btn primary" disabled={applying} onClick={applyQuick}>{applying ? '重新輸出中…（約 1–2 分鐘）' : '套用修改 →'}</button>
-            : <button className="btn primary" disabled={changed === 0 || applying || rows.some(r => r.n === null && !shown(r).trim())} onClick={() => { onSend(message()); onClose() }}>請剪輯師修改 →</button>}
+            : <button className="btn primary" disabled={changed === 0 || applying || rows.some(r => r.n === null && !shown(r).trim())} onClick={() => { onSend(message()); onClose() }}>{easy ? '套用修改 →' : '請剪輯師修改 →'}</button>}
         </div>
       </div>
     </div>
