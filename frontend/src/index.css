@@ -1910,3 +1910,18 @@ body.easy .pf-ez-text { font-size: 19px; } body.easy .pf-tb { height: 44px; font
 .theme-in input { width: 100%; font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--brand); background: var(--panel); }
 .theme-in input:focus { outline: 0; box-shadow: 0 0 0 3px var(--brand-soft); }
 body.easy .theme-o { min-height: 104px; } body.easy .theme-o b { font-size: 18px; }
+/* 隱私權政策 / 服務條款 */
+.legal { min-height: 100vh; background: var(--bg); }
+.lg-head { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+.lg-nav { margin-left: auto; display: flex; gap: 4px; }
+.lg-nav a { padding: 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.lg-nav a.on { background: var(--panel2); color: var(--text); }
+.lg-main { max-width: 760px; margin: 0 auto; padding: 28px 20px 60px; }
+.lg-main h1 { font-size: 30px; margin: 0 0 10px; letter-spacing: -.01em; }
+.lg-lead { font-size: 16px; color: var(--muted); line-height: 1.75; margin: 0 0 26px; }
+.lg-sec { margin: 0 0 22px; } .lg-sec h2 { font-size: 18px; margin: 0 0 8px; }
+.lg-sec p, .lg-sec li { font-size: 15.5px; line-height: 1.8; } .lg-sec p { margin: 0 0 8px; }
+.lg-sec ul { margin: 0 0 8px; padding-left: 20px; } .lg-sec li { margin: 2px 0; }
+.lg-sec a { color: var(--blue); }
+.lg-foot { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--line); line-height: 1.7; }
+.ld-footer a, .auth-legal a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }

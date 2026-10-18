@@ -89,7 +89,7 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
             {mode === 'login' ? '還沒有帳號？' : '已經有帳號？'}
             <a onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setErr('') }}>{mode === 'login' ? '免費註冊' : '登入'}</a>
           </div>
-          <div className="auth-legal muted small">繼續即表示你同意我們的服務條款與隱私權政策。</div>
+          <div className="auth-legal muted small">繼續即表示你同意我們的<a href="/terms" target="_blank" rel="noopener">服務條款</a>與<a href="/privacy" target="_blank" rel="noopener">隱私權政策</a>。</div>
           {onBack && <a className="small auth-back" onClick={onBack}>← 回首頁</a>}
         </form>
       </main>

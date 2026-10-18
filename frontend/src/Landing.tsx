@@ -97,7 +97,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
         <b>第一支免費，試了就知道。</b>
         <a className="btn primary lg" onClick={onStart}>免費試做第一支</a>
       </section>
-      <footer className="ld-footer muted small">© {PRODUCT.brand} · {PRODUCT.tagline}</footer>
+      <footer className="ld-footer muted small">© {PRODUCT.brand} · {PRODUCT.tagline} · <a href="/privacy">隱私權政策</a> · <a href="/terms">服務條款</a></footer>
     </div>
   )
 }

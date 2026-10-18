@@ -13,14 +13,16 @@ import { MiaoLogo } from './Logo'
 import { PayResult } from './Pay'
 import { InAppGuide } from './InApp'
 import { ask, DialogHost } from './Dialog'
+import { LegalPage } from './Legal'
 
 const SHARE_TOKEN = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/)?.[1]
 // The CRM lives at /dashboard on the app host and is the whole site on dashboard.<app host>.
 const IS_DASH = location.hostname.startsWith('dashboard.') || /^\/dashboard(\/|$)/.test(location.pathname)
+const LEGAL_PAGE = location.pathname === '/privacy' ? 'privacy' : location.pathname === '/terms' ? 'terms' : null
 
 export default function App() {
   return <>
-    {SHARE_TOKEN ? <SharePage token={SHARE_TOKEN} /> : IS_DASH ? <DashboardGate /> : <Workspace />}
+    {LEGAL_PAGE ? <LegalPage kind={LEGAL_PAGE} /> : SHARE_TOKEN ? <SharePage token={SHARE_TOKEN} /> : IS_DASH ? <DashboardGate /> : <Workspace />}
     <DialogHost />
   </>
 }
