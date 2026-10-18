@@ -1069,8 +1069,55 @@ async def project_script(project_id: str, user: User = CurrentUser):
                 lines = _script_lines(blocks[-1])
         if lines and voice_id:
             break
+    shots: list[dict] = []
+    try:
+        shots = json.loads((project_dir(project_id) / "work" / "cut.json").read_text())
+    except Exception:
+        pass
     return {"lines": lines, "voice_id": voice_id or user.voice_id or (config.VOICE_PRESETS[0]["voice_id"] if config.VOICE_PRESETS else ""),
-            "say_points": pricing.VOICE_SAMPLE_POINTS}
+            "say_points": pricing.VOICE_SAMPLE_POINTS, "shots": shots}
+
+
+@app.post("/api/projects/{project_id}/take")
+async def line_take(project_id: str, audio: UploadFile, n: int = Form(...), voice_id: str = Form(""), user: User = CurrentUser):
+    """校對台「我唸這句」: the owner reads one line; speech-to-speech turns it into the video's voice, keeping
+    their pronunciation. Saved as VO key L<n> so compose_audio can place it instead of a generated line."""
+    import tempfile
+    await _own(project_id, user)
+    data = await audio.read()
+    if not data:
+        raise HTTPException(400, "沒有收到錄音")
+    if len(data) > 8 * 2**20:
+        raise HTTPException(413, "錄音太大")
+    voice = re.sub(r"[^A-Za-z0-9]", "", voice_id) or user.voice_id or (config.VOICE_PRESETS[0]["voice_id"] if config.VOICE_PRESETS else "")
+    if not voice:
+        raise HTTPException(400, "沒有可用的聲音")
+    root = project_dir(project_id)
+    vo = root / "work" / "vo"
+    vo.mkdir(parents=True, exist_ok=True)
+    key = f"L{max(1, min(int(n), 99))}"
+    store = Store(user.id)
+    ok, bal = await store.charge(project_id, pricing.VOICE_SAMPLE_POINTS, "voice_sample")
+    if not ok:
+        return JSONResponse({"detail": f"點數不足：需要 {pricing.VOICE_SAMPLE_POINTS} 點，目前 {bal} 點", "needed": pricing.VOICE_SAMPLE_POINTS, "balance": bal}, 402)
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / ("in" + (Path(audio.filename or "a.webm").suffix or ".webm"))
+            src.write_bytes(data)
+            wav = Path(td) / "take.wav"
+            await asyncio.to_thread(ff.ffmpeg, "-i", str(src), "-vn", "-ac", "1", "-ar", "44100", "-af", "highpass=f=80,loudnorm=I=-16:TP=-1.5", str(wav))
+            seconds = await asyncio.to_thread(ff.duration, wav)
+            if seconds < 0.5:
+                raise HTTPException(400, "錄音太短")
+            await asyncio.to_thread(eleven.speech_to_speech, wav, voice, vo / f"{key}.mp3")
+    except HTTPException:
+        await add_credits(user.id, pricing.VOICE_SAMPLE_POINTS, "refund", "take_failed", project_id=project_id)
+        raise
+    except Exception as e:
+        await add_credits(user.id, pricing.VOICE_SAMPLE_POINTS, "refund", "take_failed", project_id=project_id)
+        raise HTTPException(502, f"轉換失敗，點數已退回：{str(e)[:160]}")
+    a = await store.add_asset(project_id, vo / f"{key}.mp3", "audio", f"我唸的第 {n} 句（已換成影片的聲音）", {"role": "line_take", "key": key, "line": int(n)})
+    return {"key": key, "seconds": round(seconds, 1), "url": a["url"], "balance": await balance(user.id)}
 
 
 class SayBody(BaseModel):

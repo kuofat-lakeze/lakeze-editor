@@ -1808,3 +1808,14 @@ body.easy .btn { font-size: 16px; }
 .pf-foot .spacer { flex: 1; } .pf-foot b { font-size: 15px; margin-right: 8px; }
 .pf-head b { white-space: nowrap; }
 @media (max-width: 640px) { .pf-head .small { display: none; } }
+.pf-shots { display: flex; gap: 2px; height: 46px; border-radius: 8px; overflow: hidden; background: var(--panel2); }
+.pf-shot { position: relative; min-width: 14px; height: 100%; overflow: hidden; cursor: pointer; opacity: .75; border: 2px solid transparent; border-radius: 4px; }
+.pf-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pf-shot i { position: absolute; left: 0; bottom: 0; font-style: normal; font-size: 9px; font-weight: 800; color: #fff; background: rgba(34,38,46,.6); padding: 0 4px; border-radius: 0 4px 0 0; }
+.pf-shot.on { opacity: 1; border-color: var(--brand); }
+.pf-badge.take { background: #FBE8D0; color: #8A4B00; }
+.pf-take { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px; background: #FFF8F2; border: 1px dashed #F3C9AE; font-size: 13px; }
+.pf-take > span { display: flex; flex-direction: column; gap: 1px; font-weight: 700; flex: 1; min-width: 160px; } .pf-take small { font-weight: 500; color: var(--muted); }
+.btn.danger { background: #D64545; color: #fff; border-color: #D64545; }
+.voice.add.rec { border: 1.5px dashed var(--brand); background: var(--brand-soft); }
+.voice .pill.rec { background: var(--brand); color: #fff; margin-right: 6px; }

@@ -146,6 +146,16 @@ def tts_line(text: str, voice_id: str, dest_mp3: Path, *, model: str = "eleven_v
     dest_mp3.write_bytes(r.content)
 
 
+def speech_to_speech(src_audio: Path, voice_id: str, dest_mp3: Path, *, model: str = "eleven_multilingual_sts_v2") -> None:
+    """Re-voice a recording with `voice_id`: the words, pronunciation and pacing stay the speaker's, the
+    timbre becomes the voice. How the 校對台 fixes a mispronounced word: the owner reads the line."""
+    with open(src_audio, "rb") as f:
+        r = _post(f"/speech-to-speech/{voice_id}?output_format=mp3_44100_128", files={"audio": (src_audio.name, f, "audio/wav")},
+                  data={"model_id": model, "voice_settings": json.dumps({"stability": 0.5, "similarity_boost": 0.85, "style": 0.0, "use_speaker_boost": True}),
+                        "remove_background_noise": "true"})
+    dest_mp3.write_bytes(r.content)
+
+
 def tts_verified(lines: list[dict], voice_id: str, vo_dir: Path, *, model: str = "eleven_v3",
                  tags: str = "[excited]", stability: float = 0.5, speed: float = 1.0,
                  max_takes: int = 3, threshold: float = 0.9) -> list[dict]:

@@ -118,7 +118,7 @@ export const api = {
   },
   stt: (blob: Blob, projectId = '') => { const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'v.mp4' : blob.type.includes('ogg') ? 'v.ogg' : 'v.webm'); fd.append('project_id', projectId); return fetch('/api/stt', { method: 'POST', body: fd }).then(j<{ text: string; seconds: number }>) },
   driveCheck: (id: string, url: string) => post(`/api/projects/${id}/drive/check`, { url }).then(j<DriveCheck>),
-  script: (id: string) => fetch(`/api/projects/${id}/script`).then(j<{ lines: { n: number; start: number; end: number; text: string }[]; voice_id: string; say_points: number }>),
+  script: (id: string) => fetch(`/api/projects/${id}/script`).then(j<{ lines: { n: number; start: number; end: number; text: string }[]; voice_id: string; say_points: number; shots: { i: number; clip: number; start: number; dur: number; at: number }[] }>),
   say: (id: string, text: string, voice_id = '') => post(`/api/projects/${id}/say`, { text, voice_id }).then(j<{ url: string; balance: number }>),
   frameUrl: (id: string, clip: number, t: number) => `/api/projects/${id}/frame/${clip}?t=${t}`,
   projects: () => fetch('/api/projects').then(j<Project[]>),

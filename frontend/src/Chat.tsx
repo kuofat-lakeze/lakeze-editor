@@ -819,9 +819,15 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                     </div>
                     <div className="muted small ob-sub">旁白聲音</div>
                     <div className="voice-row">
+                      {/* 推薦用自己的聲音：還沒錄的人這張卡排第一；錄過的人自己的聲音本來就排第一、預設選中 */}
+                      {me && !voices.some(v => v.custom) && (
+                        <div className="voice add rec" onClick={() => setCloning(true)}>
+                          <div className="voice-name"><span className="pill rec">推薦</span>＋ 用自己的聲音{me.voice_trial && <span className="lock-tag">試用 {me.voice_trial.limit} 秒</span>}</div>
+                          <div className="muted small">{me.voice_trial ? `錄 30 秒就能試，客人聽到的是老闆本人；儲值後不限` : '錄 30 秒，旁白就是你的聲音，客人更有感'}</div>
+                        </div>)}
                       {voices.map(v => (
                         <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''} ${v.custom ? 'mine' : ''}`} onClick={() => setVoice(v.voice_id)}>
-                          <div className="voice-name">{v.custom && <span className="mine-tag">我的聲音</span>}{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
+                          <div className="voice-name">{v.custom && <><span className="pill rec">推薦</span><span className="mine-tag">我的聲音</span></>}{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
                           {v.description && <div className="muted small">{v.description}</div>}
                           {v.preview_url && <a className="small" onClick={e => { e.stopPropagation(); preview(v) }}>{playing === v.voice_id ? '■ 停止' : v.custom ? '▶ 試聽 AI 配出來的樣子' : '▶ 試聽'}</a>}
                           {v.sample_url && <a className="small muted" onClick={e => { e.stopPropagation(); preview(v, 'sample') }}>{playing === `${v.voice_id}:sample` ? '■ 停止' : '▶ 聽我的原始錄音'}</a>}
@@ -829,11 +835,6 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                           {v.custom && <a className="small" onClick={e => { e.stopPropagation(); setCloning(true) }}>重新錄</a>}
                         </div>
                       ))}
-                      {me && !voices.some(v => v.custom) && (
-                        <div className="voice add" onClick={() => setCloning(true)}>
-                          <div className="voice-name">＋ 用自己的聲音生成配音語音{me.voice_trial && <span className="lock-tag">試用 {me.voice_trial.limit} 秒</span>}</div>
-                          <div className="muted small">{me.voice_trial ? `錄 30 秒就能試，先生成 ${me.voice_trial.limit} 秒旁白；儲值後不限` : '錄 30 秒，旁白就是你的聲音'}</div>
-                        </div>)}
                       <div className={`voice ${voice === NO_VOICE ? 'sel' : ''}`} onClick={() => setVoice(NO_VOICE)}>
                         <div className="voice-name">不要配音</div>
                         <div className="muted small">只要配樂＋字幕</div>

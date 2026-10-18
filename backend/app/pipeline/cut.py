@@ -1,4 +1,5 @@
 """Assemble the picture cut: a list of (clip, start, duration) → base.mp4 at 1080x1920/30fps."""
+import json
 from pathlib import Path
 
 from . import ff
@@ -28,6 +29,11 @@ def build_cut(root: Path, segments: list[dict], crf: int = 16) -> dict:
         lst.append(f"file '{out}'\n")
         total += float(s["dur"])
     (seg_dir / "list.txt").write_text("".join(lst))
+    at, shots = 0.0, []
+    for i, s in enumerate(segments):   # timeline positions, for the 校對台's shot strip
+        shots.append({"i": i, "clip": int(s["clip"]), "start": float(s["start"]), "dur": float(s["dur"]), "at": round(at, 2)})
+        at += float(s["dur"])
+    (root / "work" / "cut.json").write_text(json.dumps(shots, ensure_ascii=False))
     base = root / "work" / "base.mp4"
     ff.ffmpeg("-f", "concat", "-safe", "0", "-i", str(seg_dir / "list.txt"), "-c", "copy", str(base))
     return {"path": base, "duration": round(ff.duration(base), 2), "planned": round(total, 2)}

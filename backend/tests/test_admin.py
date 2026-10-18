@@ -439,3 +439,25 @@ def test_proof_script_and_say(client, monkeypatch, tmp_path: Path):
     r2 = c.post(f"/api/projects/{pid}/say", json={"text": "歸山島日出", "voice_id": "xrDmUzhnE51Df8z38r1M"}).json()   # cached: no second charge
     assert r2["balance"] == bal0 - P.VOICE_SAMPLE_POINTS
     assert c.post(f"/api/projects/{pid}/say", json={"text": "  "}).status_code == 400
+
+
+def test_proof_take(client, monkeypatch, tmp_path: Path):
+    from app import config as C
+    from app.pipeline import eleven, ff
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = b
+    pid = c.post("/api/projects", json={"name": "唸"}).json()["id"]
+    monkeypatch.setattr(C, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(ff, "ffmpeg", lambda *args: Path(args[-1]).write_bytes(b"RIFFwav"))
+    monkeypatch.setattr(ff, "duration", lambda p: 2.3)
+    monkeypatch.setattr(eleven, "speech_to_speech", lambda src, voice, dest, **kw: dest.write_bytes(b"ID3take"))
+    bal0 = asyncio.run(D.balance(b.id))
+    r = c.post(f"/api/projects/{pid}/take", data={"n": "3", "voice_id": "xrDmUzhnE51Df8z38r1M"}, files={"audio": ("take.webm", b"\x1aE\xdf\xa3fake", "audio/webm")})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["key"] == "L3" and d["seconds"] == 2.3 and d["balance"] == bal0 - P.VOICE_SAMPLE_POINTS
+    assert c.get(d["url"]).content == b"ID3take"
+    monkeypatch.setattr(eleven, "speech_to_speech", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert c.post(f"/api/projects/{pid}/take", data={"n": "4"}, files={"audio": ("t.webm", b"xx", "audio/webm")}).status_code == 502
+    assert asyncio.run(D.balance(b.id)) == bal0 - P.VOICE_SAMPLE_POINTS   # the failed one was refunded
