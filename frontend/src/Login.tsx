@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type Me, type Providers } from './api'
 import logo from './assets/logo.png'
 import { MiaoLogo } from './Logo'
+import { IN_FB } from './InApp'
 
 const STEPS = [
   { n: '1', t: '給素材', d: '上傳手機拍的影片、照片，或貼 Google Drive 連結' },
@@ -67,7 +68,8 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
           {social && (
             <>
               <div className="social">
-                {prov.google && <a className="btn social-btn google" href={api.oauthStart('google', mode, next, refToken)}><GoogleIcon />用 Google {verb}</a>}
+                {prov.google && !IN_FB && <a className="btn social-btn google" href={api.oauthStart('google', mode, next, refToken)}><GoogleIcon />用 Google {verb}</a>}
+                {prov.google && IN_FB && <div className="muted small social-note">在 Facebook／Instagram 裡無法用 Google 登入，請改用其他方式，或用 Safari／Chrome 開啟。</div>}
                 {prov.line && <a className="btn social-btn line" href={api.oauthStart('line', mode, next, refToken)}><LineIcon />用 LINE {verb}</a>}
                 {prov.facebook && <a className="btn social-btn facebook" href={api.oauthStart('facebook', mode, next, refToken)}><FacebookIcon />用 Facebook {verb}</a>}
               </div>

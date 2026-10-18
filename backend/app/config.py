@@ -39,14 +39,14 @@ DEFAULT_ADMIN_EMAILS = {"kuofat@gmail.com", "lodestar0115@gmail.com"}
 ADMIN_EMAILS = DEFAULT_ADMIN_EMAILS | {e.strip().lower() for e in _env("ADMIN_EMAILS").split(",") if e.strip()}
 # Lemon Squeezy: hosted checkout URL per pack (JSON {"p500": "https://...buy/..."}), variant→pack map,
 # and the webhook signing secret. Leave empty to sell manually (admin grants credits).
-CHECKOUT_URLS = json.loads(_env("CHECKOUT_URLS", "{}"))
-LS_VARIANTS = json.loads(_env("LS_VARIANTS", "{}"))
-LS_WEBHOOK_SECRET = _env("LEMONSQUEEZY_WEBHOOK_SECRET")
-# 自訂點數刷卡: a checkout is created per order through the Lemon Squeezy API with a custom price on one
-# "points" variant. Needs an API key, the store id and that variant id; without them card is off for it.
-LS_API_KEY = _env("LEMONSQUEEZY_API_KEY")
-LS_STORE_ID = _env("LEMONSQUEEZY_STORE_ID")
-LS_TOPUP_VARIANT = _env("LEMONSQUEEZY_TOPUP_VARIANT")
+# 統一金流 PAYUNi: card and ATM virtual account through the integrated payment page (UPP), e-invoice issued by
+# PAYUNi with the payment. Keys come from the merchant console (商店串接資訊); PAYUNI_SANDBOX=1 for the test shop.
+PAYUNI_MER_ID = _env("PAYUNI_MER_ID")
+PAYUNI_HASH_KEY = _env("PAYUNI_HASH_KEY")
+PAYUNI_HASH_IV = _env("PAYUNI_HASH_IV")
+PAYUNI_SANDBOX = _env("PAYUNI_SANDBOX", "0").lower() in ("1", "true", "yes")
+PAYUNI_INVOICE = _env("PAYUNI_INVOICE", "1").lower() in ("1", "true", "yes")   # TradeInvoice=1: PAYUNi issues the e-invoice
+PAYUNI_ATM_DAYS = int(_env("PAYUNI_ATM_DAYS", "3"))                             # how long an ATM virtual account stays payable
 # Bank transfer details shown on the payment page (JSON {"bank": "...", "code": "812", "account": "...", "name": "..."}).
 # Empty = transfer not offered.
 BANK_TRANSFER = json.loads(_env("BANK_TRANSFER_JSON", "{}"))

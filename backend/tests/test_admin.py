@@ -252,26 +252,57 @@ def test_order_flow(client, monkeypatch):
     admin, a, b, idle = asyncio.run(_seed())
     holder["u"] = b
     bal0 = asyncio.run(D.balance(b.id))
-    monkeypatch.setattr(C, "CHECKOUT_URLS", {})
+    monkeypatch.setattr(C, "PAYUNI_MER_ID", "")
     monkeypatch.setattr(C, "BANK_TRANSFER", {})
-    assert c.get("/api/pay/methods").json() == {"card": False, "transfer": False, "test": False, "note": C.TOPUP_NOTE}
+    m = c.get("/api/pay/methods").json()
+    assert m["card"] is False and m["atm"] is False and m["transfer"] is False
     assert c.post("/api/orders", json={"item": "p100", "method": "card"}).status_code == 400
-    # card: redirect carries our order id; the webhook fulfils exactly once
-    monkeypatch.setattr(C, "CHECKOUT_URLS", {"p100": "https://lakeze.lemonsqueezy.com/buy/abc"})
+    # PAYUNi: the order returns the form the browser posts; the notify credits exactly once
+    from app import payuni as PU
+    monkeypatch.setattr(C, "PAYUNI_MER_ID", "S01")
+    monkeypatch.setattr(C, "PAYUNI_HASH_KEY", "k" * 32)
+    monkeypatch.setattr(C, "PAYUNI_HASH_IV", "i" * 16)
+    monkeypatch.setattr(C, "PAYUNI_SANDBOX", True)
     r = c.post("/api/orders", json={"item": "p100", "method": "card"}).json()
     oid = r["order"]["id"]
-    assert r["order"]["status"] == "pending" and r["order"]["amount_twd"] == P.PACKS["p100"]["twd"] == 390 and f"checkout[custom][order_id]={oid}" in r["redirect"]
-    assert "success_url" in r["redirect"]
-    import hashlib, hmac, json as J
-    monkeypatch.setattr(C, "LS_WEBHOOK_SECRET", "s3")
-    monkeypatch.setattr(C, "LS_VARIANTS", {"111": "p100"})
-    body = J.dumps({"meta": {"event_name": "order_created", "custom_data": {"user_id": b.id, "order_id": oid}},
-                    "data": {"id": 9, "attributes": {"first_order_item": {"variant_id": 111}, "total": 70000, "currency": "TWD"}}}).encode()
-    sig = hmac.new(b"s3", body, hashlib.sha256).hexdigest()
+    f = r["form"]
+    assert r["order"]["status"] == "pending" and r["order"]["amount_twd"] == P.PACKS["p100"]["twd"] == 390
+    assert f["action"] == "https://sandbox-api.payuni.com.tw/api/upp" and f["fields"]["MerID"] == "S01"
+    sent = PU.decrypt(f["fields"]["EncryptInfo"])
+    assert f["fields"]["HashInfo"] == PU.hash_info(f["fields"]["EncryptInfo"])
+    assert sent["MerTradeNo"] == f"TC{oid}" and sent["TradeAmt"] == "390" and sent["Credit"] == "1" and sent["TradeInvoice"] == "1" and "ATM" not in sent
+    def post_back(path, fields):
+        enc = PU.encrypt(fields)
+        return c.post(path, data={"Status": fields.get("Status", "SUCCESS"), "MerID": "S01", "EncryptInfo": enc, "HashInfo": PU.hash_info(enc)}, follow_redirects=False)
+    assert c.post("/api/pay/payuni/notify", data={"MerID": "S01", "EncryptInfo": "00", "HashInfo": "BAD"}).status_code == 400
+    paid = {"Status": "SUCCESS", "MerTradeNo": f"TC{oid}", "TradeNo": "U1", "TradeAmt": "390", "TradeStatus": "1", "PaymentType": "1",
+            "InvoiceNo": "AB12345678", "InvoiceRandom": "1234"}
+    rr = post_back("/api/pay/payuni/return", paid)
+    assert rr.status_code == 303 and rr.headers["location"] == f"/pay/result?order={oid}"
+    assert c.get(f"/api/orders/{oid}").json()["order"]["status"] == "pending"   # the browser return alone never credits
     for _ in range(2):
-        assert c.post("/api/webhooks/lemonsqueezy", content=body, headers={"X-Signature": sig}).status_code == 200
+        assert post_back("/api/pay/payuni/notify", paid).text == "OK"
     g = c.get(f"/api/orders/{oid}").json()
-    assert g["order"]["status"] == "paid" and g["balance"] == bal0 + 100
+    assert g["order"]["status"] == "paid" and g["balance"] == bal0 + 100 and g["order"]["invoice"]["no"] == "AB12345678"
+    # a tampered amount never credits
+    r = c.post("/api/orders", json={"item": "p100", "method": "card"}).json()
+    post_back("/api/pay/payuni/notify", {**paid, "MerTradeNo": f"TC{r['order']['id']}", "TradeAmt": "1"})
+    assert c.get(f"/api/orders/{r['order']['id']}").json()["order"]["status"] == "pending"
+    # ATM: number issued → the account shows on the order; paid later by notify
+    r = c.post("/api/orders", json={"item": "p50", "method": "atm"}).json()
+    aid = r["order"]["id"]
+    assert PU.decrypt(r["form"]["fields"]["EncryptInfo"])["ATM"] == "1"
+    post_back("/api/pay/payuni/notify", {"Status": "SUCCESS", "MerTradeNo": f"TC{aid}", "TradeAmt": str(P.PACKS["p50"]["twd"]), "TradeStatus": "0",
+                                         "PaymentType": "2", "BankType": "822", "PayNo": "95000123456789", "ExpireDate": "2026-10-21"})
+    g = c.get(f"/api/orders/{aid}").json()["order"]
+    assert g["status"] == "pending" and g["atm"] == {"bank": "822", "account": "95000123456789", "expire": "2026-10-21"}
+    post_back("/api/pay/payuni/notify", {"Status": "SUCCESS", "MerTradeNo": f"TC{aid}", "TradeAmt": str(P.PACKS["p50"]["twd"]), "TradeStatus": "1", "PaymentType": "2"})
+    assert c.get(f"/api/orders/{aid}").json()["order"]["status"] == "paid"
+    bal0 += P.PACKS["p50"]["total"]
+    # a declined card marks the order failed
+    r = c.post("/api/orders", json={"item": "p100", "method": "card"}).json()
+    post_back("/api/pay/payuni/notify", {**paid, "Status": "ERROR", "MerTradeNo": f"TC{r['order']['id']}", "TradeStatus": "2"})
+    assert c.get(f"/api/orders/{r['order']['id']}").json()["order"]["status"] == "failed"
     # transfer: report last 5 → admin approves → credited
     monkeypatch.setattr(C, "BANK_TRANSFER", {"bank": "國泰世華", "code": "013", "account": "123", "name": "人客多"})
     r = c.post("/api/orders", json={"item": "sub5", "method": "transfer"}).json()
@@ -301,7 +332,7 @@ def test_custom_topup(client, monkeypatch):
     admin, a, b, idle = asyncio.run(_seed())
     holder["u"] = b
     monkeypatch.setattr(C, "BANK_TRANSFER", {"bank": "國泰世華", "code": "013", "account": "123", "name": "人客多"})
-    monkeypatch.setattr(C, "LS_API_KEY", "")
+    monkeypatch.setattr(C, "PAYUNI_MER_ID", "")
     assert c.post("/api/orders", json={"item": "pts:19", "method": "transfer"}).status_code == 400
     assert c.post("/api/orders", json={"item": "pts:abc", "method": "transfer"}).status_code == 400
     assert c.get("/api/pay/methods?item=pts:20").json()["card"] is False

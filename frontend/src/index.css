@@ -1925,3 +1925,5 @@ body.easy .theme-o { min-height: 104px; } body.easy .theme-o b { font-size: 18px
 .lg-sec a { color: var(--blue); }
 .lg-foot { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--line); line-height: 1.7; }
 .ld-footer a, .auth-legal a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.social-note { text-align: center; padding: 4px 6px; line-height: 1.5; }
+.pay-bank .pb-row span { white-space: nowrap; }

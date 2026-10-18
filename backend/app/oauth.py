@@ -36,9 +36,9 @@ PROVIDERS = {
         "id": lambda: config.GOOGLE_CLIENT_ID, "secret": lambda: config.GOOGLE_CLIENT_SECRET,
     },
     "facebook": {
-        "auth": "https://www.facebook.com/v19.0/dialog/oauth",
-        "token": "https://graph.facebook.com/v19.0/oauth/access_token",
-        "me": "https://graph.facebook.com/v19.0/me?fields=id,name,email",
+        "auth": "https://www.facebook.com/v23.0/dialog/oauth",
+        "token": "https://graph.facebook.com/v23.0/oauth/access_token",
+        "me": "https://graph.facebook.com/v23.0/me?fields=id,name,email",
         "scope": "public_profile,email",
         "id": lambda: config.FACEBOOK_APP_ID, "secret": lambda: config.FACEBOOK_APP_SECRET,
     },

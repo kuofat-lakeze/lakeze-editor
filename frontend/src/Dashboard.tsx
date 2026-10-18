@@ -568,7 +568,7 @@ function PricingPanel({ onSaved }: { onSaved: () => void }) {
         </div>
         <div className="muted small pp-note">
           註冊送 {cur.signup_points} 點，每位新用戶的成本約 {twd((pv ?? cur).signup_cost_twd)}。訂閱價＝同樣點數單次購買再打折（專業旅人 88 折、超級玩家 8 折），所以永遠比單次划算。
-          若已在 Lemon Squeezy 設定刷卡商品，改價後記得到那邊同步修改金額。
+          金額由系統每筆訂單送給統一金流，改價後立即生效，不用到金流後台同步。
         </div>
       </section>
 

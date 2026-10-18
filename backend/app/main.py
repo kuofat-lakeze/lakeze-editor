@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 
@@ -17,7 +17,7 @@ import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from . import config, pricing, quick
+from . import config, payuni, pricing, quick
 from .admin import router as admin_router
 from .agent import analyze, tools
 from .agent.runner import TurnRunner
@@ -432,9 +432,12 @@ async def activate_subscription(user_id: str, plan_id: str, *, paid_twd: int = 0
                       meta={"plan": plan_id, **(meta or {})})
     async with Session() as s:
         u = await s.get(User, user_id)
+        # renewing early (PAYUNi is paid per period) adds the new 30 days after the current ones, so nothing is lost
+        cur = u.sub_renews_at if u.sub_renews_at is None or u.sub_renews_at.tzinfo else u.sub_renews_at.replace(tzinfo=timezone.utc)
+        start = cur if (u.subscription == plan_id and cur and cur > now) else now
         u.subscription = plan_id
-        u.sub_period_start = now
-        u.sub_renews_at = now + timedelta(days=sub.get("period_days", pricing.SUBSCRIPTION_PERIOD_DAYS))
+        u.sub_period_start = start
+        u.sub_renews_at = start + timedelta(days=sub.get("period_days", pricing.SUBSCRIPTION_PERIOD_DAYS))
         if pricing.STORAGE_PLANS[sub["storage_plan"]]["gb"] >= storage_quota_bytes(u) // GB or u.storage_plan == "free":
             u.storage_plan = sub["storage_plan"]
             u.storage_renews_at = None   # bundled: the storage loop never charges it
@@ -556,12 +559,11 @@ async def delete_version(project_id: str, version: int, user: User = CurrentUser
 async def get_pricing():
     packs = []
     for pid, p in pricing.PACKS.items():   # "<pack>m" is the member-price checkout for the same pack
-        packs.append({"id": pid, **p, "checkout_url": config.CHECKOUT_URLS.get(pid),
-                      "member_checkout_url": {}})
-    subs = [{**s, "checkout_url": config.CHECKOUT_URLS.get(s["id"])} for s in pricing.public_pricing()["subscriptions"]]
+        packs.append({"id": pid, **p, "checkout_url": None, "member_checkout_url": {}})
+    subs = [{**s, "checkout_url": None} for s in pricing.public_pricing()["subscriptions"]]
     return {**pricing.public_pricing(), "menu": [{"item": i, "points": p} for i, p in pricing.MENU],
             "free_revision_turns": pricing.FREE_REVISION_TURNS, "packs": packs, "subscriptions": subs,
-            "provider_configured": bool(config.CHECKOUT_URLS), "note": config.TOPUP_NOTE}
+            "provider_configured": payuni.configured(), "note": config.TOPUP_NOTE}
 
 
 @app.get("/api/credits")
@@ -664,54 +666,27 @@ def _item(item: str, user: User) -> dict:
     raise HTTPException(404, "沒有這個方案")
 
 
-def _ls_custom_ready() -> bool:
-    return bool(config.LS_API_KEY and config.LS_STORE_ID and config.LS_TOPUP_VARIANT)
-
-
-async def _ls_custom_checkout(user: User, order_id: str, amount_twd: int, label: str) -> str | None:
-    """A one-off Lemon Squeezy checkout for a custom top-up: the points variant at a custom price."""
-    import urllib.request
-    back = f"{config.PUBLIC_URL}/pay/result?order={order_id}"
-    body = {"data": {"type": "checkouts", "attributes": {
-        "custom_price": amount_twd * 100,
-        "product_options": {"name": f"旅剪點數 {label}", "redirect_url": back},
-        "checkout_data": {"email": user.email, "custom": {"user_id": user.id, "order_id": order_id}}},
-        "relationships": {"store": {"data": {"type": "stores", "id": str(config.LS_STORE_ID)}},
-                          "variant": {"data": {"type": "variants", "id": str(config.LS_TOPUP_VARIANT)}}}}}
-    req = urllib.request.Request("https://api.lemonsqueezy.com/v1/checkouts", data=json.dumps(body).encode(), method="POST",
-                                 headers={"Authorization": f"Bearer {config.LS_API_KEY}", "Accept": "application/vnd.api+json",
-                                          "Content-Type": "application/vnd.api+json"})
+def _order_note(o: Order) -> dict:
     try:
-        r = await asyncio.to_thread(lambda: json.loads(urllib.request.urlopen(req, timeout=20).read()))
-        return r["data"]["attributes"]["url"]
-    except Exception as e:   # never log the request: it carries the key
-        log.warning("lemonsqueezy custom checkout failed: %s", type(e).__name__)
-        return None
-
-
-def _card_url(item: str, user: User, order_id: str) -> str | None:
-    url = config.CHECKOUT_URLS.get(item)   # one price for everyone: members get extra points, not a member checkout
-    if not url:
-        return None
-    sep = "&" if "?" in url else "?"
-    back = f"{config.PUBLIC_URL}/pay/result?order={order_id}"
-    from urllib.parse import quote
-    return (f"{url}{sep}checkout[custom][user_id]={user.id}&checkout[custom][order_id]={order_id}"
-            f"&checkout[email]={quote(user.email)}&checkout[success_url]={quote(back)}")
+        return json.loads(o.note or "{}")
+    except Exception:
+        return {}
 
 
 def _order_dict(o: Order) -> dict:
+    note = _order_note(o)
     return {"id": o.id, "item": o.item, "kind": o.kind, "label": o.label, "points": o.points, "amount_twd": o.amount_twd,
             "method": o.method, "status": o.status, "transfer_ref": o.transfer_ref, "created_at": o.created_at.isoformat(),
-            "paid_at": o.paid_at.isoformat() if o.paid_at else None}
+            "paid_at": o.paid_at.isoformat() if o.paid_at else None,
+            "atm": note.get("atm"), "invoice": note.get("invoice")}
 
 
 @app.get("/api/pay/methods")
 async def pay_methods(item: str = "", user: User = CurrentUser):
     """Which ways to pay are open right now (the confirm page only shows these)."""
-    card = _ls_custom_ready() if item.startswith(TOPUP_PREFIX) else bool(config.CHECKOUT_URLS)
-    return {"card": card, "transfer": bool(config.BANK_TRANSFER), "test": _is_test(user),
-            "note": config.TOPUP_NOTE}
+    on = payuni.configured()
+    return {"card": on, "atm": on, "transfer": bool(config.BANK_TRANSFER), "test": _is_test(user),
+            "invoice": on and config.PAYUNI_INVOICE, "note": config.TOPUP_NOTE}
 
 
 class OrderBody(BaseModel):
@@ -738,12 +713,11 @@ async def _fulfil(o: Order, meta: dict | None = None) -> None:
 async def create_order(body: OrderBody, user: User = CurrentUser):
     it = _item(body.item, user)
     method = "test" if _is_test(user) else body.method
-    custom = body.item.startswith(TOPUP_PREFIX)
-    if method == "card" and not (_ls_custom_ready() if custom else config.CHECKOUT_URLS):
-        raise HTTPException(400, "信用卡付款尚未開通，請改用其他方式")
+    if method in ("card", "atm") and not payuni.configured():
+        raise HTTPException(400, "線上付款尚未開通，請改用其他方式")
     if method == "transfer" and not config.BANK_TRANSFER:
         raise HTTPException(400, "銀行轉帳尚未開通")
-    if method not in ("card", "transfer", "test"):
+    if method not in ("card", "atm", "transfer", "test"):
         raise HTTPException(400, "不支援的付款方式")
     async with Session() as s:
         o = Order(user_id=user.id, item=body.item, kind=it["kind"], label=it["label"], points=it["points"], amount_twd=it["amount_twd"], method=method)
@@ -753,11 +727,11 @@ async def create_order(body: OrderBody, user: User = CurrentUser):
     if method == "test":
         await _fulfil(o, {"test": True})
         o.status = "paid"
-    elif method == "card":
-        url = await _ls_custom_checkout(user, o.id, o.amount_twd, o.label) if custom else _card_url(body.item, user, o.id)
-        if not url:
-            raise HTTPException(400, "這個方案還不能刷卡，請改用其他方式")
-        nxt = {"redirect": url}
+    elif method in ("card", "atm"):   # PAYUNi's page: the browser posts this form there
+        api_base = f"{config.PUBLIC_URL}/api/pay/payuni"
+        nxt = {"form": payuni.upp_form(order_id_=o.id, amount=o.amount_twd, desc=f"旅剪 Tripcut {o.label}", email=user.email, method=method,
+                                       return_url=f"{api_base}/return", notify_url=f"{api_base}/notify",
+                                       back_url=f"{config.PUBLIC_URL}/pay/result?order={o.id}")}
     else:
         nxt = {"bank": config.BANK_TRANSFER, "amount_twd": o.amount_twd}
     return {"order": _order_dict(o), **nxt}
@@ -831,68 +805,66 @@ async def checkout(pack_id: str, user: User = CurrentUser):
             bal = await add_credits(user.id, got, "purchase", f"test {pack_id}", amount_twd=0, meta={"test": True, "bonus": got - pack["points"]})
             return {"url": None, "test": True, "granted": got, "balance": bal}
         raise HTTPException(404, "unknown pack")
-    url = config.CHECKOUT_URLS.get(pack_id)   # packs, member packs and subscriptions share the map
-    if not url:
-        raise HTTPException(404, "此方案未開放線上付款")
-    sep = "&" if "?" in url else "?"
-    return {"url": f"{url}{sep}checkout[custom][user_id]={user.id}&checkout[email]={user.email}"}
+    raise HTTPException(410, "請從「點數與方案」頁購買")
 
 
-@app.post("/api/webhooks/lemonsqueezy")
-async def lemonsqueezy_webhook(request: Request):
-    """Credits a pack on `order_created`. Verifies X-Signature (HMAC-SHA256 of the raw body)."""
-    body = await request.body()
-    if not config.LS_WEBHOOK_SECRET:
-        raise HTTPException(503, "webhook not configured")
-    sig = request.headers.get("X-Signature", "")
-    expected = hmac.new(config.LS_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(sig, expected):
-        raise HTTPException(401, "bad signature")
-    ev = json.loads(body)
-    event = ev.get("meta", {}).get("event_name")
-    if event not in ("order_created", "subscription_payment_success"):
-        return {"ignored": True}
-    attrs = ev["data"]["attributes"]
-    order_id = str(ev["data"]["id"])
-    user_id = (ev["meta"].get("custom_data") or {}).get("user_id")
-    variant = str((attrs.get("first_order_item") or {}).get("variant_id") or (attrs.get("first_subscription_item") or {}).get("variant_id")
-                  or attrs.get("variant_id"))
-    plan_id = config.LS_VARIANTS.get(variant) or ""
-    our = (ev["meta"].get("custom_data") or {}).get("order_id")
-    if our and user_id:   # started from our payment page (any variant, incl. custom top-ups): fulfil that order once
-        async with Session() as s:
-            o = await s.get(Order, our)
-        if o and o.user_id == user_id:
-            if event == "order_created" or o.status != "paid":
-                await _fulfil(o, {"order_id": f"{event}:{order_id}", "total": attrs.get("total"), "currency": attrs.get("currency")})
-                return {"ok": True, "order": our}
-            paid_at = o.paid_at if o.paid_at is None or o.paid_at.tzinfo else o.paid_at.replace(tzinfo=timezone.utc)
-            if o.kind != "sub" or (paid_at and datetime.now(timezone.utc) - paid_at < timedelta(days=2)):
-                return {"ok": True, "order": our, "duplicate": True}   # the first invoice of the order just fulfilled
-            # a later invoice of the subscription: falls through to the renewal below
-    member = ""   # which plan's rate a member pack was bought at
-    for suffix, sub_id in (("m2", "sub15"), ("m", "sub5")):
-        if plan_id.endswith(suffix) and plan_id[: -len(suffix)] in pricing.PACKS:
-            member, plan_id = sub_id, plan_id[: -len(suffix)]
-            break
-    if not user_id or not plan_id or (plan_id not in pricing.PACKS and plan_id not in pricing.SUBSCRIPTIONS):
-        log.warning("webhook: unmapped %s %s variant=%s user=%s", event, order_id, variant, user_id)
-        return {"ignored": True}
-    async with Session() as s:  # idempotent on order / invoice id
-        dup = (await s.execute(select(CreditTx).where(CreditTx.meta.contains(f'"order_id": "{event}:{order_id}"')))).first()
-    if dup:
-        return {"duplicate": True}
-    meta = {"order_id": f"{event}:{order_id}", "total": attrs.get("total"), "currency": attrs.get("currency")}
-    if plan_id in pricing.SUBSCRIPTIONS:
-        await activate_subscription(user_id, plan_id, paid_twd=pricing.SUBSCRIPTIONS[plan_id]["twd"], meta=meta)
-        return {"ok": True, "subscription": plan_id}
-    pack = pricing.PACKS[plan_id]
-    async with Session() as s:   # member bonus follows the buyer's plan at the time of purchase
-        buyer = await s.get(User, user_id)
-    member = member or ((buyer.subscription or "") if buyer else "")
-    await add_credits(user_id, pricing.pack_points(pack, member), "purchase", f"lemonsqueezy {plan_id}{' member' if member else ''}",
-                      amount_twd=pack["twd"], meta={**meta, "member": member})
-    return {"ok": True}
+async def _payuni_apply(d: dict, via: str) -> str | None:
+    """Apply a verified PAYUNi result to its order. Returns our order id. Only a paid result credits points;
+    an ATM number-issued result stores the account to pay into; failures mark the order failed."""
+    oid = payuni.order_id(d.get("MerTradeNo", ""))
+    async with Session() as s:
+        o = await s.get(Order, oid)
+        if not o:
+            log.warning("payuni %s: unknown order %s", via, d.get("MerTradeNo"))
+            return None
+        note = _order_note(o)
+        note.setdefault("payuni", {}).update({k: d.get(k) for k in ("TradeNo", "PaymentType", "TradeStatus", "PayTime", "Card4No", "AuthCode") if d.get(k)})
+        if (atm := payuni.atm_info(d)):
+            note["atm"] = atm
+        if (inv := payuni.invoice_info(d)):
+            note["invoice"] = inv
+        o.note = json.dumps(note, ensure_ascii=False)
+        status, trade = d.get("Status", ""), d.get("TradeStatus", "")
+        paid = status == "SUCCESS" and trade == "1"
+        if paid and str(d.get("TradeAmt", "")).split(".")[0] != str(o.amount_twd):
+            log.error("payuni %s: amount mismatch on %s (got %s, want %s)", via, oid, d.get("TradeAmt"), o.amount_twd)
+            paid = False
+        if not paid and o.status == "pending" and (trade in ("2", "3", "4") or (status and status != "SUCCESS")):
+            o.status = "failed"   # declined, cancelled or the ATM account expired
+        await s.commit()
+    if paid and via == "notify":   # the server-to-server notify is the one that credits
+        await _fulfil(o, {"payuni_trade": d.get("TradeNo"), "payment_type": payuni.PAYMENT_TYPES.get(d.get("PaymentType", ""), d.get("PaymentType"))})
+    return oid
+
+
+@app.post("/api/pay/payuni/notify")
+async def payuni_notify(request: Request):
+    """PAYUNi → us: payment results (card authorised, ATM paid, expired) and invoice notices."""
+    from fastapi.responses import PlainTextResponse
+    if not payuni.configured():
+        raise HTTPException(503, "payuni not configured")
+    form = dict(await request.form())
+    try:
+        d = payuni.parse_result(form)
+    except payuni.Invalid as e:
+        log.warning("payuni notify rejected: %s", e)
+        raise HTTPException(400, "invalid")
+    await _payuni_apply(d, "notify")
+    return PlainTextResponse("OK")
+
+
+@app.post("/api/pay/payuni/return")
+async def payuni_return(request: Request):
+    """The buyer's browser coming back from PAYUNi (a form post): record what it says, then show the result
+    page, which keeps polling until the notify has credited the order."""
+    form = dict(await request.form())
+    oid = ""
+    try:
+        d = payuni.parse_result(form)
+        oid = await _payuni_apply(d, "return") or ""
+    except payuni.Invalid as e:
+        log.warning("payuni return rejected: %s", e)
+    return RedirectResponse(f"/pay/result?order={oid}" if oid else "/pay/result", status_code=303)
 
 
 # ---- projects --------------------------------------------------------------------

@@ -185,7 +185,7 @@ def test_test_account_buys_without_payment(client):
     assert c.get("/api/checkout/nope").status_code == 404
     # a normal account without checkout URLs is still told to contact support
     holder["u"] = asyncio.run(_user(email="x@y.z"))
-    assert c.get("/api/checkout/p100").status_code == 404
+    assert c.get("/api/checkout/p100").status_code == 410
 
 
 def test_drive_check(client, monkeypatch):

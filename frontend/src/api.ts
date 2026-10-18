@@ -23,8 +23,9 @@ export type CreditsSummary = {
 export type Voice = { voice_id: string; name: string; gender?: string | null; description?: string; preview_url?: string | null; sample_url?: string | null; custom?: boolean }
 export type CreditState = { balance: number; free_project: boolean; in_free: boolean; free_revisions_left: number | null; exports: number }
 export type DriveCheck = { ok: boolean; provider: string; label: string; folder_zip?: boolean; files: number; media: number; videos: number; photos: number; names: string[]; other: number }
-export type Order = { id: string; item: string; kind: 'pack' | 'sub'; label: string; points: number; amount_twd: number; method: string; status: 'pending' | 'reported' | 'paid' | 'failed' | 'cancelled'; transfer_ref: string; created_at: string; paid_at: string | null; email?: string; user_id?: string }
-export type PayMethods = { card: boolean; transfer: boolean; test: boolean; note: string }
+export type Order = { id: string; item: string; kind: 'pack' | 'sub'; label: string; points: number; amount_twd: number; method: string; status: 'pending' | 'reported' | 'paid' | 'failed' | 'cancelled'; transfer_ref: string; created_at: string; paid_at: string | null; email?: string; user_id?: string
+  atm?: { bank: string; account: string; expire: string } | null; invoice?: { no: string; random: string; time: string; type: string } | null }
+export type PayMethods = { card: boolean; atm?: boolean; transfer: boolean; test: boolean; invoice?: boolean; note: string }
 export type CostItem = { id: string; label: string; usd: number; twd: number; units: number; unit: string; calls: number; pct: number }
 export type CostGroup = { id: string; label: string; color: string; usd: number; twd: number; pct: number; items: CostItem[] }
 export type Costs = { days: number; usd: number; twd: number; twd_per_usd: number; exports: number; per_export_twd: number | null; revenue_twd: number; margin_pct: number | null
@@ -150,7 +151,7 @@ export const api = {
   gallery: () => fetch('/api/gallery').then(j<GalleryItem[]>),
   setMode: (mode: 'easy' | 'pro') => fetch('/api/me/mode', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) }).then(j<{ ui_mode: string }>),
   payMethods: (item = '') => fetch(`/api/pay/methods?item=${encodeURIComponent(item)}`).then(j<PayMethods>),
-  createOrder: (item: string, method: string) => post('/api/orders', { item, method }).then(j<{ order: Order; redirect?: string; bank?: Record<string, string>; amount_twd?: number }>),
+  createOrder: (item: string, method: string) => post('/api/orders', { item, method }).then(j<{ order: Order; redirect?: string; form?: { action: string; fields: Record<string, string> }; bank?: Record<string, string>; amount_twd?: number }>),
   order: (id: string) => fetch(`/api/orders/${id}`).then(j<{ order: Order; balance: number; bank: Record<string, string> | null }>),
   orders: () => fetch('/api/orders').then(j<Order[]>),
   reportTransfer: (id: string, ref: string) => post(`/api/orders/${id}/transfer`, { ref }).then(j<{ order: Order }>),

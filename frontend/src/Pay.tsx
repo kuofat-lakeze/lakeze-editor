@@ -17,7 +17,7 @@ function Progress({ at }: { at: number }) {
 
 export function PayFlow({ item, onClose, onPaid }: { item: Item; onClose: () => void; onPaid: () => void }) {
   const [methods, setMethods] = useState<PayMethods | null>(null)
-  const [method, setMethod] = useState<'card' | 'transfer' | 'test'>('card')
+  const [method, setMethod] = useState<'card' | 'atm' | 'transfer' | 'test'>('card')
   const [order, setOrder] = useState<Order | null>(null)
   const [bank, setBank] = useState<Record<string, string> | null>(null)
   const [ref, setRef] = useState('')
@@ -25,9 +25,9 @@ export function PayFlow({ item, onClose, onPaid }: { item: Item; onClose: () => 
   const [err, setErr] = useState('')
   const [copied, setCopied] = useState('')
   useEffect(() => {
-    api.payMethods(item.id).then(m => { setMethods(m); setMethod(m.test ? 'test' : m.card ? 'card' : 'transfer') }).catch(() => setMethods({ card: false, transfer: false, test: false, note: '' }))
+    api.payMethods(item.id).then(m => { setMethods(m); setMethod(m.test ? 'test' : m.card ? 'card' : m.atm ? 'atm' : 'transfer') }).catch(() => setMethods({ card: false, transfer: false, test: false, note: '' }))
   }, [])
-  const none = methods && !methods.card && !methods.transfer && !methods.test
+  const none = methods && !methods.card && !methods.atm && !methods.transfer && !methods.test
   const go = async () => {
     setBusy(true); setErr('')
     try {
@@ -35,6 +35,7 @@ export function PayFlow({ item, onClose, onPaid }: { item: Item; onClose: () => 
       setOrder(r.order)
       if (r.order.status === 'paid') { onPaid(); return }
       if (r.redirect) { location.href = r.redirect; return }
+      if (r.form) { postForm(r.form.action, r.form.fields); return }   // 統一金流 PAYUNi's page
       if (r.bank) setBank(r.bank)
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
   }
@@ -70,14 +71,16 @@ export function PayFlow({ item, onClose, onPaid }: { item: Item; onClose: () => 
                 <div className="muted small pay-lbl">付款方式</div>
                 <div className="pay-methods">
                   {methods.test && <a className={method === 'test' ? 'on' : ''} onClick={() => setMethod('test')}><b>測試帳號</b><small>不用付款，直接入帳</small></a>}
-                  {methods.card && <a className={method === 'card' ? 'on' : ''} onClick={() => setMethod('card')}><b>💳 信用卡</b><small>即時入帳 · 支援 Apple Pay</small></a>}
+                  {methods.card && <a className={method === 'card' ? 'on' : ''} onClick={() => setMethod('card')}><b>💳 信用卡</b><small>刷卡後馬上入帳</small></a>}
+                  {methods.atm && <a className={method === 'atm' ? 'on' : ''} onClick={() => setMethod('atm')}><b>🏧 ATM 轉帳</b><small>拿到一組專屬帳號，轉帳後自動入帳</small></a>}
                   {methods.transfer && <a className={method === 'transfer' ? 'on' : ''} onClick={() => setMethod('transfer')}><b>🏦 銀行轉帳</b><small>轉帳後填末五碼，確認後入帳</small></a>}
                 </div>
                 {err && <div className="error">{err}</div>}
                 <button className="btn primary block lg" disabled={busy} onClick={go}>
-                  {busy ? '處理中…' : method === 'card' ? `前往付款 ${twd(item.twd)} →` : method === 'transfer' ? '取得轉帳資訊 →' : '直接入帳 →'}
+                  {busy ? '處理中…' : method === 'card' ? `前往刷卡 ${twd(item.twd)} →` : method === 'atm' ? '取得轉帳帳號 →' : method === 'transfer' ? '取得轉帳資訊 →' : '直接入帳 →'}
                 </button>
-                <div className="muted small pay-fine">{method === 'card' ? '會開啟安全的付款頁，付完自動回到這裡。' : method === 'transfer' ? '轉帳不收手續費以外的費用，1 個工作天內確認入帳。' : '測試帳號不會產生任何費用。'}</div>
+                <div className="muted small pay-fine">{method === 'card' ? '會開啟統一金流的安全付款頁，付完自動回到這裡。' : method === 'atm' ? `統一金流會給你一組專屬帳號，${'3'} 天內轉帳，轉好就自動入帳。` : method === 'transfer' ? '轉帳不收手續費以外的費用，1 個工作天內確認入帳。' : '測試帳號不會產生任何費用。'}
+                  {(method === 'card' || method === 'atm') && methods.invoice && <><br />電子發票由統一金流開立，可在付款頁選手機條碼、捐贈或打統編。</>}</div>
               </>
             )}
           </>
@@ -115,6 +118,14 @@ export function PayFlow({ item, onClose, onPaid }: { item: Item; onClose: () => 
   )
 }
 
+/* PAYUNi's page is entered with a form post (EncryptInfo / HashInfo), not a link. */
+function postForm(action: string, fields: Record<string, string>) {
+  const f = document.createElement('form')
+  f.method = 'POST'; f.action = action
+  for (const [k, v] of Object.entries(fields)) { const i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = v; f.appendChild(i) }
+  document.body.appendChild(f); f.submit()
+}
+
 /* Landing page after the card checkout (and the deep link for any order). Polls until the webhook lands. */
 export function PayResult({ orderId, onDone }: { orderId: string; onDone: () => void }) {
   const [order, setOrder] = useState<Order | null>(null)
@@ -136,7 +147,21 @@ export function PayResult({ orderId, onDone }: { orderId: string; onDone: () => 
         <Progress at={status === 'paid' ? 3 : status === 'failed' || status === 'cancelled' ? 1 : 2} />
         {err && <div className="pay-done fail"><div className="pd-ic">⚠️</div><b>找不到這筆訂單</b><span className="muted small">{err}</span><button className="btn block" onClick={onDone}>回到旅剪</button></div>}
         {!err && !order && <div className="pay-done"><span className="spinner" /><b>確認付款中…</b></div>}
-        {status === 'pending' && (
+        {status === 'pending' && order?.atm && (
+          <div className="pay-done wait">
+            <div className="pd-ic">🏧</div>
+            <b>請在期限內轉帳到這組帳號</b>
+            <div className="pay-bank">
+              <div className="pb-row"><span>銀行代碼</span><b>{order.atm.bank}</b></div>
+              <div className="pb-row"><span>轉帳帳號</span><b>{order.atm.account}</b><a className="small" onClick={() => navigator.clipboard?.writeText(order.atm!.account).catch(() => {})}>複製</a></div>
+              <div className="pb-row"><span>金額</span><b>{twd(order.amount_twd)}</b></div>
+              <div className="pb-row"><span>繳費期限</span><b>{order.atm.expire}</b></div>
+            </div>
+            <span className="muted small">這組帳號只給這筆訂單用，轉好就會自動入帳，不用回報。可以先回去剪片。</span>
+            <button className="btn primary block" onClick={onDone}>好，回去剪片</button>
+          </div>
+        )}
+        {status === 'pending' && !order?.atm && (
           <div className="pay-done wait">
             <div className="pd-ic"><span className="spinner big" /></div>
             <b>{slow ? '付款還在確認中' : '確認付款中…'}</b>
@@ -151,7 +176,8 @@ export function PayResult({ orderId, onDone }: { orderId: string; onDone: () => 
           <div className="pay-done ok">
             <div className="pd-ic">🎉</div>
             <b>付款完成，{order.kind === 'sub' ? `${order.label}已開通` : `${order.points} 點已入帳`}</b>
-            <div className="pd-sum"><span>{order.label}</span><b>{twd(order.amount_twd)}</b>{bal !== null && <span className="muted small">目前餘額 {bal.toLocaleString()} 點</span>}</div>
+            <div className="pd-sum"><span>{order.label}</span><b>{twd(order.amount_twd)}</b>{bal !== null && <span className="muted small">目前餘額 {bal.toLocaleString()} 點</span>}
+              {order.invoice && <span className="muted small">電子發票 {order.invoice.no}（已寄到你的 Email）</span>}</div>
             <button className="btn primary block lg" onClick={onDone}>開始剪片 →</button>
           </div>
         )}
