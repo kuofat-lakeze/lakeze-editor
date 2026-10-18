@@ -34,13 +34,25 @@ export function MiaoMark({ size = 40, radius = 0.25, tone = 'light' }: { size?: 
   )
 }
 
+/* The English wordmark carries the mark's idea: the dot of the i is the location pin (the letters are
+   Nunito 900 — round, friendly; the i is a dotless ı so the pin can sit where the dot would). */
+export function TripcutWord({ className = '' }: { className?: string }) {
+  return (
+    <span className={`miao-en ${className}`} aria-label="Tripcut">
+      <span>Tr</span>
+      <span className="tc-i" aria-hidden="true">ı<svg viewBox="0 0 10 13" className="tc-pin"><path d="M5 .5C2.5.5.7 2.3.7 4.6c0 3 4.3 7.9 4.3 7.9s4.3-4.9 4.3-7.9C9.3 2.3 7.5.5 5 .5z" fill="currentColor" /><circle cx="5" cy="4.6" r="1.6" fill="#fff" /></svg></span>
+      <span>pcut</span>
+    </span>
+  )
+}
+
 export function MiaoLogo({ size = 40, tagline = false, className = '', tone = 'light', en = true }:
   { size?: number; tagline?: boolean; className?: string; tone?: 'light' | 'brand'; en?: boolean }) {
   return (
     <span className={`miao-logo ${className}`} style={{ ['--mj' as string]: `${size}px` }}>
       <MiaoMark size={size} tone={tone} />
       <span className="miao-text">
-        <span className="miao-word">旅剪{en && <span className="miao-en">Tripcut</span>}</span>
+        <span className="miao-word">旅剪{en && <TripcutWord />}</span>
         {tagline && <span className="miao-tag">旅遊短影音自動剪片軟體</span>}
       </span>
     </span>

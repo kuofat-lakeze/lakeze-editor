@@ -1858,3 +1858,11 @@ body.easy .btn { font-size: 16px; }
 .miao-en { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; font-weight: 800; font-size: calc(var(--mj, 40px) * .42); letter-spacing: .02em; color: var(--brand); }
 .miao-logo.light .miao-en { color: #FFD9C4; }
 .topbar .miao-en { font-size: 11px; }
+/* Tripcut 字標：Nunito 900、品牌橘漸層、i 的點是地點標記 */
+.miao-en { display: inline-flex; align-items: baseline; font-family: "Nunito", "Inter", "Helvetica Neue", Arial, sans-serif; font-weight: 900; font-size: calc(var(--mj, 40px) * .46); letter-spacing: .01em; line-height: 1; color: var(--brand); }
+.miao-en > span:not(.tc-i) { background: linear-gradient(135deg, #EC5A1E, #F5921E); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.tc-i { position: relative; display: inline-block; color: #EC5A1E; background: linear-gradient(135deg, #EC5A1E, #F5921E); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.tc-pin { position: absolute; left: 50%; top: -.08em; width: .38em; height: .5em; transform: translateX(-50%) rotate(-8deg); color: #EC5A1E; -webkit-text-fill-color: initial; }
+.miao-logo.light .miao-en > span:not(.tc-i), .miao-logo.light .tc-i { background: #FFD9C4; -webkit-background-clip: text; background-clip: text; }
+.miao-logo.light .tc-pin { color: #FFD9C4; }
+.topbar .miao-en { font-size: 12px; }
