@@ -117,6 +117,8 @@ TOOLS: list[dict] = [
                                                                 "label": {"type": "string", "description": "如「平日每人」"},
                                                                 "size": {"type": "integer", "description": "跳數字級，預設 210"},
                                                                 "color": {"type": "string", "description": "gold（預設）、white、red、blue"}}},
+                                     "style": {"type": "string", "enum": ["gold", "white", "box", "soft"],
+                                               "description": "旁白字幕樣式：gold 金字醒目（預設）、white 白字黑邊、box 黃底黑字、soft 清爽細字。用戶指定「字幕樣式」時照用"},
                                      "check_times": {"type": "array", "items": {"type": "number"},
                                                      "description": "要抽格檢查的秒數，省略則自動"}}}},
     {"name": "export_video", "description": "合成畫面與混音，輸出母帶、上傳用 1080p（<30MB）、預覽 720p 三個檔案給用戶。",
@@ -311,8 +313,9 @@ def _compose(inp, ctx):
 
 def _captions(inp, ctx):
     base = ctx.root / "work" / "base.mp4"
-    ass = subs.build_ass(inp["vo"], inp.get("supers") or [], inp.get("counter"), ctx.root / "work" / "subs.ass")
-    plan_update(ctx.root, "captions", {"vo": inp["vo"], "supers": inp.get("supers") or [], "counter": inp.get("counter")})
+    style = inp.get("style") or subs.DEFAULT_STYLE
+    ass = subs.build_ass(inp["vo"], inp.get("supers") or [], inp.get("counter"), ctx.root / "work" / "subs.ass", style=style)
+    plan_update(ctx.root, "captions", {"vo": inp["vo"], "supers": inp.get("supers") or [], "counter": inp.get("counter"), "style": style})
     dark = None
     if inp.get("counter"):
         dark = (float(inp["counter"]["start"]) - 0.6, float(inp["counter"]["end"]))

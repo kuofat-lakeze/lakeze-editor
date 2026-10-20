@@ -1,6 +1,6 @@
 """微調 (quick re-render): redo mix → captions → export from the saved recipe (work/plan.json) without an
 editor turn. Covers the changes that need no judgement — caption text, 唸法, a dropped line, the owner's
-own take, ⭐ highlight, another voice, music level, narration speed, caption size, price colour. Only the
+own take, ⭐ highlight, another voice, music level, narration speed, caption size and style, price colour. Only the
 lines whose words changed are re-voiced; everything else is ffmpeg. The cheap path behind the 校對台."""
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ def plan_changes(root: Path, edits: dict) -> dict:
 
 def render(root: Path, edits: dict, *, record_usage=None) -> dict:
     """Apply `edits` to the recipe and produce a new export. Blocking (ffmpeg, ElevenLabs): run in a thread.
-    edits: {lines:[{key,text?,say?,drop?,take?,star?}], voice_id?, music_gain?, speed?, caption_scale?, counter_color?}
+    edits: {lines:[{key,text?,say?,drop?,take?,star?}], voice_id?, music_gain?, speed?, caption_scale?, caption_style?, counter_color?}
     Returns {"files": {master, upload, preview}, "revoiced": [keys]}."""
     info = plan_changes(root, edits)
     plan = info["plan"]
@@ -169,7 +169,8 @@ def render(root: Path, edits: dict, *, record_usage=None) -> dict:
     if counter and edits.get("counter_color"):
         counter["color"] = edits["counter_color"]
     scale = float(edits.get("caption_scale") or 1.0)
-    ass = subs.build_ass(vo, caps.get("supers") or [], counter, root / "work" / "subs.ass", vo_scale=scale)
+    style = edits.get("caption_style") if edits.get("caption_style") in subs.CAPTION_STYLES else caps.get("style", subs.DEFAULT_STYLE)
+    ass = subs.build_ass(vo, caps.get("supers") or [], counter, root / "work" / "subs.ass", vo_scale=scale, style=style)
     dark = (float(counter["start"]) - 0.6, float(counter["end"])) if counter else None
     video = subs.burn(base, ass, root / "work" / "video.mp4", dark)
 
@@ -179,5 +180,5 @@ def render(root: Path, edits: dict, *, record_usage=None) -> dict:
     # 6. the recipe now describes this version
     plan_update(root, "voice", {**voice, "voice_id": voice_id, "lines": texts})
     plan_update(root, "compose", {**comp, "placements": placements, "music_gain": gain})
-    plan_update(root, "captions", {"vo": vo, "supers": caps.get("supers") or [], "counter": counter})
+    plan_update(root, "captions", {"vo": vo, "supers": caps.get("supers") or [], "counter": counter, "style": style})
     return {"files": files, "revoiced": info["revoice"]}

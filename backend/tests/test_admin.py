@@ -528,7 +528,7 @@ def test_quick_render(client, monkeypatch, tmp_path: Path):
     monkeypatch.setattr(eleven, "tts_verified", fake_tts)
     monkeypatch.setattr(mix, "compose", lambda root, placements, music, dur, **kw: {"words": [], "transcript": "", "lines": []})
     built = {}
-    monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, vo_scale=1.0: built.update(vo=vo, scale=vo_scale) or dest)
+    monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, vo_scale=1.0, style="gold": built.update(vo=vo, scale=vo_scale, style=style) or dest)
     monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None: dest.write_bytes(b"v") or dest)
     def fake_export(video, mixw, out_dir, stem="final"):
         out_dir.mkdir(exist_ok=True)
@@ -552,5 +552,9 @@ def test_quick_render(client, monkeypatch, tmp_path: Path):
     # a subscriber pays only for re-voiced lines
     asyncio.run(M.activate_subscription(b.id, "sub5", paid_twd=0)); b.subscription = "sub5"
     bal1 = asyncio.run(D.balance(b.id))
-    r = c.post(f"/api/projects/{pid}/quick", json={"music_gain": 0.3}).json()
+    r = c.post(f"/api/projects/{pid}/quick", json={"music_gain": 0.3, "caption_style": "box"}).json()
     assert r["charged"] == 0 and r["balance"] == bal1 and r["revoiced"] == []
+    assert built["style"] == "box" and T.plan_load(root)["captions"]["style"] == "box"
+    assert c.get(f"/api/projects/{pid}/script").json()["caption_style"] == "box"
+    c.post(f"/api/projects/{pid}/quick", json={"music_gain": 0.4})
+    assert built["style"] == "box"   # kept from the recipe

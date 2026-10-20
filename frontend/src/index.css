@@ -1932,3 +1932,55 @@ body.easy .theme-o { min-height: 104px; } body.easy .theme-o b { font-size: 18px
 .btn.msg { background: linear-gradient(135deg, #0A7CFF, #A033FF 70%, #FF5280); border-color: transparent; color: #fff; display: inline-flex; align-items: center; gap: 6px; } .btn.msg:hover { filter: brightness(1.05); }
 .share-social { justify-content: center; }
 .share-tip { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: #222; color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px; max-width: calc(100vw - 32px); text-align: center; z-index: 50; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+
+/* 字幕樣式 presets: a mini caption over a photo-ish strip, mirroring backend subs.CAPTION_STYLES */
+.cap-s { display: flex; align-items: center; justify-content: center; height: 54px; border-radius: 10px; overflow: hidden; background: linear-gradient(160deg, #6FA8C7 0%, #3E7393 45%, #2C4B3A 100%); padding: 0 6px; font-weight: 900; font-size: 13px; letter-spacing: .02em; white-space: nowrap; }
+.cap-s > span { line-height: 1.4; }
+.cap-gold > span { color: #F5C037; text-shadow: 0 0 2px #2E1C10, 0 0 2px #2E1C10, 1px 1px 0 #2E1C10, 2px 2px 3px rgba(0,0,0,.6); }
+.cap-gold b { color: #fff; font-size: 1.2em; }
+.cap-white > span { color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000, 1px 1px 0 #000, 2px 2px 3px rgba(0,0,0,.5); }
+.cap-white b { color: #F5C037; font-size: 1.2em; }
+.cap-box > span { color: #141414; background: #FFDC00; padding: 2px 6px; border-radius: 2px; }
+.cap-box b { color: #E61E1E; font-size: 1.15em; }
+.cap-soft > span { color: #fff; font-weight: 500; font-size: 12px; text-shadow: 0 0 2px rgba(48,48,48,.8), 1px 1px 2px rgba(0,0,0,.4); }
+.cap-soft b { color: #FFE6B4; font-weight: 700; font-size: 1.15em; }
+.cap-pick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 640px) { .cap-pick { grid-template-columns: repeat(2, 1fr); } }
+.cap-o { display: flex; flex-direction: column; gap: 3px; padding: 6px 6px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); font: inherit; text-align: left; cursor: pointer; color: var(--text); }
+.cap-o b { font-size: 13.5px; padding: 2px 2px 0; } .cap-o small { font-size: 11.5px; color: var(--muted); padding: 0 2px; }
+.cap-o.on { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 2px var(--brand-soft); }
+.ob-sub-note { font-weight: 500; letter-spacing: 0; margin-left: 8px; color: var(--muted); }
+.tw-row { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.tw-caps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tw-cap { display: flex; flex-direction: column; gap: 3px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); font: inherit; cursor: pointer; color: var(--text); }
+.tw-cap .cap-s { height: 40px; font-size: 10px; } .tw-cap .cap-soft > span { font-size: 9.5px; }
+.tw-cap small { font-size: 12px; font-weight: 700; text-align: center; }
+.tw-cap.on { border-color: var(--brand); background: var(--brand-soft); } .tw-cap.on small { color: var(--brand); }
+
+/* 輕鬆模式: style chips, own-voice chip, busy bar, link to 導演模式 */
+.ez-styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ez-st { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 6px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--panel); font: inherit; cursor: pointer; color: var(--text); }
+.ez-st b { font-size: 16px; } .ez-st small { font-size: 13px; color: var(--muted); }
+.ez-st.on { border-color: var(--brand); background: var(--brand-soft); } .ez-st.on b { color: var(--brand); }
+.qr.ez .qr-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.qrb.ez.own { border: 1.5px solid var(--brand); color: var(--brand); background: var(--brand-soft); }
+.own-busy { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px 16px 0; padding: 10px 14px; border-radius: 12px; background: var(--brand-soft); color: var(--brand); font-weight: 700; font-size: 15px; }
+.cheer-own { font-weight: 700; }
+.pf-topro { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 14px; margin-top: 4px; border-radius: 14px; background: var(--bg, #F6F4F1); font-size: 15px; color: var(--muted); list-style: none; }
+.pf-topro a { font-weight: 800; color: var(--brand); cursor: pointer; }
+
+/* 導演模式「更多改法」 */
+.sh.ideas { max-width: 520px; max-height: 86vh; overflow: auto; gap: 12px; }
+.ideas-h { display: flex; flex-direction: column; gap: 2px; } .ideas-h b { font-size: 17px; }
+.ideas-g { display: flex; flex-direction: column; gap: 6px; }
+.ideas-t { font-size: 12px; font-weight: 800; color: var(--muted); letter-spacing: .06em; }
+.ideas-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.ideas-o { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); font: inherit; font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer; }
+.ideas-o:hover { border-color: var(--brand-2); }
+.ideas-o.tool small { font-size: 11px; font-weight: 700; color: #1E7A4C; background: #E5F5EC; padding: 1px 6px; border-radius: 999px; }
+.ideas-tip { font-size: 13.5px; line-height: 1.6; padding: 10px 12px; border-radius: 12px; background: var(--brand-soft); color: var(--text); }
+.tw-caps, .cap-pick { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 640px) { .cap-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tw-cap, .cap-o { min-width: 0; }
+.tw-cap .cap-s { padding: 0 2px; font-size: 12px; } .tw-cap .cap-soft > span { font-size: 11px; }
+.tw-body { overflow-x: hidden; }

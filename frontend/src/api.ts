@@ -2,7 +2,7 @@ export type Asset = { id: string; kind: 'video' | 'audio' | 'image' | 'file'; na
 export type Part = { type: 'text'; text: string } | { type: 'tool'; name: string }
 export type Msg = { id: number | string; role: 'user' | 'assistant'; parts: Part[]; created_at: string; assets?: Asset[] }
 export type Project = { id: string; name: string; updated_at?: string; exports?: number; final_version?: number | null }
-export type QuickEdits = { lines?: { key: string; text?: string; say?: string; drop?: boolean; take?: string; star?: boolean }[]; voice_id?: string; music_gain?: number; speed?: number; caption_scale?: number; counter_color?: string }
+export type QuickEdits = { lines?: { key: string; text?: string; say?: string; drop?: boolean; take?: string; star?: boolean }[]; voice_id?: string; music_gain?: number; speed?: number; caption_scale?: number; caption_style?: string; counter_color?: string }
 export type DeliverableVersion = { version: number; created_at: string; videos: Asset[]; covers: Asset[]; main: Asset | null; expires_at?: string | null; poster?: string | null }
 export type ShareLink = { id: string; token: string; url: string; version: number | null; allow_download: boolean; note: string; expires_at: string | null; revoked: boolean; views: number; created_at: string; fb_app_id?: string | null }
 export type DeliverablesData = { project: { id: string; name: string; final_version: number | null; exports: number }; versions: DeliverableVersion[]; shares: ShareLink[] }
@@ -120,7 +120,7 @@ export const api = {
   },
   stt: (blob: Blob, projectId = '') => { const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'v.mp4' : blob.type.includes('ogg') ? 'v.ogg' : 'v.webm'); fd.append('project_id', projectId); return fetch('/api/stt', { method: 'POST', body: fd }).then(j<{ text: string; seconds: number }>) },
   driveCheck: (id: string, url: string) => post(`/api/projects/${id}/drive/check`, { url }).then(j<DriveCheck>),
-  script: (id: string) => fetch(`/api/projects/${id}/script`).then(j<{ lines: { n: number; key?: string; start: number; end: number; text: string }[]; voice_id: string; say_points: number; shots: { i: number; clip: number; start: number; dur: number; at: number }[]; quick: boolean }>),
+  script: (id: string) => fetch(`/api/projects/${id}/script`).then(j<{ lines: { n: number; key?: string; start: number; end: number; text: string }[]; voice_id: string; say_points: number; shots: { i: number; clip: number; start: number; dur: number; at: number }[]; quick: boolean; caption_style?: string }>),
   quick: (id: string, body: QuickEdits) => post(`/api/projects/${id}/quick`, body).then(j<{ ok: boolean; revoiced: string[]; charged: number; balance: number }>),
   say: (id: string, text: string, voice_id = '') => post(`/api/projects/${id}/say`, { text, voice_id }).then(j<{ url: string; balance: number }>),
   frameUrl: (id: string, clip: number, t: number) => `/api/projects/${id}/frame/${clip}?t=${t}`,

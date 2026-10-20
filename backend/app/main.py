@@ -1027,6 +1027,7 @@ async def project_script(project_id: str, user: User = CurrentUser):
     lines: list[dict] = []
     voice_id = ""
     from_plan = quick.script_lines(project_dir(project_id))
+    caption_style = (tools.plan_load(project_dir(project_id)).get("captions") or {}).get("style", "gold")
     if from_plan:
         lines = from_plan
         voice_id = (tools.plan_load(project_dir(project_id)).get("voice") or {}).get("voice_id", "")
@@ -1051,7 +1052,7 @@ async def project_script(project_id: str, user: User = CurrentUser):
     except Exception:
         pass
     return {"lines": lines, "voice_id": voice_id or user.voice_id or (config.VOICE_PRESETS[0]["voice_id"] if config.VOICE_PRESETS else ""),
-            "say_points": pricing.VOICE_SAMPLE_POINTS, "shots": shots, "quick": bool(from_plan)}
+            "say_points": pricing.VOICE_SAMPLE_POINTS, "shots": shots, "quick": bool(from_plan), "caption_style": caption_style}
 
 
 class QuickBody(BaseModel):
@@ -1060,6 +1061,7 @@ class QuickBody(BaseModel):
     music_gain: float | None = None
     speed: float | None = None
     caption_scale: float | None = None
+    caption_style: str | None = None
     counter_color: str | None = None
 
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { CAPTION_STYLES, CapSample } from './captionStyles'
 import { api, type DeliverableVersion, type Voice } from './api'
 import type { Line } from './Script'
 
@@ -13,9 +14,9 @@ type Shot = { i: number; clip: number; start: number; dur: number; at: number }
 const STAR_MAX = 3
 const tc = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
-export function Proof({ projectId, version, lines: given, onClose, onSend, onUsage, onDone, easy = false, hasOwnVoice = true, onClone }:
+export function Proof({ projectId, version, lines: given, onClose, onSend, onUsage, onDone, easy = false, hasOwnVoice = true, onClone, onOwnVoice, onPro }:
   { projectId: string; version: DeliverableVersion | null; lines?: Line[]; onClose: () => void; onSend: (text: string) => void; onUsage?: () => void; onDone?: () => void
-    easy?: boolean; hasOwnVoice?: boolean; onClone?: () => void }) {
+    easy?: boolean; hasOwnVoice?: boolean; onClone?: () => void; onOwnVoice?: () => void; onPro?: () => void }) {
   const toRows = (ls: (Line & { key?: string })[]): Row[] => ls.map((l, i) => ({ id: i + 1, n: i + 1, key: l.key, start: l.start, end: l.end, text: l.text }))
   const [quickOK, setQuickOK] = useState(false)      // the recipe is known: small changes re-render without the editor
   const [applying, setApplying] = useState(false)
@@ -208,6 +209,9 @@ export function Proof({ projectId, version, lines: given, onClose, onSend, onUsa
               {easy && !hasOwnVoice && onClone && !loading && rows.length > 0 && (
                 <li className="pf-own"><div><b>想讓旁白變成你自己的聲音？</b><span>錄 30 秒就好，整支影片會換成你的聲音</span></div><button type="button" className="btn primary" onClick={onClone}>🎙 錄我的聲音</button></li>
               )}
+              {easy && hasOwnVoice && onOwnVoice && !loading && rows.length > 0 && (
+                <li className="pf-own"><div><b>整支換成你的聲音？</b><span>用你錄好的聲音重配整支旁白，約 1–2 分鐘</span></div><button type="button" className="btn primary" onClick={onOwnVoice}>🎙 換成我的聲音</button></li>
+              )}
               {loading && <li className="muted small pf-empty">載入旁白稿…</li>}
               {!loading && rows.length === 0 && <li className="muted small pf-empty">找不到這支的旁白稿。剪輯師交付時會附旁白稿，之後再來校對。</li>}
               {easy && rows.map((r, i) => {
@@ -229,6 +233,9 @@ export function Proof({ projectId, version, lines: given, onClose, onSend, onUsa
                     </div>
                   </li>)
               })}
+              {easy && onPro && !loading && (
+                <li className="pf-topro"><span>想逐句改字、改整篇旁白稿？</span><a onClick={onPro}>到導演模式細改 →</a></li>
+              )}
               {!easy && rows.map((r, i) => {
                 const e = ed(r.id); const on = active === r.id; const txt = shown(r)
                 return (
@@ -300,20 +307,22 @@ export function Tweak({ projectId, onClose, onDone, onUsage }: { projectId: stri
   const [speed, setSpeed] = useState<number | null>(null)
   const [color, setColor] = useState<string | null>(null)
   const [voice, setVoice] = useState<string | null>(null)
+  const [cap, setCap] = useState<string | null>(null)
+  const [curCap, setCurCap] = useState('gold')
   const [voices, setVoices] = useState<Voice[]>([])
   const [cur, setCur] = useState('')
   const [ok, setOk] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   useEffect(() => {
-    api.script(projectId).then(r => { setOk(!!r.quick); setCur(r.voice_id) }).catch(() => setOk(false))
+    api.script(projectId).then(r => { setOk(!!r.quick); setCur(r.voice_id); setCurCap(r.caption_style || 'gold') }).catch(() => setOk(false))
     api.voices().then(setVoices).catch(() => {})
   }, [projectId])
-  const n = [scale, gain, speed, color, voice].filter(x => x !== null).length
+  const n = [cap, scale, gain, speed, color, voice].filter(x => x !== null).length
   const apply = async () => {
     setBusy(true); setErr('')
     try {
-      await api.quick(projectId, { ...(scale !== null && { caption_scale: scale }), ...(gain !== null && { music_gain: gain }), ...(speed !== null && { speed }), ...(color !== null && { counter_color: color }), ...(voice !== null && { voice_id: voice }) })
+      await api.quick(projectId, { ...(cap !== null && { caption_style: cap }), ...(scale !== null && { caption_scale: scale }), ...(gain !== null && { music_gain: gain }), ...(speed !== null && { speed }), ...(color !== null && { counter_color: color }), ...(voice !== null && { voice_id: voice }) })
       onUsage?.(); onDone?.(); onClose()
     } catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? '點數不足，先儲值再套用' : ex.message); setBusy(false) }
   }
@@ -325,6 +334,10 @@ export function Tweak({ projectId, onClose, onDone, onUsage }: { projectId: stri
         <div className="pf-head"><b>微調</b><span className="muted small">不用等剪輯師，改完直接重出</span><span className="spacer" /><a className="pf-x" onClick={onClose} aria-label="關閉">✕</a></div>
         {ok === false ? <div className="pf-novideo muted small" style={{ margin: 14 }}>這支還沒有可以微調的版本，請先讓剪輯師重新輸出一次。</div> : (
           <div className="tw-body">
+            <div className="tw-row"><span>字幕樣式</span>
+              <div className="tw-caps">{CAPTION_STYLES.map(c => (
+                <button key={c.id} type="button" className={`tw-cap ${(cap ?? curCap) === c.id ? 'on' : ''}`} onClick={() => setCap(c.id === curCap ? null : c.id)}><CapSample id={c.id} short /><small>{c.name}</small></button>))}
+              </div></div>
             <label><span>字幕大小</span><Opt v={scale} set={setScale} options={[{ v: .85, l: '小' }, { v: 1, l: '標準', d: true }, { v: 1.2, l: '大' }]} /></label>
             <label><span>配樂音量</span><Opt v={gain} set={setGain} options={[{ v: .32, l: '小聲' }, { v: .55, l: '標準', d: true }, { v: .8, l: '大聲' }]} /></label>
             <label><span>旁白速度</span><Opt v={speed} set={setSpeed} options={[{ v: .93, l: '慢一點' }, { v: 1, l: '標準', d: true }, { v: 1.12, l: '快一點' }]} /></label>
