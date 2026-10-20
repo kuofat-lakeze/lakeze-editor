@@ -17,7 +17,7 @@ export function CapPicker({ value, onChange }: { value: string; onChange: (id: C
     <div className="cap-pick" role="radiogroup" aria-label="字幕樣式">
       {CAPTION_STYLES.map(c => (
         <button type="button" key={c.id} role="radio" aria-checked={value === c.id} className={`cap-o ${value === c.id ? 'on' : ''}`} onClick={() => onChange(c.id)}>
-          <CapSample id={c.id} />
+          <CapSample id={c.id} short />
           <b>{c.name}</b><small>{c.desc}</small>
         </button>
       ))}

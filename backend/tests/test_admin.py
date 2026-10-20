@@ -558,3 +558,56 @@ def test_quick_render(client, monkeypatch, tmp_path: Path):
     assert c.get(f"/api/projects/{pid}/script").json()["caption_style"] == "box"
     c.post(f"/api/projects/{pid}/quick", json={"music_gain": 0.4})
     assert built["style"] == "box"   # kept from the recipe
+
+
+def test_quick_recut(monkeypatch, tmp_path: Path):
+    """時間軸: changing a segment's length re-cuts the picture and moves narration, supers and the counter with it."""
+    import json as J
+    from app import quick as Q
+    from app.agent import tools as T
+    from app.pipeline import cut, ff, mix, subs
+    assert Q.remap(5.0, [(0, 4), (4, 4)], [(0, 2), (2, 4)]) == 3.0
+    assert Q.remap(3.5, [(0, 4), (4, 4)], [(0, 2), (2, 4)]) == 2.0       # clamped to the shortened segment
+    root = tmp_path / "p"
+    for d in ("work/vo", "raw", "sheets", "out"):
+        (root / d).mkdir(parents=True)
+    (root / "sheets" / "index.tsv").write_text("1\tv\t0\t0\tc1.mp4\n2\tv\t0\t0\tc2.mp4\n")
+    for f in ("c1.mp4", "c2.mp4"):
+        (root / "raw" / f).write_bytes(b"x")
+    (root / "work" / "cut.json").write_text(J.dumps([{"i": 0, "clip": 1, "start": 1, "dur": 4, "at": 0}, {"i": 1, "clip": 2, "start": 0, "dur": 4, "at": 4},
+                                                     {"i": 2, "clip": 1, "start": 6, "dur": 4, "at": 8}]))
+    (root / "work" / "base.mp4").write_bytes(b"old")
+    for k in "ABC":
+        (root / "work" / "vo" / f"{k}.wav").write_bytes(b"RIFF")
+    T.plan_update(root, "voice", {"voice_id": "v1", "lines": {"A": "一", "B": "二", "C": "三"}})
+    T.plan_update(root, "compose", {"placements": [{"key": "A", "at": 0}, {"key": "B", "at": 4.5}, {"key": "C", "at": 8.2}], "music": None, "sfx": [], "duration": 12})
+    T.plan_update(root, "captions", {"vo": [], "supers": [{"start": 8.5, "end": 10, "text": "店名"}], "counter": {"start": 9, "end": 11, "amount": 1500}})
+    monkeypatch.setattr(ff, "duration", lambda p: 1.0 if p.suffix == ".wav" else 20.0)
+    monkeypatch.setattr(ff, "ffmpeg", lambda *a: Path(a[-1]).write_bytes(b"x"))
+    def fake_cut(root_, segs):
+        at, shots = 0.0, []
+        for i, s in enumerate(segs):
+            shots.append({"i": i, "clip": s["clip"], "start": s["start"], "dur": s["dur"], "at": at}); at += s["dur"]
+        (root_ / "work" / "cut.json").write_text(J.dumps(shots))
+        return {"path": root_ / "work" / "base.mp4", "duration": at}
+    monkeypatch.setattr(cut, "build_cut", fake_cut)
+    got = {}
+    monkeypatch.setattr(mix, "compose", lambda r, placements, music, dur, **kw: got.update(at=[p["at"] for p in placements], dur=dur))
+    monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, **kw: got.update(supers=supers, counter=counter) or dest)
+    monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None: dest)
+    monkeypatch.setattr(mix, "mux_and_export", lambda v, m, out, stem: {})
+    assert Q.shot_sources(root)[0]["src_dur"] == 20.0
+    Q.render(root, {"shots": [{"i": 0, "dur": 2}]})
+    assert got["at"] == [0, 2.5, 6.2] and got["dur"] == 10
+    assert got["supers"][0]["start"] == 6.5 and got["counter"]["start"] == 7
+    assert T.plan_load(root)["compose"]["duration"] == 10 and not (root / "work" / "cut.json.bak").exists()
+    # a failed render puts the old cut back
+    monkeypatch.setattr(subs, "burn", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    before = (root / "work" / "cut.json").read_text()
+    try:
+        Q.render(root, {"shots": [{"i": 1, "dur": 1}]})
+    except RuntimeError:
+        pass
+    assert (root / "work" / "cut.json").read_text() == before
+    (root / "raw" / "c2.mp4").unlink()     # originals expired: no 時間軸
+    assert Q.shot_sources(root) is None

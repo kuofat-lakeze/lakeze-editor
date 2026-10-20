@@ -1047,16 +1047,22 @@ async def project_script(project_id: str, user: User = CurrentUser):
         if lines and voice_id:
             break
     shots: list[dict] = []
+    recut = False
     try:
-        shots = json.loads((project_dir(project_id) / "work" / "cut.json").read_text())
+        if from_plan and (src := await asyncio.to_thread(quick.shot_sources, project_dir(project_id))):
+            shots, recut = src, True    # the 時間軸 can re-cut: originals are still here
+        else:
+            shots = json.loads((project_dir(project_id) / "work" / "cut.json").read_text())
     except Exception:
         pass
     return {"lines": lines, "voice_id": voice_id or user.voice_id or (config.VOICE_PRESETS[0]["voice_id"] if config.VOICE_PRESETS else ""),
-            "say_points": pricing.VOICE_SAMPLE_POINTS, "shots": shots, "quick": bool(from_plan), "caption_style": caption_style}
+            "say_points": pricing.VOICE_SAMPLE_POINTS, "shots": shots, "quick": bool(from_plan), "caption_style": caption_style,
+            "recut": recut}
 
 
 class QuickBody(BaseModel):
     lines: list[dict] = []
+    shots: list[dict] = []
     voice_id: str | None = None
     music_gain: float | None = None
     speed: float | None = None

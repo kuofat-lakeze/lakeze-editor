@@ -30,8 +30,11 @@ def build_cut(root: Path, segments: list[dict], crf: int = 16) -> dict:
         total += float(s["dur"])
     (seg_dir / "list.txt").write_text("".join(lst))
     at, shots = 0.0, []
-    for i, s in enumerate(segments):   # timeline positions, for the 校對台's shot strip
-        shots.append({"i": i, "clip": int(s["clip"]), "start": float(s["start"]), "dur": float(s["dur"]), "at": round(at, 2)})
+    for i, s in enumerate(segments):   # timeline positions, for the 校對台's shot strip and the 時間軸 re-cut
+        shot = {"i": i, "clip": int(s["clip"]), "start": float(s["start"]), "dur": float(s["dur"]), "at": round(at, 2)}
+        if "crop_x" in s:
+            shot["crop_x"] = float(s["crop_x"])
+        shots.append(shot)
         at += float(s["dur"])
     (root / "work" / "cut.json").write_text(json.dumps(shots, ensure_ascii=False))
     base = root / "work" / "base.mp4"

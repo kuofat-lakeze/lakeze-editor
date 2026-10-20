@@ -3,6 +3,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { api, type Analysis, type Asset, type DeliverableVersion, type DriveCheck, type Me, type Msg, type ProjectDetail, type Voice } from './api'
 import { Proof, Tweak } from './Proof'
+import { Timeline } from './Timeline'
 import { Deliverables } from './Deliverables'
 import { CAPTION_STYLES, CapPicker } from './captionStyles'
 import { VoiceCloneDialog } from './VoiceClone'
@@ -79,7 +80,7 @@ const PLACEHOLDER: Record<Stage, string> = {
 const CHIPS: Record<Stage, string[]> = {
   start: [], working: [],
   progress: ['照建議做', '先給我看分鏡', '旁白稿先給我看'],
-  revise: ['微調字幕、配樂、速度', '校對旁白', '換字幕樣式', '換一張封面畫面', '更多改法…'],
+  revise: ['微調字幕、配樂、速度', '調時間軸', '校對旁白', '換字幕樣式', '更多改法…'],
 }
 // The chip that is the default answer for a stage: shown as the main button, and sent when the box is empty.
 const DEFAULT_CHIP: Partial<Record<Stage, string>> = { progress: '照建議做' }
@@ -107,6 +108,12 @@ function splitConclusion(text: string): { head: string; rest: string } {
   else if (head.length > 60) { rest = head + '\n' + rest; head = head.slice(0, 40) + '…' }
   return { head, rest }
 }
+/** A selling point short enough for the phone preview: the part before the first comma, at most n characters. */
+const shortPt = (s = '', n = 12) => {
+  const head = s.split(/[，,、。；;]/)[0].trim()
+  const t = head.length >= 2 ? head : s.trim()
+  return t.length > n ? t.slice(0, n) + '…' : t
+}
 const clean = (s: string) => s.replace(/^#+\s*/, '').replace(/\*\*/g, '').replace(/^[-*•]\s+/, '').replace(/^\d+\.\s+/, '').trim()
 // 影片長度：travel short-form. 標準 is the default; each brief line goes into the first message.
 const LENGTHS = [
@@ -133,7 +140,7 @@ const STYLES = [
 ]
 /* 導演模式「更多改法」: ready-made requests. Picking one drops it into the box (to edit or combine before
    sending) — the point is to show that any change can simply be asked for. `tool` opens a panel instead. */
-type Idea = { l: string; send?: string; tool?: 'tweak' | 'proof' }
+type Idea = { l: string; send?: string; tool?: 'tweak' | 'proof' | 'timeline' }
 const IDEAS: { t: string; items: Idea[] }[] = [
   { t: '風格', items: [
     ...STYLES.map(st => ({ l: `改成${st.name}`, send: `整支改成「${st.name}」風格重剪：${st.brief.replace(/^風格：[^。]*。/, '')}` })),
@@ -144,6 +151,7 @@ const IDEAS: { t: string; items: Idea[] }[] = [
     { l: '重點詞再放大', send: '重點詞的字幕再放大、更明顯。' },
     { l: '加店名／房型標題', send: '上方加上店名和房型的標題字（Super title）。' }] },
   { t: '畫面', items: [
+    { l: '調每段長度（時間軸）', tool: 'timeline' },
     { l: '開頭換更吸睛的畫面', send: '開頭 3 秒換成最吸睛的畫面。' },
     { l: '多用空拍和戶外', send: '多用空拍和戶外的畫面，室內少一點。' },
     { l: '換一張封面畫面', send: '換一張封面畫面。' }] },
@@ -275,6 +283,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [proof, setProof] = useState<{ version: DeliverableVersion | null; lines?: Line[] } | null>(null)   // 導演模式: 校對台
   const [tweak, setTweak] = useState(false)   // 微調 panel (quick re-render without the editor)
   const [capStyle, setCapStyle] = useState<string>('gold')            // 導演模式: 字幕樣式 for the first cut
+  const [timeline, setTimeline] = useState<DeliverableVersion | null | false>(false)   // 時間軸 panel (導演模式)
   const [ideas, setIdeas] = useState(false)                            // 導演模式: 更多改法 sheet
   const [ownBusy, setOwnBusy] = useState(false)                        // re-voicing the video with the owner's voice
   const [vidVoice, setVidVoice] = useState<string | null>(null)        // the voice the latest version was narrated with
@@ -290,6 +299,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     if (easy) return
     try { if (sessionStorage.getItem('lk_open_proof') === projectId) { sessionStorage.removeItem('lk_open_proof'); openProof() } } catch { /* ignore */ }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const openTimeline = async () => { let v: DeliverableVersion | null = null; try { v = (await api.deliverables(projectId)).versions[0] ?? null } catch { v = null } setTimeline(v) }
   const prevExports = useRef<number | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const [voices, setVoices] = useState<Voice[]>([])
@@ -375,6 +385,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     setIdeas(false)
     if (it.tool === 'tweak') return setTweak(true)
     if (it.tool === 'proof') return void openProof()
+    if (it.tool === 'timeline') return void openTimeline()
     setText(t => (t.trim() ? t.replace(/\s*$/, '\n') : '') + (it.send ?? ''))
     setTimeout(() => taRef.current?.focus(), 50)
   }
@@ -695,7 +706,8 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
         </>
       )}
       {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} onProof={running ? undefined : v => openProof(undefined, v)} onTweak={running || easy ? undefined : () => setTweak(true)} />}
-      {proof && <Proof projectId={projectId} version={proof.version} lines={proof.lines} easy={easy} hasOwnVoice={voices.some(v => v.custom)} onClone={() => { setProof(null); recloneQuick.current = true; setCloning(true) }} onOwnVoice={easy && ownVoice && !usedOwn ? () => { setProof(null); switchToOwnVoice() } : undefined} onPro={easy && onMode ? () => { setProof(null); toPro() } : undefined} onClose={() => setProof(null)} onUsage={onUsage} onDone={afterQuick} onSend={t => { setTab('chat'); submit(t) }} />}
+      {proof && <Proof projectId={projectId} version={proof.version} lines={proof.lines} easy={easy} hasOwnVoice={voices.some(v => v.custom)} onClone={() => { setProof(null); recloneQuick.current = true; setCloning(true) }} onOwnVoice={easy && ownVoice && !usedOwn ? () => { setProof(null); switchToOwnVoice() } : undefined} onPro={easy && onMode ? () => { setProof(null); toPro() } : undefined} onTimeline={easy ? undefined : () => { const v = proof?.version ?? null; setProof(null); setTimeline(v) }} onClose={() => setProof(null)} onUsage={onUsage} onDone={afterQuick} onSend={t => { setTab('chat'); submit(t) }} />}
+      {timeline !== false && <Timeline projectId={projectId} version={timeline} onClose={() => setTimeline(false)} onDone={afterQuick} onUsage={onUsage} />}
       {tweak && <Tweak projectId={projectId} onClose={() => setTweak(false)} onDone={afterQuick} onUsage={onUsage} />}
       {tab === 'chat' && <>
       <VoiceSwapCtx.Provider value={voiceSwap}>
@@ -1130,7 +1142,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
             {CHIPS[stage].map(c => {
               const main = c === DEFAULT_CHIP[stage]
               return (
-                <button key={c} type="button" className={`qrb ${main ? 'main' : ''}`} disabled={running} onClick={() => c === '微調字幕、配樂、速度' || c === '換字幕樣式' ? setTweak(true) : c === '校對旁白' ? openProof() : c === '更多改法…' ? setIdeas(true) : submit(c)}>
+                <button key={c} type="button" className={`qrb ${main ? 'main' : ''}`} disabled={running} onClick={() => c === '微調字幕、配樂、速度' || c === '換字幕樣式' ? setTweak(true) : c === '校對旁白' ? openProof() : c === '更多改法…' ? setIdeas(true) : c === '調時間軸' ? openTimeline() : submit(c)}>
                   {main && <em>建議</em>}<span>{c}</span>
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </button>)
@@ -1285,8 +1297,8 @@ function ObPreview({ step, style, length, voiceName, uploads, linkOk, text, anal
       )}
       {step === 1 && analysis && (
         <div className={`ps-video ob-style ${style}`}>
-          <div className="ps-super">{analysis.selling_points.slice(1, 3).join(' · ') || '賣點'}</div>
-          <div className="ps-headline">{place}<br /><em>{analysis.selling_points[0] || ''}</em></div>
+          <div className="ps-super">{analysis.selling_points.slice(1, 3).map(x => shortPt(x, 10)).join(' · ') || '賣點'}</div>
+          <div className="ps-headline">{place}<br /><em>{shortPt(analysis.selling_points[0])}</em></div>
           {hook && <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /></span><small>{hook}</small></div>}
           <div className="ps-sub">{analysis.script[1]?.text || ''}</div>
           <div className="ps-play" />
@@ -1308,8 +1320,8 @@ function ObPreview({ step, style, length, voiceName, uploads, linkOk, text, anal
           <div className="ps-vhead"><b>v1</b><span className="ps-pill">成品</span><small>影片＋封面 · {st.name} · {(LENGTHS.find(l => l.id === length) ?? LENGTHS[1]).secs}</small></div>
           <div className="ps-result">
             <div className={`ps-video ob-style ${style}`}>
-              <div className="ps-super">{st.id === 'promo' ? '限時優惠 · 只到月底' : st.id === 'premium' ? place : analysis?.selling_points.slice(1, 3).join(' · ') || 'KTV · 電動麻將 · 寵物友善'}</div>
-              <div className="ps-headline">{st.id === 'promo' ? <>平日每人<br /><em>NT$1,500</em></> : st.id === 'premium' ? <>海的旁邊<br /><em>一棟只給你們</em></> : <>{place}<br /><em>{analysis?.selling_points[0] || '25米戲水池'}</em></>}</div>
+              <div className="ps-super">{st.id === 'promo' ? '限時優惠 · 只到月底' : st.id === 'premium' ? place : analysis?.selling_points.slice(1, 3).map(x => shortPt(x, 10)).join(' · ') || 'KTV · 電動麻將 · 寵物友善'}</div>
+              <div className="ps-headline">{st.id === 'promo' ? <>平日每人<br /><em>NT$1,500</em></> : st.id === 'premium' ? <>海的旁邊<br /><em>一棟只給你們</em></> : <>{place}<br /><em>{shortPt(analysis?.selling_points[0]) || '25米戲水池'}</em></>}</div>
               {voiceName && <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /></span><small>{voiceName} 旁白</small></div>}
               <div className="ps-sub">{st.id === 'promo' ? '現在訂省 NT$500' : st.id === 'premium' ? '慢下來，聽海' : hook || '推開窗就是龜山島海景'}</div>
               <div className="ps-play" />
@@ -1317,7 +1329,7 @@ function ObPreview({ step, style, length, voiceName, uploads, linkOk, text, anal
             </div>
             <div className="ps-covers">
               <div className="ps-cover a"><span>封面 A</span><b>{place}</b><em>NT$1,500</em></div>
-              <div className="ps-cover b"><span>封面 B</span><b>{analysis?.selling_points[0] || '25 米戲水池'}</b><em>平日每人 1,500</em></div>
+              <div className="ps-cover b"><span>封面 B</span><b>{shortPt(analysis?.selling_points[0], 10) || '25 米戲水池'}</b><em>平日每人 1,500</em></div>
             </div>
           </div>
           <div className="muted small">做好會自動歸檔到「成品」頁，可以一鍵分享給朋友。</div>

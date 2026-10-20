@@ -14,9 +14,9 @@ type Shot = { i: number; clip: number; start: number; dur: number; at: number }
 const STAR_MAX = 3
 const tc = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
-export function Proof({ projectId, version, lines: given, onClose, onSend, onUsage, onDone, easy = false, hasOwnVoice = true, onClone, onOwnVoice, onPro }:
+export function Proof({ projectId, version, lines: given, onClose, onSend, onUsage, onDone, easy = false, hasOwnVoice = true, onClone, onOwnVoice, onPro, onTimeline }:
   { projectId: string; version: DeliverableVersion | null; lines?: Line[]; onClose: () => void; onSend: (text: string) => void; onUsage?: () => void; onDone?: () => void
-    easy?: boolean; hasOwnVoice?: boolean; onClone?: () => void; onOwnVoice?: () => void; onPro?: () => void }) {
+    easy?: boolean; hasOwnVoice?: boolean; onClone?: () => void; onOwnVoice?: () => void; onPro?: () => void; onTimeline?: () => void }) {
   const toRows = (ls: (Line & { key?: string })[]): Row[] => ls.map((l, i) => ({ id: i + 1, n: i + 1, key: l.key, start: l.start, end: l.end, text: l.text }))
   const [quickOK, setQuickOK] = useState(false)      // the recipe is known: small changes re-render without the editor
   const [applying, setApplying] = useState(false)
@@ -173,6 +173,7 @@ export function Proof({ projectId, version, lines: given, onClose, onSend, onUsa
           <b>校對台</b>{version && <span className="pf-ver">v{version.version}</span>}
           <span className="muted small">{easy ? '點一句聽聽看，唸錯的自己唸一次就好' : '點句子直接改字 · 點秒數跳到那段'}</span>
           <span className="spacer" />
+          {!easy && onTimeline && shots.length > 0 && <a className="pf-whole" onClick={onTimeline}>時間軸</a>}
           {!easy && rows.length > 0 && <a className="pf-whole" onClick={() => setWhole(whole === null ? rows.map(shown).join('\n') : null)}>{whole === null ? '整篇改' : '回到逐句'}</a>}
           <a className="pf-x" onClick={onClose} aria-label="關閉">✕</a>
         </div>

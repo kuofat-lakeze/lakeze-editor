@@ -4,16 +4,20 @@ own take, ⭐ highlight, another voice, music level, narration speed, caption si
 lines whose words changed are re-voiced; everything else is ffmpeg. The cheap path behind the 校對台."""
 from __future__ import annotations
 
+import json
 import logging
+import shutil
 from pathlib import Path
 
 from .agent.tools import plan_load, plan_update
-from .pipeline import eleven, ff, mix, subs
+from .pipeline import cut, eleven, ff, mix, subs
+from .pipeline.footage import load_index
 
 log = logging.getLogger("quick")
 
 GAP = 0.15          # seconds kept between consecutive lines when a re-voiced one grew
 MIN_TEMPO, MAX_TEMPO = 0.9, 1.35
+MIN_SHOT = 0.6      # shortest segment the 時間軸 allows
 
 
 class QuickError(Exception):
@@ -50,6 +54,61 @@ def script_lines(root: Path) -> list[dict] | None:
     return out
 
 
+def shot_sources(root: Path) -> list[dict] | None:
+    """The picture cut (work/cut.json) with each source clip's length, for the 時間軸. None when there is no
+    cut or the raw footage is gone (originals are kept 7 days), since a re-cut needs the originals."""
+    f = root / "work" / "cut.json"
+    if not f.exists():
+        return None
+    try:
+        idx = load_index(root)
+    except FileNotFoundError:
+        return None
+    lens: dict[int, float] = {}
+    out = []
+    for s in json.loads(f.read_text()):
+        c = int(s["clip"])
+        if c not in lens:
+            src = root / "raw" / idx.get(c, "")
+            if not idx.get(c) or not src.is_file():
+                return None
+            lens[c] = round(ff.duration(src), 2)
+        out.append({**s, "src_dur": lens[c]})
+    return out
+
+
+def remap(t: float, old: list[tuple[float, float]], new: list[tuple[float, float]]) -> float:
+    """A moment on the old timeline → the same moment on the re-cut one: same offset into the same segment,
+    clamped to that segment's new length. old/new: [(at, dur)] per segment, in order."""
+    for (oa, od), (na, nd) in zip(old, new):
+        if t < oa + od - 1e-6:
+            return round(na + min(max(t - oa, 0.0), nd), 2)
+    (oa, od), (na, nd) = old[-1], new[-1]
+    return round(na + nd + max(0.0, t - oa - od), 2)
+
+
+def recut(root: Path, shot_edits: list[dict]) -> tuple[float, "callable"]:
+    """Re-cut base.mp4 with new segment lengths / source starts. Returns the new duration and a function that
+    maps old timeline seconds to new ones (for narration, supers, the price counter and sound effects)."""
+    src = shot_sources(root)
+    if not src:
+        raise QuickError("原始素材已超過保存期限，沒辦法再調段落長度；可以直接跟剪輯師說要怎麼改")
+    by_i = {int(e["i"]): e for e in shot_edits if "i" in e}
+    segs = []
+    for s in src:
+        e = by_i.get(int(s["i"]), {})
+        start = max(0.0, min(float(e.get("start", s["start"])), s["src_dur"] - MIN_SHOT))
+        dur = max(MIN_SHOT, min(float(e.get("dur", s["dur"])), s["src_dur"] - start))
+        seg = {"clip": s["clip"], "start": round(start, 2), "dur": round(dur, 2)}
+        if "crop_x" in s:
+            seg["crop_x"] = s["crop_x"]
+        segs.append(seg)
+    old_t = [(float(s["at"]), float(s["dur"])) for s in src]
+    r = cut.build_cut(root, segs)
+    new_t = [(float(x["at"]), float(x["dur"])) for x in json.loads((root / "work" / "cut.json").read_text())]
+    return float(r["duration"]), (lambda t: remap(float(t), old_t, new_t))
+
+
 def _caption_for(key: str, start: float, end: float, old_vo: list[dict], text: str, changed: bool, star: bool) -> dict:
     """The VO caption of a line: keep the editor's markup (**重點詞**) when the words didn't change."""
     kept = None
@@ -84,12 +143,38 @@ def plan_changes(root: Path, edits: dict) -> dict:
     new_voice = edits.get("voice_id") and edits["voice_id"] != voice.get("voice_id")
     if new_voice:
         revoice = [p["key"] for p in comp["placements"] if not any(e.get("key") == p["key"] and (e.get("drop") or e.get("take")) for e in edits.get("lines") or [])]
+    if edits.get("shots") and not shot_sources(root):
+        raise QuickError("原始素材已超過保存期限，沒辦法再調段落長度；可以直接跟剪輯師說要怎麼改")
     return {"revoice": revoice, "new_voice": bool(new_voice), "plan": plan}
 
 
 def render(root: Path, edits: dict, *, record_usage=None) -> dict:
+    """See _render. A 時間軸 change rewrites base.mp4 and cut.json before anything else, so they are backed up
+    and put back if the render fails — the picture and the recipe never disagree."""
+    if not edits.get("shots"):
+        return _render(root, edits, record_usage=record_usage)
+    work = root / "work"
+    keep = [work / "base.mp4", work / "cut.json"]
+    for f in keep:
+        if f.exists():
+            shutil.copyfile(f, f.with_name(f.name + ".bak"))
+    try:
+        out = _render(root, edits, record_usage=record_usage)
+    except Exception:
+        for f in keep:
+            b = f.with_name(f.name + ".bak")
+            if b.exists():
+                b.replace(f)
+        raise
+    for f in keep:
+        f.with_name(f.name + ".bak").unlink(missing_ok=True)
+    return out
+
+
+def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
     """Apply `edits` to the recipe and produce a new export. Blocking (ffmpeg, ElevenLabs): run in a thread.
-    edits: {lines:[{key,text?,say?,drop?,take?,star?}], voice_id?, music_gain?, speed?, caption_scale?, caption_style?, counter_color?}
+    edits: {lines:[{key,text?,say?,drop?,take?,star?}], shots:[{i,dur?,start?}], voice_id?, music_gain?, speed?,
+            caption_scale?, caption_style?, counter_color?}
     Returns {"files": {master, upload, preview}, "revoiced": [keys]}."""
     info = plan_changes(root, edits)
     plan = info["plan"]
@@ -97,6 +182,11 @@ def render(root: Path, edits: dict, *, record_usage=None) -> dict:
     texts = dict(voice.get("lines") or {})
     by_key = {e["key"]: e for e in edits.get("lines") or [] if e.get("key")}
     voice_id = edits.get("voice_id") or voice["voice_id"]
+
+    # 0. 時間軸: re-cut the picture first; everything placed in time moves with its segment
+    tmap = None
+    if edits.get("shots"):
+        new_dur, tmap = recut(root, edits["shots"])
 
     # 1. re-voice the lines whose words (or voice) changed; the owner's take replaces a line's audio
     vo_dir = root / "work" / "vo"
@@ -118,6 +208,8 @@ def render(root: Path, edits: dict, *, record_usage=None) -> dict:
         if e.get("drop"):
             continue
         q = dict(p)
+        if tmap:
+            q["at"] = tmap(p["at"])
         if e.get("take"):
             src = vo_dir / f"{e['take']}.mp3"
             if not src.exists():
@@ -146,12 +238,13 @@ def render(root: Path, edits: dict, *, record_usage=None) -> dict:
 
     # 3. mix
     base = root / "work" / "base.mp4"
-    dur = float(comp.get("duration") or (ff.duration(base) if base.exists() else 37.0))
+    dur = new_dur if tmap else float(comp.get("duration") or (ff.duration(base) if base.exists() else 37.0))
     music = root / "work" / f"{comp['music']}.mp3" if comp.get("music") else None
     if music and not music.exists():
         music = None
     gain = float(edits["music_gain"]) if edits.get("music_gain") is not None else float(comp.get("music_gain", 0.55))
-    sfx = [{"file": f"sfx_{s['name']}.mp3", "at": s["at"], "gain": s.get("gain", 0.5)} for s in comp.get("sfx") or []
+    sfx_plan = [{**s, "at": tmap(s["at"])} if tmap else s for s in comp.get("sfx") or []]
+    sfx = [{"file": f"sfx_{s['name']}.mp3", "at": s["at"], "gain": s.get("gain", 0.5)} for s in sfx_plan
            if (root / "work" / f"sfx_{s['name']}.mp3").exists()]
     mix.compose(root, placements, music, dur, music_gain=gain, duck_ratio=float(comp.get("duck_ratio", 6.0)), sfx=sfx)
     if record_usage:
@@ -159,18 +252,24 @@ def render(root: Path, edits: dict, *, record_usage=None) -> dict:
 
     # 4. captions: VO rebuilt from the new timing, supers and counter as before
     old_vo = caps.get("vo") or []
+    supers = caps.get("supers") or []
+    counter = dict(caps.get("counter") or {}) or None
+    if tmap:
+        old_vo = [{**c, "start": tmap(c["start"]), "end": tmap(c["end"])} for c in old_vo]
+        supers = [{**c, "start": tmap(c["start"]), "end": min(tmap(c["end"]), dur)} for c in supers]
+        if counter:
+            counter.update(start=tmap(counter["start"]), end=min(tmap(counter["end"]), dur))
     vo = []
     for q in placements:
         s, e = timing[q["key"]]
         ed = by_key.get(q["key"], {})
         changed = q["key"] in info["revoice"] or bool(ed.get("take")) or bool(ed.get("text"))
         vo.append(_caption_for(q["key"], s, min(e, dur), old_vo, texts.get(q["key"], q["key"]), changed, bool(ed.get("star"))))
-    counter = dict(caps.get("counter") or {}) or None
     if counter and edits.get("counter_color"):
         counter["color"] = edits["counter_color"]
     scale = float(edits.get("caption_scale") or 1.0)
     style = edits.get("caption_style") if edits.get("caption_style") in subs.CAPTION_STYLES else caps.get("style", subs.DEFAULT_STYLE)
-    ass = subs.build_ass(vo, caps.get("supers") or [], counter, root / "work" / "subs.ass", vo_scale=scale, style=style)
+    ass = subs.build_ass(vo, supers, counter, root / "work" / "subs.ass", vo_scale=scale, style=style)
     dark = (float(counter["start"]) - 0.6, float(counter["end"])) if counter else None
     video = subs.burn(base, ass, root / "work" / "video.mp4", dark)
 
@@ -179,6 +278,6 @@ def render(root: Path, edits: dict, *, record_usage=None) -> dict:
 
     # 6. the recipe now describes this version
     plan_update(root, "voice", {**voice, "voice_id": voice_id, "lines": texts})
-    plan_update(root, "compose", {**comp, "placements": placements, "music_gain": gain})
-    plan_update(root, "captions", {"vo": vo, "supers": caps.get("supers") or [], "counter": counter, "style": style})
+    plan_update(root, "compose", {**comp, "placements": placements, "music_gain": gain, "duration": dur, "sfx": sfx_plan})
+    plan_update(root, "captions", {"vo": vo, "supers": supers, "counter": counter, "style": style})
     return {"files": files, "revoiced": info["revoice"]}
