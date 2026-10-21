@@ -8,7 +8,8 @@ export type QuickEdits = { shots?: { i: number; dur?: number; start?: number; dr
 export type ScriptInfo = { lines: { n: number; key?: string; start: number; end: number; text: string }[]; voice_id: string; say_points: number
   shots: { i: number; clip: number; start: number; dur: number; at: number; src_dur?: number }[]; quick: boolean; recut?: boolean
   caption_style?: string; font?: string; super_style?: string; caption_scale?: number; supers?: { i: number; start: number; end: number; text: string }[]
-  counter?: { start: number; end: number; amount: number; color?: string } | null; music?: boolean; music_gain?: number; speed?: number; sfx?: { name: string; at: number }[]; duration?: number | null }
+  counter?: { start: number; end: number; amount: number; color?: string } | null; music?: boolean; music_gain?: number; speed?: number; sfx?: { name: string; at: number }[]; duration?: number | null
+  takes?: Record<string, string> }   // the owner's own line recordings (R<n>) → audio url, for instant replay
 export type DeliverableVersion = { version: number; label?: string; name?: string; created_at: string; videos: Asset[]; covers: Asset[]; main: Asset | null; expires_at?: string | null; poster?: string | null }
 export type ShareLink = { id: string; token: string; url: string; version: number | null; allow_download: boolean; note: string; expires_at: string | null; revoked: boolean; views: number; created_at: string; fb_app_id?: string | null }
 export type DeliverablesData = { project: { id: string; name: string; final_version: number | null; exports: number }; versions: DeliverableVersion[]; shares: ShareLink[] }

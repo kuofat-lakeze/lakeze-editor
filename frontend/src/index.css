@@ -2364,3 +2364,9 @@ body.easy .recbar-lab em { font-size: 22px; } body.easy .recbar-stop { font-size
 .side-ref { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #FFF8EE; border: 1px solid #F3DFC0; cursor: pointer; color: var(--text); margin: 2px 0 6px; }
 .side-ref b { font-size: 14px; } .side-ref .gal-arr { margin-left: auto; color: var(--muted); } .side-ref-ic { font-size: 16px; }
 .share-ref { display: block; color: var(--brand); font-weight: 700; margin-top: 4px; }
+/* 改完馬上聽: the preview bar under the video, and the 聽改好的 button */
+.pv-bar { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 1.45; color: var(--muted); padding: 8px 12px; border-radius: 10px; background: var(--panel2); }
+.pv-bar i:not(.own-eq) { font-style: normal; color: var(--brand); font-weight: 800; flex: none; } .pv-bar span { flex: 1; min-width: 0; } .pv-bar a { flex: none; font-weight: 800; color: var(--brand); cursor: pointer; padding: 4px 8px; }
+.pv-bar.on { color: #1B5E8F; background: #E6F1FA; font-weight: 700; } .pv-bar.on a { color: #1B5E8F; }
+.pf-tb.new { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); } .pf-tb.new i { color: var(--brand); } .pf-tb.new.on { background: var(--brand); color: #fff; } .pf-tb.new.on i { color: #fff; }
+.pf-tb.quiet { border-color: transparent; background: transparent; color: var(--muted); font-weight: 600; }

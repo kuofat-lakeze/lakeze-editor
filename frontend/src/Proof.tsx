@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, verLabel, type DeliverableVersion, type LineEdit, type QuickEdits, type ScriptInfo } from './api'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
 import { FixSay } from './Pronounce'
+import { sayCached, useLinePreview } from './preview'
 
 /* 校對旁白 (輕鬆模式): the finished video and its narration, one big row per line. Each row can be
    listened to, re-read by the owner (speech-to-speech in the video's voice) or dropped — the picture
@@ -29,8 +30,12 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
   const audio = useRef<HTMLAudioElement | null>(null)
   const stopAt = useRef<number | null>(null)
   const src = version?.videos.find(v => v.role === 'preview')?.url ?? version?.main?.url ?? null
+  // 改完馬上聽: the new line over the old picture (see preview.ts); takeUrls = the owner's recordings by key
+  const pv = useLinePreview(video)
+  const takeUrls = useRef<Record<string, string>>({})
+  const [hearing, setHearing] = useState<string | null>(null)   // line whose new voice is being generated
   useEffect(() => {
-    api.script(projectId).then(r => { setInfo(r); setSt(s => ({ ...s, order: (r.shots ?? []).map(x => x.i) })) }).catch(() => {}).finally(() => setLoading(false))
+    api.script(projectId).then(r => { setInfo(r); takeUrls.current = r.takes ?? {}; setSt(s => ({ ...s, order: (r.shots ?? []).map(x => x.i) })) }).catch(() => {}).finally(() => setLoading(false))
   }, [projectId])
   useEffect(() => { onLines?.(st.lines) }, [st.lines]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { audio.current?.pause() }, [])
@@ -67,7 +72,19 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
   const keptRows = rows.filter(r => !isDropped(r))
 
   const onTime = () => { const v = video.current; if (!v) return; const t = v.currentTime; setCur(rows.findIndex(r => t >= r.line.start && t < r.line.end)); if (stopAt.current !== null && t >= stopAt.current) { v.pause(); stopAt.current = null } }
-  const play = (r: Row) => { const v = video.current; if (!v) return; stopAt.current = r.line.end + 0.1; v.currentTime = r.line.start; v.play().catch(() => {}) }
+  const play = (r: Row) => { pv.stop(); const v = video.current; if (!v) return; stopAt.current = r.line.end + 0.1; v.currentTime = r.line.start; v.play().catch(() => {}) }
+  /** Hear the line as it will sound after 套用: the owner's take, or a freshly generated line (one sample, cached). */
+  const hearNew = async (r: Row, o?: { text?: string; say?: string; takeUrl?: string }) => {
+    const key = r.line.key ?? ''; const e = st.lines[key] ?? {}
+    pv.unlock(); setErr(''); stopAt.current = null
+    const takeUrl = o?.takeUrl ?? (e.take ? takeUrls.current[e.take] : undefined)
+    if (takeUrl) { pv.play(key, r.line.start, r.line.end, takeUrl); return }
+    const text = (o?.say ?? o?.text ?? e.say ?? e.text ?? r.line.text).trim()
+    if (!text) return
+    setHearing(key)
+    try { const s = await sayCached(projectId, text, info?.voice_id ?? ''); if (!s.cached) onUsage?.(); await pv.play(key, r.line.start, r.line.end, s.url) }
+    catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? `點數不足：聽新配音要 ${ex.needed} 點` : ex.message) } finally { setHearing(null) }
+  }
   const recorder = useRecorder(async blob => {
     const key = takeFor; const r = rows.find(x => x.line.key === key); setTakeFor(null)
     if (!key || !r) return
@@ -76,7 +93,7 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
       const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'take.m4a' : 'take.webm'); fd.append('n', String(r.line.n)); fd.append('mode', 'raw')
       const res = await fetch(`/api/projects/${projectId}/take`, { method: 'POST', body: fd }); const d = await res.json().catch(() => ({}))
       if (!res.ok) throw Object.assign(new Error(d.detail ?? '處理錄音失敗'), { needed: d.needed })
-      onUsage?.(); setTake(key, d.key); audio.current?.pause(); const a = new Audio(d.url); audio.current = a; a.play().catch(() => {})
+      onUsage?.(); setTake(key, d.key); takeUrls.current[d.key] = d.url; hearNew(r, { takeUrl: d.url })   // hear it in place right away
     } catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? `點數不足：需要 ${ex.needed} 點` : ex.message) } finally { setTakeBusy(false) }
   })
   const startTake = async (r: Row) => { video.current?.pause(); setTakeFor(r.line.key ?? null); if (!await recorder.start()) setTakeFor(null) }
@@ -98,12 +115,18 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
   return (
     <div className="pf-scrim" onClick={e => { if (e.target === e.currentTarget) cancel() }}>
       <div className="pf" role="dialog" aria-label="校對旁白">
-        <SheetHead title="校對旁白" badge={version ? verLabel(version.version) : undefined} sub={changed ? '改了還沒套用；返回會先留著' : '聽一聽：改字、唸錯了，或拿掉'} onCancel={cancel} cancelLabel="← 返回"
+        <SheetHead title="校對旁白" badge={version ? verLabel(version.version) : undefined} sub={changed ? '改了還沒套用 · 可先逐句聽，影片套用後才更新' : '聽一聽：改字、唸錯了，或拿掉'} onCancel={cancel} cancelLabel="← 返回"
           right={<button className="btn primary small" disabled={changed === 0 || applying} onClick={apply}>{applying ? '輸出中…' : '套用'}</button>} />
         <div className="pf-body">
           <div className="pf-video">
             {src ? <video ref={video} src={src} controls playsInline preload="metadata" poster={version?.poster ?? undefined} onTimeUpdate={onTime} onLoadedMetadata={onTime} />
               : <div className="pf-novideo muted small">這一版還沒有影片檔。</div>}
+            {pv.on ? (
+              <div className="pv-bar on" role="status" aria-live="polite"><i className="own-eq"><b /><b /><b /></i>
+                <span>正在聽改好的第 {Math.max(1, keptRows.findIndex(r => r.line.key === pv.on) + 1)} 句 · 畫面是原本的，配音是新的</span><a onClick={pv.stop}>停</a></div>
+            ) : changed > 0 ? (
+              <div className="pv-bar"><i aria-hidden="true">ⓘ</i><span>改好的句子可以先按「聽改好的」；整支影片要按「套用修改」重新輸出後才會更新。{info?.say_points ? `生成新配音每句 ${info.say_points} 點，自己唸的免費。` : ''}</span></div>
+            ) : null}
           </div>
           <ol className="pf-lines ez">
             {onOwnVoice && !loading && rows.length > 0 && (
@@ -128,13 +151,16 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
                       <div className="pf-editacts">
                         <button type="button" className="btn" onClick={() => setEditing(null)}>取消</button>
                         {e.text !== undefined && <button type="button" className="btn" onClick={() => { setText(r, r.line.text); setEditing(null) }}>還原原句</button>}
-                        <button type="button" className="btn primary" onClick={() => { setText(r, draft); setEditing(null) }}>改好了</button>
+                        <button type="button" className="btn primary" onClick={() => { const t = draft.trim(); setText(r, t); setEditing(null); if (t && t !== (e.text ?? r.line.text)) hearNew(r, { text: t }) }}>改好了，聽聽看</button>
                       </div>
                     </div>)}
                   {recHere ? <RecBar r={recorder} hint="用你本人的聲音唸這一句" /> : (
                     <div className="pf-tools" onClick={ev => ev.stopPropagation()}>
+                      {!drop && (e.text !== undefined || e.say !== undefined || e.take) ? <>
+                        <button type="button" className={`pf-tb new ${pv.on === r.line.key ? 'on' : ''}`} disabled={hearing === r.line.key} onClick={() => (pv.on === r.line.key ? pv.stop() : hearNew(r))}><i>{hearing === r.line.key ? '…' : '▶'}</i>{hearing === r.line.key ? '生成中' : pv.on === r.line.key ? '停' : '聽改好的'}</button>
+                        <button type="button" className="pf-tb quiet" onClick={() => play(r)}>聽原本的</button>
+                      </> : !drop && <button type="button" className="pf-tb" onClick={() => play(r)}><i>▶</i>聽這句</button>}
                       {!drop && <>
-                        <button type="button" className="pf-tb" onClick={() => play(r)}><i>▶</i>聽這句</button>
                         <button type="button" className={`pf-tb ${e.text !== undefined ? 'on' : ''}`} onClick={() => { setDraft(e.text ?? r.line.text); setEditing(editing === r.line.key ? null : (r.line.key ?? null)) }}><i>✎</i>改字</button>
                         {!e.take && <button type="button" className={`pf-tb ${e.say !== undefined ? 'on' : ''}`} onClick={() => setFixing(r)}><i>ㄅ</i>唸錯了</button>}
                         {e.take && <button type="button" className="pf-tb on" disabled={recorder.rec || takeBusy} onClick={() => startTake(r)}><i>🗣</i>{takeBusy ? '處理中…' : '再唸一次'}</button>}
@@ -147,11 +173,11 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
           </ol>
         </div>
         {fixing && <FixSay text={fixing.line.text} say={st.lines[fixing.line.key ?? '']?.say} projectId={projectId} voiceId={info?.voice_id ?? ''} onUsage={onUsage}
-          onSay={s => setSay(fixing, s)} onOwn={() => startTake(fixing)} onClose={() => setFixing(null)} />}
+          onSay={s => { setSay(fixing, s); if (s) hearNew(fixing, { say: s }) }} onOwn={() => startTake(fixing)} onClose={() => setFixing(null)} />}
         {(err || recorder.err) && <div className="error small pf-err">{err || recorder.err}</div>}
         <div className="pf-foot">
           {past.current.length > 0 && !applying && <button type="button" className="btn small" onClick={undo}>↶ 復原</button>}
-          <span className="muted small">{changed > 0 ? [nTexts && `改字 ${nTexts} 句`, nSays && `改唸法 ${nSays} 句`, nTakes && `親自唸 ${nTakes} 句`, nDrops && `拿掉 ${nDrops} 句`, moved && '換了順序'].filter(Boolean).join(' · ') : '唸得都對就不用改'}</span>
+          <span className="muted small">{changed > 0 ? [nTexts && `改字 ${nTexts} 句`, nSays && `改唸法 ${nSays} 句`, nTakes && `親自唸 ${nTakes} 句`, nDrops && `拿掉 ${nDrops} 句`, moved && '換了順序'].filter(Boolean).join(' · ') + ' · 套用後重新輸出約 1–2 分鐘' : '唸得都對就不用改'}</span>
           <span className="spacer" />
           <button className="btn primary" disabled={changed === 0 || applying} onClick={apply}>{applying ? '重新輸出中…（約 1–2 分鐘）' : '套用修改 →'}</button>
         </div>

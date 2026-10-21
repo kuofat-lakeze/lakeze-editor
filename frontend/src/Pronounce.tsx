@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api } from './api'
+import { sayCached } from './preview'
 
 /* 唸錯了: the simple way to fix an AI mispronunciation. Tap the wrong character(s), write how they should
    sound (a homophone: 重→蟲, 行→形), listen, confirm. The caption keeps the real words; only what the AI reads
@@ -31,7 +31,7 @@ export function FixSay({ text, say, projectId, voiceId, onSay, onOwn, onClose, o
   const listen = async () => {
     if (playing) { audio.a?.pause(); setPlaying(false); return }
     setErr(''); setPlaying(true)
-    try { const r = await api.say(projectId, preview, voiceId); onUsage?.(); const a = new Audio(r.url); audio.a = a; a.onended = () => setPlaying(false); await a.play() }
+    try { const r = await sayCached(projectId, preview, voiceId); if (!r.cached) onUsage?.(); const a = new Audio(r.url); audio.a = a; a.onended = () => setPlaying(false); await a.play() }
     catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? `點數不足：試聽要 ${ex.needed} 點` : ex.message); setPlaying(false) }
   }
   return (

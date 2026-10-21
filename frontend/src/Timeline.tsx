@@ -3,6 +3,7 @@ import { api, verLabel, type DeliverableVersion, type LineEdit, type QuickEdits,
 import { CapPicker, FontPicker, SuperPicker, StyleHint } from './captionStyles'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
 import { FixSay } from './Pronounce'
+import { sayCached, useLinePreview } from './preview'
 
 /* 時間軸 (導演模式): the whole finished video laid out like a cutting room — one track per kind of thing,
    the playhead running through all of them:
@@ -67,10 +68,13 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
   useEffect(() => { if (sel && window.innerHeight < 760) wrap.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }) }, [sel])
   const stopAt = useRef<number | null>(null)   // 播放這段: pause when the segment ends
   const src = version?.videos.find(v => v.role === 'preview')?.url ?? version?.main?.url ?? null
+  // 改完馬上聽: the new line over the old picture (see preview.ts); takeUrls = the owner's recordings by key
+  const pv = useLinePreview(video)
+  const takeUrls = useRef<Record<string, string>>({})
 
   useEffect(() => {
     api.script(projectId).then(r => {
-      setInfo(r); setSt({ ...empty(r.shots ?? []), lines: initialLines ?? {} })
+      setInfo(r); takeUrls.current = r.takes ?? {}; setSt({ ...empty(r.shots ?? []), lines: initialLines ?? {} })
       setOk(!!r.quick && (r.shots ?? []).length > 0)
     }).catch(() => setOk(false))
     api.voices().then(setVoices).catch(() => {})
@@ -135,10 +139,10 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
 
   // ---- playback ----
   const onTime = () => { const v = video.current; if (!v) return; setT(v.currentTime); if (stopAt.current !== null && v.currentTime >= stopAt.current) { v.pause(); stopAt.current = null } }
-  const seekOld = (x: number, play = false) => { const v = video.current; if (!v) return; v.currentTime = Math.max(0, Math.min(oldTotal, x)); if (play) v.play().catch(() => {}); else v.pause() }
+  const seekOld = (x: number, play = false) => { pv.stop(); const v = video.current; if (!v) return; v.currentTime = Math.max(0, Math.min(oldTotal, x)); if (play) v.play().catch(() => {}); else v.pause() }
   const playShot = (s: Shot) => { stopAt.current = s.at + Math.min(durOf(s), s.dur) - 0.05; seekOld(s.at + 0.02, true) }
   const playLine = (l: Line) => { stopAt.current = l.end; seekOld(l.start, true) }
-  const toggle = () => { const v = video.current; if (!v) return; stopAt.current = null; if (v.paused) v.play().catch(() => {}); else v.pause() }
+  const toggle = () => { pv.stop(); const v = video.current; if (!v) return; stopAt.current = null; if (v.paused) v.play().catch(() => {}); else v.pause() }
   const scrubRef = useRef(false)
   const scrubTo = (clientX: number) => { const el = scroll.current; if (!el) return; const x = clientX - el.getBoundingClientRect().left + el.scrollLeft - 12; seekOld(toOld(Math.max(0, x / pps))) }
   const playheadX = lay.map(Math.min(t, oldTotal)) * pps
@@ -153,12 +157,18 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
   const curLine = sel?.kind === 'line' ? lines.find(l => l.key === sel.key) : undefined
   const curLE = curLine ? st.lines[curLine.key ?? ''] ?? {} : {}
   const shownText = (l: Line) => st.lines[l.key ?? '']?.text ?? l.text
-  const say = async () => {
+  /** Hear the selected line as it will sound after 套用, over the picture: the owner's take, or a generated line (one sample, cached). */
+  const say = async (o?: { say?: string; text?: string; takeUrl?: string }) => {
     if (!curLine || saying) return
-    const text = (curLE.say ?? curLE.text ?? curLine.text).trim()
-    setSaying(true); setErr('')
-    try { video.current?.pause(); const res = await api.say(projectId, text, info?.voice_id ?? ''); onUsage?.(); audio.current?.pause(); const a = new Audio(res.url); audio.current = a; a.onended = () => setSaying(false); await a.play() }
-    catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? `點數不足：試聽要 ${ex.needed} 點` : ex.message); setSaying(false) }
+    const key = curLine.key!; const e = curLE
+    pv.unlock(); setErr(''); stopAt.current = null
+    const takeUrl = o?.takeUrl ?? (e.take ? takeUrls.current[e.take] : undefined)
+    if (takeUrl) { pv.play(key, curLine.start, curLine.end, takeUrl); return }
+    const text = (o?.say ?? o?.text ?? e.say ?? e.text ?? curLine.text).trim()
+    if (!text) return
+    setSaying(true)
+    try { const res = await sayCached(projectId, text, st.style.voice ?? info?.voice_id ?? ''); if (!res.cached) onUsage?.(); await pv.play(key, curLine.start, curLine.end, res.url) }
+    catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? `點數不足：試聽要 ${ex.needed} 點` : ex.message) } finally { setSaying(false) }
   }
   const recorder = useRecorder(async blob => {
     if (!curLine) return
@@ -167,7 +177,7 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
       const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'take.m4a' : 'take.webm'); fd.append('n', String(curLine.n)); fd.append('mode', 'raw')
       const res = await fetch(`/api/projects/${projectId}/take`, { method: 'POST', body: fd }); const d = await res.json().catch(() => ({}))
       if (!res.ok) throw Object.assign(new Error(d.detail ?? '轉換失敗'), { needed: d.needed })
-      onUsage?.(); edLine(curLine.key!, { take: d.key }); audio.current?.pause(); const a = new Audio(d.url); audio.current = a; a.play().catch(() => {})
+      onUsage?.(); edLine(curLine.key!, { take: d.key }); takeUrls.current[d.key] = d.url; say({ takeUrl: d.url })   // hear it in place right away
     } catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? `點數不足：需要 ${ex.needed} 點` : ex.message) } finally { setTakeBusy(false) }
   })
 
@@ -217,6 +227,7 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
             <div className="tl2-video">
               {src ? <video ref={video} src={src} playsInline preload="metadata" poster={version?.poster ?? undefined} onTimeUpdate={onTime} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onClick={toggle} />
                 : <div className="pf-novideo muted small">這一版沒有影片檔，先調文字與樣式。</div>}
+              {pv.on && <div className="pv-bar on" role="status" aria-live="polite"><i className="own-eq"><b /><b /><b /></i><span>正在聽改好的第 {lines.find(l => l.key === pv.on)?.n ?? ''} 句 · 畫面是原本的，配音是新的</span><a onClick={pv.stop}>停</a></div>}
               <div className="tl2-ctl">
                 <button type="button" className="tl2-play" onClick={toggle} aria-label={playing ? '暫停' : '播放'}>{playing ? '❚❚' : '▶'}</button>
                 <span className="tl2-time">{tc(lay.map(Math.min(t, oldTotal)))} <small>/ {tc(lay.total)}</small></span>
@@ -334,7 +345,8 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
                   {recorder.rec ? <RecBar r={recorder} hint="照這句唸一次，唸完按右邊" /> : (
                     <div className="pf-tools">
                       {!e.drop && <>
-                        <button type="button" className="pf-tb" disabled={saying || !txt.trim()} onClick={say}><i>▶</i>{saying ? '播放中' : '試聽'}</button>
+                        {(() => { const edited = e.text !== undefined || e.say !== undefined || !!e.take; const on = pv.on === l.key
+                          return <button type="button" className={`pf-tb ${edited ? 'new' : ''} ${on ? 'on' : ''}`} disabled={saying || !txt.trim()} onClick={() => (on ? pv.stop() : say())}><i>{saying ? '…' : '▶'}</i>{saying ? '生成中' : on ? '停' : edited ? '聽改好的' : '試聽'}</button> })()}
                         {!e.take && <button type="button" className={`pf-tb ${e.say !== undefined ? 'on' : ''}`} onClick={() => setFixing(true)}><i>ㄅ</i>唸錯了</button>}
                         <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={takeBusy} onClick={() => recorder.start()} title="這句直接用你本人的聲音，會自動對上時間"><i>🗣</i>{takeBusy ? '處理中…' : e.take ? '再親自唸' : '我親自唸'}</button>
                         <button type="button" className={`pf-tb ${e.star ? 'on' : ''}`} disabled={!e.star && stars >= 3} onClick={() => edLine(l.key!, { star: !e.star })}><i>⭐</i>重點</button>
@@ -342,7 +354,8 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
                       <button type="button" className={`pf-tb ${e.drop ? 'on' : ''}`} onClick={() => edLine(l.key!, { drop: !e.drop })}><i>✕</i>{e.drop ? '還是要' : '刪掉'}</button>
                     </div>)}
                   {recorder.err && <div className="error small">{recorder.err}</div>}
-                  {fixing && <FixSay text={txt} say={e.say} projectId={projectId} voiceId={st.style.voice ?? info.voice_id} onUsage={onUsage} onSay={s => edLine(l.key!, { say: s ?? '' })} onOwn={() => recorder.start()} onClose={() => setFixing(false)} />}
+                  {(e.text !== undefined || e.say !== undefined || e.take) && !e.drop && <div className="muted small">這句改好了可以先聽；影片本身要按「套用」重新輸出後才會更新。</div>}
+                  {fixing && <FixSay text={txt} say={e.say} projectId={projectId} voiceId={st.style.voice ?? info.voice_id} onUsage={onUsage} onSay={s => { edLine(l.key!, { say: s ?? '' }); if (s) say({ say: s }) }} onOwn={() => recorder.start()} onClose={() => setFixing(false)} />}
                 </div>)
             })()}
 
@@ -375,7 +388,7 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
         )}
         {err && <div className="error small pf-err">{err}</div>}
         <div className="pf-foot">
-          <span className="muted small">{nChanges ? `改了 ${nChanges} 處 · ${needsRecut ? '重剪約 2–3 分鐘' : '重出約 1–2 分鐘'}` : '還沒有改動'}</span><span className="spacer" />
+          <span className="muted small">{nChanges ? `改了 ${nChanges} 處 · 旁白可先逐句聽；畫面、順序、樣式要套用後才看得到（${needsRecut ? '重剪約 2–3 分鐘' : '重出約 1–2 分鐘'}）` : '還沒有改動'}</span><span className="spacer" />
           <button className="btn primary" disabled={!ok || nChanges === 0 || busy} onClick={apply}>{busy ? '重新輸出中…' : '套用 →'}</button>
         </div>
       </div>

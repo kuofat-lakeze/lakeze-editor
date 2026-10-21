@@ -1071,6 +1071,13 @@ async def project_script(project_id: str, user: User = CurrentUser):
                 lines = _script_lines(blocks[-1])
         if lines and voice_id:
             break
+    # the owner's own line recordings (R<n>) so the editors can replay them right away, even after a reload
+    takes: dict[str, str] = {}
+    async with Session() as s:
+        for a in (await s.execute(select(Asset).where(Asset.project_id == project_id, Asset.kind == "audio").order_by(Asset.created_at))).scalars().all():
+            meta = json.loads(a.meta or "{}")
+            if meta.get("role") == "line_take" and meta.get("key"):
+                takes[meta["key"]] = f"/api/projects/{project_id}/assets/{a.id}"
     shots: list[dict] = []
     recut = False
     try:
@@ -1086,7 +1093,7 @@ async def project_script(project_id: str, user: User = CurrentUser):
             "supers": [{"i": k, "start": c["start"], "end": c["end"], "text": c["text"].replace("**", "")} for k, c in enumerate(caps.get("supers") or [])],
             "counter": caps.get("counter"), "music": bool(comp.get("music")), "music_gain": comp.get("music_gain", 0.55),
             "speed": next((float(p.get("tempo", 1.0)) for p in comp.get("placements") or []), 1.0),
-            "sfx": [{"name": x.get("name"), "at": x.get("at")} for x in comp.get("sfx") or []], "duration": comp.get("duration")}
+            "sfx": [{"name": x.get("name"), "at": x.get("at")} for x in comp.get("sfx") or []], "duration": comp.get("duration"), "takes": takes}
 
 
 class QuickBody(BaseModel):
