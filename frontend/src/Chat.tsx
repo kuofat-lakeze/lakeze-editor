@@ -129,6 +129,19 @@ const ANALYZE_POINTS = 14   // = backend analyze.ANALYZE_POINTS (probe_footage)
 const ROLE_LABEL: Record<string, string> = { hook: '開場', feature: '賣點', price: '價格', cta: '行動' }
 const STAR_MAX = 3            // more than this and nothing is a highlight
 const REWRITE = '\u0000rewrite'   // edits[n] marker: let the editor rewrite the line
+// 還缺 helpers: information gaps vs footage gaps, the words a gap is looked up by, and the （價格）-style placeholders
+const INFO_RE = /價格|價錢|費用|多少錢|套餐|菜單|店名|名稱|名字|地址|地點|位置|電話|營業|時間|訂房|訂位|連結|優惠|方案|房型|人數|日期/
+const SYN: string[][] = [['價格', '價錢', '費用', '套餐', '多少錢'], ['店名', '名稱', '名字', '店家'], ['地址', '地點', '位置'], ['電話', '聯絡'], ['營業', '時間'], ['優惠', '方案', '折扣']]
+const PLACE_RE = /（[^）]+）|\([^)]+\)/
+const cleanMiss = (m: string) => m.replace(/^(補充?|建議補|請補|缺少?)/, '').replace(/[。，、\s]+$/, '').trim()
+const missKeys = (m: string) => {
+  const parts = m.split(/[與和、／/或及\s]+/).map(s => s.trim()).filter(k => k.length >= 2)
+  const out = new Set(parts)
+  for (const k of parts) for (const g of SYN) if (g.some(w => k.includes(w))) g.forEach(w => out.add(w))
+  return [...out]
+}
+const bigrams = (s: string) => { const t = s.replace(/[^\p{Script=Han}A-Za-z0-9]/gu, ''); const o: string[] = []; for (let i = 0; i + 2 <= t.length; i++) o.push(t.slice(i, i + 2)); return o }
+type MissItem = { m: string; kind: 'info' | 'footage'; line: { n: number; text: string } | null; state: 'open' | 'line' | 'fill' | 'footage' | 'skip' }
 const AN_PHASES = ['看每個畫面', '找出賣點', '排分鏡', '寫旁白稿', '估算點數']
 const EXAMPLE_BRIEF = '宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑，結尾請大家點連結查空房。'
 const STYLES = [
@@ -286,8 +299,14 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [superStyle, setSuperStyle] = useState<string>('chip')        // 導演模式: 標題樣式
   const [moreStyle, setMoreStyle] = useState(false)                   // 字型與標題樣式 unfolded on step 3
   const [uqFold, setUqFold] = useState(false)                         // the upload list folds to one line once the editor has the files
-  const [fills, setFills] = useState<Record<string, string>>({})      // 輕鬆模式: what the analysis said is still missing (價格、店名…)
-  const [skipFill, setSkipFill] = useState(false)                     // 輕鬆模式: 先不補，之後再補
+  // 還缺: how each gap the analysis found gets resolved (see missItems below)
+  const [fills, setFills] = useState<Record<string, string>>({})      // typed in directly (價格、店名…)
+  const [skips, setSkips] = useState<string[]>([])                    // decided not to fill
+  const [missFiles, setMissFiles] = useState<Record<string, number>>({})   // footage added for it after the analysis
+  const [missOpen, setMissOpen] = useState<string | null>(null)       // the gap whose 直接填 box is open on the review step
+  const [missBusy, setMissBusy] = useState<string | null>(null)       // the gap whose footage is uploading right now
+  const missInput = useRef<HTMLInputElement>(null)
+  const missFor = useRef('')
   const [timeline, setTimeline] = useState<{ version: DeliverableVersion | null; tab: 'tracks' | 'style' } | null>(null)   // 時間軸 (導演模式)
   const [voicePick, setVoicePick] = useState(false)                  // 換成我的聲音: 我親自一句一句配音 or AI 生成我的聲音
   const [ownRead, setOwnRead] = useState<DeliverableVersion | null | false>(false)   // 我親自配音 flow
@@ -484,8 +503,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const ezBrief = easy && !!analysis   // 輕鬆模式 with an analysis: no text box, the brief is the kept selling points + the fills
   const briefText = () => {
     if (!ezBrief) return text.trim()
-    const extra = Object.entries(fills).filter(([, v]) => v.trim()).map(([k, v]) => `${k}：${v.trim()}`)
-    return [`賣點：${pickedPoints.join('、')}`, ...extra].join('\n')
+    return [`賣點：${pickedPoints.join('、')}`, ...missLines()].join('\n')
   }
   const canStart = hasFootage && (ezBrief || text.trim().length > 0) && !uploading && voice !== null
   const obDone = [hasFootage, !!analysis || skipAn, (ezBrief || text.trim().length > 0) && voice !== null]
@@ -504,6 +522,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
       !easy && font !== 'black' ? `字型：${font}（${FONTS.find(c => c.id === font)?.name ?? ''}）` : '',
       !easy && superStyle !== 'chip' ? `標題樣式：${superStyle}（${SUPER_STYLES.find(c => c.id === superStyle)?.name ?? ''}）` : '',
       ...adjustLines(),
+      ...(ezBrief ? [] : missLines().filter(l => !text.includes(l))),   // 導演模式: the gaps resolved outside the text box (素材、不補)
       voice === NO_VOICE ? '不要配音：只要配樂和字幕，賣點用字幕呈現。'
         : v ? `旁白用 ${v.name}（voice_id ${v.voice_id}），直接做到輸出影片和封面，不用再問我選聲音或確認稿子。` : '',
     ]
@@ -518,7 +537,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     try {
       const a = await api.analyze(projectId, { brief: [themeLine(), text.trim()].filter(Boolean).join('\n'), drive_url: linkOk && !okUploads ? link.trim() : '' })
       atBottom.current = false   // land on the selling points, not the bottom of the card
-      setProj(p => p && { ...p, analysis: a }); setPicked(null); setSkipAn(false)
+      setProj(p => p && { ...p, analysis: a }); setPicked(null); setSkipAn(false); setFills({}); setSkips([]); setMissFiles({}); setMissOpen(null)
       onUsage()
       setTimeout(() => { threadRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); setUnseen(false) }, 60)
     } catch (e) {
@@ -544,26 +563,119 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     for (const c of pins) { const cl = analysis.clips.find(x => x.n === c); out.push(`調整：素材 #${String(c).padStart(2, '0')}${cl ? `（${cl.photo ? '照片' : `${Math.round(cl.dur)} 秒影片`}）` : ''} 一定要用，請排進分鏡。`) }
     return out
   }
+  // ---- 還缺 ---------------------------------------------------------------------------------
+  // One model for the gaps the analysis found, shared by the review step and the easy-mode brief. Each gap
+  // is an information gap (店名、價格…) or a footage gap (外觀、夜景…) and is resolved one of four ways:
+  // editing the narration line that waits for it, typing it in, adding footage for it, or deciding not
+  // to fill it. A gap that belongs only to a selling point the user un-ticked disappears with it.
+  const missLine = (m: string) => {
+    if (!analysis) return null
+    const keys = missKeys(m)
+    const hit = (t: string) => keys.some(k => t.includes(k))
+    // the line with a （價格）-style placeholder for it first, then any line that mentions it — never a random placeholder
+    return analysis.script.find(l => { const ph = l.text.match(PLACE_RE)?.[0]; return !!ph && hit(ph) }) ?? analysis.script.find(l => hit(l.text)) ?? null
+  }
+  const missItems = (): MissItem[] => {
+    if (!analysis) return []
+    const dropped = analysis.selling_points.filter(s => !pickedPoints.includes(s))
+    const out: MissItem[] = []
+    for (const raw of analysis.missing) {
+      const m = cleanMiss(raw)
+      if (!m || out.some(x => x.m === m)) continue
+      if (dropped.some(s => bigrams(s).some(b => m.includes(b)))) continue   // only there for a selling point that is gone
+      const kind: MissItem['kind'] = INFO_RE.test(m) ? 'info' : 'footage'
+      const line = kind === 'info' ? missLine(m) : null
+      const ed = line ? edits[line.n] : undefined
+      const state: MissItem['state'] = fills[m]?.trim() ? 'fill' : (missFiles[m] ?? 0) > 0 ? 'footage'
+        : line && ed !== undefined && ed !== REWRITE && !drops.includes(line.n) ? 'line' : skips.includes(m) ? 'skip' : 'open'
+      out.push({ m, kind, line, state })
+    }
+    return out
+  }
+  const missGone = () => analysis ? [...new Set(analysis.missing.map(cleanMiss))].filter(m => m && !missItems().some(x => x.m === m)) : []
+  // what the editor is told about them (the edited narration lines travel separately, see adjustLines)
+  const missLines = (): string[] => missItems().flatMap(it =>
+    it.state === 'fill' ? [`${it.m}：${fills[it.m].trim()}`]
+      : it.state === 'footage' ? [`補充素材：為了「${it.m}」在解析之後又上傳了 ${missFiles[it.m]} 個素材，請一併看過並用上。`]
+        : it.state === 'skip' ? [`「${it.m}」先不補，照現有素材做。`] : [])
+  // 改那句旁白 → the line opened for editing, scrolled into view. A gap with no line gets the 直接填 box instead.
+  const jumpMissing = (it: MissItem) => {
+    const line = it.line
+    if (!line) { setMissOpen(it.m); return }
+    setEditText(edits[line.n] && edits[line.n] !== REWRITE ? edits[line.n] : line.text); setEditing(line.n); setSheet(null)
+    setTimeout(() => threadRef.current?.querySelector(`[data-n="${line.n}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+  }
+  const skipMiss = (m: string, on: boolean) => { setSkips(s => on ? [...new Set([...s, m])] : s.filter(x => x !== m)); if (on) { setMissOpen(o => (o === m ? null : o)); setFills(f => { const c = { ...f }; delete c[m]; return c }) } }
+  const addFootage = (m: string) => { missFor.current = m; missInput.current?.click() }
+  const onMissFiles = async (files: FileList | null) => {
+    const m = missFor.current; if (!m || !files?.length) return
+    setMissBusy(m); skipMiss(m, false)
+    const ok = await onFiles(files)
+    setMissBusy(null)
+    if (ok) setMissFiles(f => ({ ...f, [m]: (f[m] ?? 0) + ok }))
+  }
   // Step 2 → 3: the kept selling points become the brief (the user can still edit it).
   const useAnalysis = () => {
     if (easy) { goStep(2); return }
     if (analysis && !text.trim()) {
-      const miss = analysis.missing.filter(m => /價格|店名|名稱/.test(m)).map(m => `${m.replace(/^補充?/, '')}：`)
-      setText([`賣點：${pickedPoints.join('、')}`, ...miss].join('\n'))
+      const items = missItems()
+      const filled = items.filter(i => i.state === 'fill').map(i => `${i.m}：${fills[i.m].trim()}`)
+      const open = items.filter(i => i.kind === 'info' && i.state === 'open').map(i => `${i.m}：`)
+      setText([`賣點：${pickedPoints.join('、')}`, ...filled, ...open].join('\n'))
     } else if (analysis && extraPts.length && !extraPts.every(x => text.includes(x))) {
       setText(t => t.replace(/\s*$/, '\n') + `也要講：${extraPts.filter(x => !text.includes(x)).join('、')}`)
     }
     goStep(2)
   }
-  // 還缺 → the narration line that is waiting for it (a （店名）／（價格） placeholder or the same word), opened for editing
-  const jumpMissing = (m: string) => {
-    if (!analysis) return
-    const keys = m.replace(/^補充?/, '').split(/[與和、／/\s]+/).filter(k => k.length >= 2)
-    const line = analysis.script.find(l => /（[^）]+）/.test(l.text) && keys.some(k => l.text.includes(k)))
-      ?? analysis.script.find(l => keys.some(k => l.text.includes(k))) ?? analysis.script.find(l => /（[^）]+）/.test(l.text))
-    if (!line) { useAnalysis(); return }
-    setEditText(edits[line.n] && edits[line.n] !== REWRITE ? edits[line.n] : line.text); setEditing(line.n); setSheet(null)
-    setTimeout(() => threadRef.current?.querySelector(`[data-n="${line.n}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+  // The 還缺 rows: on the review step (both modes) and again as 還要補的 on the easy-mode brief step.
+  const renderMiss = (brief: boolean) => {
+    if (!analysis) return null
+    const items = missItems(), gone = missGone()
+    if (!items.length && !gone.length) return null
+    const open = items.filter(i => i.state === 'open')
+    const hint = (m: string) => /價格|價錢|費用|套餐/.test(m) ? '例：平日每人 1,500' : /店名|名稱/.test(m) ? '例：雲岫海景會館' : /地點|地址/.test(m) ? '例：宜蘭頭城' : /電話/.test(m) ? '例：03-123-4567' : /營業|時間/.test(m) ? '例：11:00–21:00' : ''
+    const label = (it: MissItem) => it.state === 'line' ? `✓ 已改第 ${it.line!.n} 句` : it.state === 'fill' ? (brief ? '✓ 已填' : `✓ 已填：${fills[it.m].trim()}`) : it.state === 'footage' ? `✓ 加了 ${missFiles[it.m]} 個素材` : it.state === 'skip' ? '先不補' : ''
+    return (
+      <div className={`an-sec miss ${brief ? 'ez-miss' : ''}`}>
+        <div className="miss-h"><b>{brief ? '還要補的' : '還缺'}</b>
+          <span className="muted small">{!items.length ? '都齊了' : !open.length ? '都處理好了' : brief ? '補了影片更完整，也可以先不補' : '改那句旁白、直接填或補素材，也可以先不補'}</span>
+          {open.length > 1 && <a className="small" onClick={() => open.forEach(i => skipMiss(i.m, true))}>全部先不補</a>}
+        </div>
+        {items.map(it => {
+          const boxOpen = it.kind === 'info' && it.state !== 'skip' && it.state !== 'line' && (brief || missOpen === it.m)
+          return (
+            <div key={it.m} className={`miss-row ${it.state} ${it.kind}`}>
+              <div className="miss-top">
+                <i className="miss-ic" aria-hidden="true">{it.kind === 'info' ? 'ℹ︎' : '🎬'}</i><b>{it.m}</b>
+                {it.state !== 'open' && <em className={`miss-badge ${it.state === 'skip' ? '' : 'ok'}`}>{label(it)}</em>}
+                {missBusy === it.m && <em className="miss-badge wait"><span className="spinner" />上傳中</em>}
+                <span className="spacer" />
+                {it.state === 'skip' && <a className="small" onClick={() => skipMiss(it.m, false)}>還是要補</a>}
+                {it.state === 'line' && <a className="small" onClick={() => (brief ? (goStep(1), setTimeout(() => jumpMissing(it), 80)) : jumpMissing(it))}>再改</a>}
+                {it.state === 'fill' && !brief && missOpen !== it.m && <a className="small" onClick={() => setMissOpen(it.m)}>改</a>}
+                {it.state === 'footage' && missBusy !== it.m && <a className="small" onClick={() => addFootage(it.m)}>再加</a>}
+              </div>
+              {boxOpen && (
+                <div className="miss-in">
+                  <input value={fills[it.m] ?? ''} placeholder={hint(it.m) || `寫在這裡`} autoFocus={!brief && missOpen === it.m && !fills[it.m]} inputMode={/價格|價錢|費用|電話/.test(it.m) ? 'text' : undefined}
+                    onChange={e => setFills(f => ({ ...f, [it.m]: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { (e.target as HTMLInputElement).blur(); setMissOpen(null) } }} />
+                  {!brief && <button type="button" className="btn small primary" onClick={() => setMissOpen(null)}>好了</button>}
+                </div>
+              )}
+              {it.state === 'open' && missBusy !== it.m && (
+                <div className="miss-acts">
+                  {it.kind === 'info' && it.line && <button type="button" className="pf-tb" onClick={() => (brief ? (goStep(1), setTimeout(() => jumpMissing(it), 80)) : jumpMissing(it))}><i>✎</i>改那句旁白</button>}
+                  {it.kind === 'info' && !brief && !boxOpen && <button type="button" className="pf-tb" onClick={() => setMissOpen(it.m)}><i>⌨</i>直接填</button>}
+                  {it.kind === 'footage' && <button type="button" className="pf-tb" onClick={() => addFootage(it.m)}><i>📎</i>補上傳素材</button>}
+                  <button type="button" className="pf-tb quiet" onClick={() => skipMiss(it.m, true)}>先不補</button>
+                </div>
+              )}
+            </div>)
+        })}
+        {gone.length > 0 && <div className="muted small miss-gone">跟著拿掉的賣點一起略過：{gone.join('、')}</div>}
+        <input ref={missInput} type="file" multiple accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp,.heic" hidden onChange={e => { onMissFiles(e.target.files); e.target.value = '' }} />
+      </div>
+    )
   }
   const copyScript = () => { if (analysis) navigator.clipboard?.writeText(analysis.script.map(l => l.text).join('\n')).catch(() => {}) }
   const stageNow = (): Stage => !proj ? 'start' : running ? 'working' : proj.messages.length === 0 ? 'start' : proj.credits.exports > 0 ? 'revise' : 'progress'
@@ -600,11 +712,11 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
       return false
     }
   }
-  const onFiles = async (files: FileList | File[] | null) => {
+  const onFiles = async (files: FileList | File[] | null): Promise<number> => {
     setPicking(false); setPickFail(false); setPickBack(false)
     const list = Array.from(files ?? [])
     api.clientLog('files_selected', { n: list.length, files: list.map(f => ({ name: f.name, size: f.size, type: f.type })) })
-    if (!list.length) return
+    if (!list.length) return 0
     setErr('')
     if (list.length > MAX_FILES) { setErr(`素材超過 ${MAX_FILES} 個：建議放進雲端資料夾（Google 雲端、Dropbox、iCloud），把分享連結貼在下面就好，不用一個個傳。這次先傳前 ${MAX_FILES} 個。`); list.splice(MAX_FILES) }
     const ups: Up[] = list.map(f => ({ id: Math.random().toString(36).slice(2, 10), file: f, name: f.name || 'clip.mp4', size: f.size, loaded: 0,
@@ -616,6 +728,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
       if (await runUpload(up)) ok++
     }
     if (ok && proj && proj.messages.length > 0) setText(t => t || `我上傳了 ${ok} 支素材，請先分析。`)
+    return ok
   }
   const retryUpload = (id: string) => setUploads(us => { const u = us.find(x => x.id === id); if (u) queueMicrotask(() => { runUpload(u) }); return us })
   const removeUpload = (id: string) => setUploads(us => us.filter(u => u.id !== id))
@@ -630,7 +743,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     try {
       await api.deleteUpload(projectId, u.server)
       setUploads(us => us.filter(x => x.id !== id))
-      if (analysis) { setProj(p => p && { ...p, analysis: null }); setPicked(null) }
+      if (analysis) { setProj(p => p && { ...p, analysis: null }); setPicked(null); setFills({}); setSkips([]); setMissFiles({}); setMissOpen(null) }
       api.clientLog('upload_deleted', { name: u.server })
     } catch (e) { patchUp(id, { status: 'ok' }); setErr((e as Error).message) }
   }
@@ -930,11 +1043,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                       {nAdjust > 0 && <div className="an-adj"><b>已調整 {nAdjust} 處</b><span className="muted small">會一起交給剪輯師</span><a className="small" onClick={resetAdjust}>全部還原</a></div>}
                       {analysis.transcript_notes && <div className="muted small">現場音：{analysis.transcript_notes}</div>}
                     </div>
-                    {analysis.missing.length > 0 && (
-                      <div className="an-sec an-miss">
-                        <b>還缺</b>{analysis.missing.map(m => <button type="button" key={m} className="pill miss" onClick={() => jumpMissing(m)}>{m} ›</button>)}<span className="muted small">點一下跳到那句旁白補上；或下一步補在賣點裡。</span>
-                      </div>
-                    )}
+                    {renderMiss(false)}
                     <div className={`an-est ${analysis.estimate.enough_two ? 'ok' : analysis.estimate.enough_first ? 'warn' : 'short'}`}>
                       <div className="an-est-rows">
                         <div><span>第一版影片＋封面</span><b>{analysis.estimate.first_video_points} 點</b></div>
@@ -974,22 +1083,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                       </div>
                       {!ezBrief && <div className="muted small ob-sub">一句話說這支要賣什麼</div>}
                     </>}
-                    {ezBrief && analysis && (() => {
-                      const miss = analysis.missing.map(m => m.replace(/^補充?/, '').replace(/[。，]$/, '')).filter(Boolean)
-                      const hint = (m: string) => /價格|價錢|費用/.test(m) ? '例：平日每人 1,500' : /店名|名稱/.test(m) ? '例：雲岫海景會館' : /地點|地址/.test(m) ? '例：宜蘭頭城' : ''
-                      return (
-                        <div className="ez-miss">
-                          {miss.length === 0 ? <div className="ez-miss-ok">✓ 賣點都齊了，剪輯師會照上一步留的賣點做。</div> : <>
-                            <div className="ez-miss-h"><b>還要補的</b><span className="muted small">補了影片更完整；也可以先不補，做好後再加</span></div>
-                            {miss.map(m => (
-                              <label key={m} className={`ez-miss-row ${skipFill && !fills[m]?.trim() ? 'skip' : ''}`}><span>{m}</span>
-                                <input value={fills[m] ?? ''} placeholder={skipFill ? '之後再補' : hint(m)} onChange={e => { setFills(f => ({ ...f, [m]: e.target.value })); if (e.target.value.trim()) setSkipFill(false) }} />
-                              </label>))}
-                            {!skipFill && miss.some(m => !fills[m]?.trim()) && <a className="ez-miss-skip" onClick={() => setSkipFill(true)}>先不補，之後再補 →</a>}
-                            {skipFill && <div className="muted small">好，先不補。做好後跟剪輯師說一聲就能加上。</div>}
-                          </>}
-                        </div>)
-                    })()}
+                    {ezBrief && analysis && (renderMiss(true) ?? <div className="ez-miss"><div className="ez-miss-ok">✓ 賣點都齊了，剪輯師會照上一步留的賣點做。</div></div>)}
                     {!ezBrief && <div className={`spot ${!text.trim() ? 'on' : ''}`}>
                       {!text.trim() && <span className="coach">在這裡打字</span>}
                       <textarea rows={4} value={text} onChange={e => setText(e.target.value)} autoFocus={!text}
@@ -1412,9 +1506,14 @@ function ObPreview({ projectId, step, style, length, voiceName, uploads, linkOk,
   const frameA = sb[0] ? api.frameUrl(projectId, sb[0].clip, sb[0].t, true) : null
   const altB = sb.find(x => x.clip !== sb[0]?.clip) ?? sb[1]
   const frameB = altB ? api.frameUrl(projectId, altB.clip, altB.t, true) : null
+  const altC = sb.find(x => x.clip !== sb[0]?.clip && x.clip !== altB?.clip) ?? sb[2] ?? sb[0]
+  const frameC = altC ? api.frameUrl(projectId, altC.clip, altC.t, true) : null
   return (
     <aside className="ob-prev">
-      <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? (analysis ? '封面會像這樣' : analyzing ? '解析完你會看到' : '解析完你會看到') : '選好或貼好，剪輯師會自己把素材抓下來'}</span></div>
+      <div className="ob-prev-head">
+        <span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? (analysis ? '封面會像這樣' : analyzing ? '解析完你會看到' : '解析完你會看到') : '選好或貼好，剪輯師會自己把素材抓下來'}</span>
+        {step === 1 && analysis && <span className="ob-prev-sub">完成時會有 2–3 款可選</span>}
+      </div>
       {step === 1 && !analysis && (
         <div className="ob-prev-an">
           <div className="pa-chips">{['無邊際泳池看海', '包棟', '龜山島日出', '寵物友善'].map((c, i) => <span key={c} className={i === 0 ? 'top' : ''}>{c}</span>)}</div>
@@ -1427,13 +1526,21 @@ function ObPreview({ projectId, step, style, length, voiceName, uploads, linkOk,
         </div>
       )}
       {step === 1 && analysis && (
-        <div className={`pc pc-${style}`}>
-          {frameA && <img src={frameA} alt="" />}
-          <div className="pc-grad" />
-          <div className="pc-top">{analysis.selling_points.slice(1, 3).map(x => shortPt(x, 8)).join(' · ')}</div>
-          <div className="pc-title">{place}<em>{shortPt(analysis.selling_points[0])}</em></div>
-          <div className="pc-price">{price ?? '價格補上後會放這裡'}</div>
-          <div className="pc-note">完成時會有 2–3 款可選</div>
+        <div className="pc-set">
+          <div className={`pc pc-${style}`}>
+            {frameA && <img src={frameA} alt="" />}
+            <div className="pc-grad" />
+            <div className="pc-top">{analysis.selling_points.slice(1, 3).map(x => shortPt(x, 8)).join(' · ')}</div>
+            <div className="pc-title">{place}<em>{shortPt(analysis.selling_points[0])}</em></div>
+            <div className="pc-price">{price ?? '價格補上後會放這裡'}</div>
+            <span className="pc-tag">1 · 這款的概念</span>
+          </div>
+          {/* the other variants: same facts, different picture and layout — the real ones come with the video */}
+          <div className="pc-alts" aria-label="其他款">
+            <div className={`pc-alt v2 pc-${style}`}>{frameB && <img src={frameB} alt="" />}<i /><b>{shortPt(analysis.selling_points[0], 8)}</b><em>{price ?? '價格'}</em><span>2</span></div>
+            <div className={`pc-alt v3 pc-${style}`}>{frameC && <img src={frameC} alt="" />}<i /><b>{place}</b><em>{shortPt(analysis.selling_points[1] ?? analysis.selling_points[0], 8)}</em><span>3</span></div>
+            <div className="pc-alts-note muted small">另外 1–2 款換畫面和排版，做好一起給你挑</div>
+          </div>
         </div>
       )}
       {step === 0 && (

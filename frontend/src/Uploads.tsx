@@ -62,7 +62,6 @@ export function PickGuide({ onGo, onClose }: { onGo: () => void; onClose: () => 
         </div>
         <p className="pg1-line">按 <span className="pg1-chip">✓</span> 後，<span className="pg1-chip dim">✓</span> 變淡＝正在下載，等它跑完</p>
         <div className="pg-facts">
-          <span><i>📱</i>選「相片庫」</span>
           <span><i>📶</i>網路要穩</span>
           <span><i>⏱</i>1 分鐘影片 ≈ 等 15 秒</span>
         </div>
@@ -194,7 +193,7 @@ export function UploadQueue({ ups, onRetry, onRemove, onDelete, onClose, hint }:
               </div>
               <div className="uq-act">
                 {u.status === 'ok' && <span className="uq-check" aria-label="完成">✓</span>}
-                {u.status === 'ok' && onDelete && !busy && <button type="button" className="uq-del" title="刪掉這個素材" aria-label={`刪掉 ${u.name}`} onClick={() => onDelete(u.id)}><TrashIcon /></button>}
+                {u.status === 'ok' && onDelete && <button type="button" className="uq-del" title="刪掉這個素材" aria-label={`刪掉 ${u.name}`} onClick={() => onDelete(u.id)}><TrashIcon /></button>}
                 {u.status === 'del' && <span className="spinner" />}
                 {u.status === 'err' && <><a className="small" onClick={() => onRetry(u.id)}>重試</a><a className="small muted" onClick={() => onRemove(u.id)}>移除</a></>}
                 {u.status === 'wait' && <a className="small muted" onClick={() => onRemove(u.id)}>移除</a>}

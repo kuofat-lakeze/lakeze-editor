@@ -20,12 +20,21 @@ const SHARE_TOKEN = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/)?.[1]
 const IS_DASH = location.hostname.startsWith('dashboard.') || /^\/dashboard(\/|$)/.test(location.pathname)
 const LEGAL_PAGE = location.pathname === '/privacy' ? 'privacy' : location.pathname === '/terms' ? 'terms' : null
 
-/* 專案名稱 examples: a different one each time, across the kinds of video people make. */
-const PROJECT_EXAMPLES = [
-  '雲岫海景渡假會館', '礁溪溫泉 villa 秋季', '東林餐館 桌邊片烤鴨', '台南巷弄老宅咖啡', '花蓮七星潭一日遊', '阿里山日出小旅行',
-  '九份夜景老街散步', '墾丁包棟泳池趴', '新竹露營車開箱', '民宿早餐開箱', '日月潭環湖自行車', '台東熱氣球嘉年華',
-  '宜蘭親子農場', '北投溫泉飯店評測', '高雄駁二文青一日', '澎湖花火節', '烘焙工作室新品', '健身房開幕', '美甲工作室春季款', '家具展示間導覽',
+/* 專案名稱 examples, one list per kind of video. Each time the dialog opens it shows one name from
+   each of a few different kinds (住宿、食記、景點、開箱、活動、店家), so people see the range, not one genre. */
+const PROJECT_EXAMPLES: string[][] = [
+  ['雲岫海景渡假會館', '礁溪溫泉 villa 秋季', '墾丁包棟泳池趴', '北投溫泉飯店評測', '清境雲海小木屋'],
+  ['東林餐館 桌邊片烤鴨', '台南巷弄老宅咖啡', '基隆夜市蟹肉羹食記', '阿嬤的古早味肉粽', '板橋深夜拉麵'],
+  ['花蓮七星潭一日遊', '阿里山日出小旅行', '九份夜景老街散步', '日月潭環湖自行車', '高雄駁二文青一日'],
+  ['新竹露營車開箱', '民宿早餐開箱', '新款電動滑板車開箱', '露營帳篷開箱', '家具展示間導覽'],
+  ['台東熱氣球嘉年華', '澎湖花火節', '健身房開幕派對', '公司尾牙花絮', '婚禮戶外證婚'],
+  ['烘焙工作室新品', '美甲工作室春季款', '寵物美容沙龍', '手作陶藝體驗課', '二手書店巡禮'],
 ]
+const pickExamples = (n: number) => {
+  const kinds = [...PROJECT_EXAMPLES]
+  for (let i = kinds.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [kinds[i], kinds[j]] = [kinds[j], kinds[i]] }
+  return kinds.slice(0, n).map(k => k[Math.floor(Math.random() * k.length)])
+}
 const FIRST_EXAMPLES = ['民宿介紹', '餐廳食記', '景點一日遊', '新品開箱', '活動花絮']
 
 import { VersionBar } from './Version'
@@ -105,8 +114,8 @@ function Workspace() {
     : <Landing onStart={() => { setAuth('signup'); history.pushState(null, '', '/signup') }} onLogin={() => { setAuth('login'); history.pushState(null, '', '/login') }} />}</>
 
   const newProject = async (prefill = '') => {
-    const ex = PROJECT_EXAMPLES[Math.floor(Math.random() * PROJECT_EXAMPLES.length)]
-    const name = (await ask.prompt('幫這個新專案取個名字', { placeholder: `例如：${ex}`, value: prefill, ok: '建立專案' }))?.trim()
+    const ex = pickExamples(4)
+    const name = (await ask.prompt('幫這個新專案取個名字', { placeholder: `例如：${ex[0]}`, examples: ex, value: prefill, ok: '建立專案' }))?.trim()
     if (!name) return
     const p = await api.createProject(name)
     setProjects([p, ...projects]); setCurrent(p.id); setView('chat'); setMenu(false)
