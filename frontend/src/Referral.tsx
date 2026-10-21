@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type Referral } from './api'
 import { LineIcon, MessengerIcon, shareToLine, shareToMessenger } from './share'
+import { IcCheck, IcCopy, IcGift, IcShare } from './icons'
 
 /* 推薦好友: one card that does the whole job — what a friend is worth right now (30 點, or 60 點 while you
    subscribe), the personal link with the share buttons, and the friends list with where each one is.
@@ -32,23 +33,23 @@ export function ReferralCard({ onPlans, compact }: { onPlans?: () => void; compa
       <div className="refc-head">
         <div className="refc-k">推薦朋友，拿點數</div>
         <div className="refc-big"><span>每推薦一位</span><b>+{now}</b><small>點</small>{r.subscribed && <em className="refc-x2">訂閱中 ×2</em>}</div>
-        <div className="refc-how">
-          <span><i>1</i>朋友用連結註冊<small>他拿 {r.signup_points} 點</small></span>
-          <span><i>2</i>他做出第一支影片<small>你拿 {now} 點</small></span>
-        </div>
+        <ol className="refc-flow">
+          <li><i><IcShare size={15} /></i><b>你分享連結</b></li>
+          <li><i>+{r.signup_points}</i><b>朋友註冊</b><small>他拿 {r.signup_points} 點</small></li>
+          <li className="hl"><i>+{now}</i><b>他做出第一支</b><small>你拿 {now} 點</small></li>
+        </ol>
       </div>
-      <div className="refc-link">
-        <div className="refc-url" onClick={copy} title="點一下複製">{url.replace(/^https?:\/\//, '')}</div>
-        <div className="refc-btns">
-          <button className="btn primary" onClick={share}>傳給朋友</button>
+      <div className="refc-link v2">
+        <div className="refc-urlrow"><span className="refc-url" onClick={copy} title="點一下複製">{url.replace(/^https?:\/\//, '')}</span><button type="button" className="refc-copy" onClick={copy} aria-label="複製連結"><IcCopy size={16} /></button></div>
+        <button className="btn primary lg block refc-share" onClick={share}><IcShare size={18} />傳給朋友</button>
+        <div className="refc-btns v2">
           <button className="btn line" onClick={() => shareToLine(text)}><LineIcon /> LINE</button>
           <button className="btn msg" onClick={() => { if (shareToMessenger(url, r.fb_app_id) === 'copied') say('連結已複製，貼到 Messenger') }}><MessengerIcon /> Messenger</button>
-          <button className="btn" onClick={copy}>複製</button>
         </div>
       </div>
       {!r.subscribed && (
-        <a className="refc-up" onClick={onPlans}>
-          <b>訂閱任一方案，每位變 +{r.points_sub} 點</b><small>訂閱期間推薦都是雙倍，點數不歸零</small><i>›</i>
+        <a className="refc-up v2" onClick={onPlans}>
+          <span className="refc-up-ic"><IcGift size={18} /></span><span className="refc-up-t"><b>訂閱任一方案，每位變 +{r.points_sub} 點</b><small>訂閱期間推薦都是雙倍，點數不歸零</small></span><i>›</i>
         </a>
       )}
       <div className="refc-stats">
@@ -62,7 +63,7 @@ export function ReferralCard({ onPlans, compact }: { onPlans?: () => void; compa
             <div key={i} className={`refc-row ${f.points != null ? 'is-paid' : f.made_video ? 'is-made' : ''}`}>
               <i className="refc-av" aria-hidden="true">{(f.name || f.email)[0].toUpperCase()}</i>
               <span className="refc-who"><b>{f.name || f.email}</b><small>{when(f.joined_at)} 加入</small></span>
-              <span className="refc-st">{f.points != null ? `✓ +${f.points} 點` : f.made_video ? '影片做好了' : '還沒做第一支'}</span>
+              <span className="refc-st">{f.points != null ? <><IcCheck size={12} /> +{f.points} 點</> : f.made_video ? '影片做好了' : '還沒做第一支'}</span>
             </div>))}
           {r.friends.length > 3 && <a className="small" onClick={() => setOpen(o => !o)}>{open ? '收起' : `看全部 ${r.friends.length} 位`}</a>}
           {waiting > 0 && <div className="muted small">{waiting} 位還沒做出第一支影片，提醒他們一下就有點數進來。</div>}

@@ -21,3 +21,13 @@ export const IcTimer = ({ size }: { size?: number }) => <I size={size} d={['M10 
 export const IcCheck = ({ size }: { size?: number }) => <I size={size} d="m4 12.5 5 5L20 6.5" />
 export const IcRedo = ({ size }: { size?: number }) => <I size={size} d={['M21 7v6h-6', 'M20.5 13A9 9 0 1 1 18 5.3L21 8']} />
 export const IcRefresh = ({ size }: { size?: number }) => <I size={size} d={['M21 12a9 9 0 1 1-2.6-6.4L21 8', 'M21 3v5h-5']} />
+export const IcSparkle = ({ size }: { size?: number }) => <I size={size} d={['M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z', 'M19 17l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z']} />
+export const IcHome = ({ size }: { size?: number }) => <I size={size} d={['M3 11.5 12 4l9 7.5', 'M5.5 10v10h13V10', 'M10 20v-6h4v6']} />
+export const IcFork = ({ size }: { size?: number }) => <I size={size} d={['M7 3v7a3 3 0 0 0 6 0V3', 'M10 3v18', 'M17 3c-1.7 1.5-2.5 4-2.5 7 0 2 1 3 2.5 3v8']} />
+export const IcMountain = ({ size }: { size?: number }) => <I size={size} d={['M3 20 10 7l4 7 2-3 5 9z', 'M16 5h.01']} />
+export const IcBox = ({ size }: { size?: number }) => <I size={size} d={['M3 8l9-4 9 4-9 4z', 'M3 8v9l9 4 9-4V8', 'M12 12v9']} />
+export const IcParty = ({ size }: { size?: number }) => <I size={size} d={['M5 20 8.5 9l6.5 6.5z', 'M14 4l.5 2', 'M19 6l-2 1.5', 'M20 11l-2-.3', 'M11 3l1 2']} />
+export const IcStore = ({ size }: { size?: number }) => <I size={size} d={['M4 9 5.5 4h13L20 9', 'M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9', 'M5 11v9h14v-9', 'M10 20v-5h4v5']} />
+export const IcShare = ({ size }: { size?: number }) => <I size={size} d={['M12 3v12', 'm7.5 7.5 4.5-4.5 4.5 4.5', 'M5 12v8h14v-8']} />
+export const IcCopy = ({ size }: { size?: number }) => <I size={size} d={['M9 9h11v11H9z', 'M5 15H4V4h11v1']} />
+export const IcGift = ({ size }: { size?: number }) => <I size={size} d={['M3 9h18v4H3z', 'M5 13v8h14v-8', 'M12 9v12', 'M12 9c-2-4-6-4-6-1.5S10 9 12 9c2 0 6-.5 6-2.5S14 5 12 9z']} />
