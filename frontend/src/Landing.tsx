@@ -1,10 +1,10 @@
 import logo from './assets/logo.png'
-import { MiaoLogo } from './Logo'
+import { Logo } from './Logo'
 import { HowItWorks } from './HowItWorks'
 import { useEffect, useState } from 'react'
 import { api } from './api'
 
-export const PRODUCT = { name: '旅剪', en: 'Tripcut', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
+export const PRODUCT = { name: '旅剪', en: 'TravelCut', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
 const MARKET = { days: 3, low: 2000, high: 3000 }      // what a studio charges today
 // One video with cover and 2 revision rounds (the usual path to a final cut). The NT$ numbers follow the
 // point price set on the dashboard (/api/pricing); these are only the first paint before it loads.
@@ -46,7 +46,8 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
   return (
     <div className="landing">
       <header className="ld-nav">
-        <img className="logo" src={logo} alt={PRODUCT.brand} />
+        <Logo size={28} />
+        <img className="logo ld-by" src={logo} alt={PRODUCT.brand} title={PRODUCT.brand} />
         <span className="spacer" />
         <a className="btn ghost" onClick={onLogin}>登入</a>
         <a className="btn primary" onClick={onStart}>免費試做第一支</a>
@@ -55,7 +56,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
       <section className="ld-hero">
         <div className="ld-blob a" aria-hidden="true" /><div className="ld-blob b" aria-hidden="true" />
         <div className="ld-kicker reveal in">{PRODUCT.brand}</div>
-        <h1 className="reveal in d1"><MiaoLogo size={96} tagline /></h1>
+        <h1 className="reveal in d1"><Logo size={96} tagline /></h1>
         <p className="ld-sub reveal in d2">
           <span className="ld-long">丟影片或照片、說賣點，<b>15 分鐘</b>自動剪出有旁白口播、配樂、雙層字幕的旅遊短影音，<b>封面一起做好</b>。</span>
           <span className="ld-short">丟影片、說賣點，<b>15 分鐘</b>剪好旅遊短影音。<br />旁白、字幕、<b>封面一次做好</b>。</span>

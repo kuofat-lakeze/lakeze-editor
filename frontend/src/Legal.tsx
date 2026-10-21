@@ -1,10 +1,10 @@
-import { MiaoLogo } from './Logo'
+import { Logo } from './Logo'
 
 /* /privacy and /terms: the two pages every sign-in provider (Google, Facebook, LINE) and payment
    provider asks for. Plain language, Taiwan law. Company facts live in LEGAL so they are easy to fix. */
 export const LEGAL = {
   company: '人客多 Lakeze',          // 公司登記名稱（請確認）
-  product: '旅剪 Tripcut',
+  product: '旅剪 TravelCut',
   site: 'editor.lakeze.com',
   email: 'service@lakeze.com',        // 客服／個資聯絡信箱（請確認）
   court: '臺灣臺北地方法院',          // 合意管轄法院（依公司所在地調整）
@@ -18,7 +18,7 @@ export function LegalPage({ kind }: { kind: 'privacy' | 'terms' }) {
   return (
     <div className="legal">
       <header className="lg-head">
-        <a href="/" className="lg-logo"><MiaoLogo size={30} /></a>
+        <a href="/" className="lg-logo"><Logo size={30} /></a>
         <nav className="lg-nav">
           <a href="/privacy" className={kind === 'privacy' ? 'on' : ''}>隱私權政策</a>
           <a href="/terms" className={kind === 'terms' ? 'on' : ''}>服務條款</a>

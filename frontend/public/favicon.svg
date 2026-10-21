@@ -1,11 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs><linearGradient id="og" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#EC5A1E"/><stop offset="1" stop-color="#F5921E"/></linearGradient></defs>
-  <rect x=".5" y=".5" width="63" height="63" rx="16" fill="#fff" stroke="#E6E1D9"/>
-  <ellipse cx="33.5" cy="56.5" rx="7" ry="1.7" fill="#22262E" opacity=".14"/>
-  <g transform="translate(33 34) scale(.9) rotate(-8) translate(-32 -34)">
-    <path d="M32 11.5c-9.4 0-16 6.9-16 15.6 0 10.9 16 26.4 16 26.4s16-15.5 16-26.4c0-8.7-6.6-15.6-16-15.6z" fill="url(#og)"/>
-    <polygon points="27.5,20.5 39.5,27.3 27.5,34.1" fill="#fff"/>
-    <g transform="rotate(-14 17 18)"><rect x="15" y="10.5" width="33" height="8" rx="3" fill="#22262E"/>
-    <g fill="#fff"><polygon points="23,10.5 27.5,10.5 24.5,18.5 20,18.5"/><polygon points="34,10.5 38.5,10.5 35.5,18.5 31,18.5"/><polygon points="45,10.5 48,10.5 46,18.5 42,18.5"/></g></g>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g transform="rotate(-6 32 33)"><path d="M32 5C19.3 5 9 14.9 9 27.2 9 44.6 32 61 32 61s23-16.4 23-33.8C55 14.9 44.7 5 32 5z" fill="#E8571C"/><defs><clipPath id="c"><path d="M32 5C19.3 5 9 14.9 9 27.2 9 44.6 32 61 32 61s23-16.4 23-33.8C55 14.9 44.7 5 32 5z"/></clipPath></defs><g clip-path="url(#c)"><path d="M0 17.4 64 9.6V0H0z" fill="#1F1B17"/><g transform="rotate(-7 32 13.5)"><path d="M25.4 15.4l1.1-3.6h2.3l-1.1 3.6z" fill="#FFFFFF"/><path d="M30.9 15.4l1.1-3.6h2.3l-1.1 3.6z" fill="#FFFFFF"/><path d="M36.4 15.4l1.1-3.6h2.3l-1.1 3.6z" fill="#FFFFFF"/></g></g><path d="M26 21v18l15-9z" fill="#FFFFFF"/></g></svg>

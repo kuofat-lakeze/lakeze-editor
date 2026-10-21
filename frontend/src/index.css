@@ -1,6 +1,6 @@
 /* Lakeze 人客多 brand: orange (primary), light orange, blue, teal — on a warm light surface. */
 :root {
-  --brand: #EC5A1E; --brand-2: #F5921E; --brand-soft: #FDEBE1; --blue: #1B7AC3; --blue-soft: #E6F1FA;
+  --brand: #E8571C; --brand-2: #F08A2A; --brand-soft: #FFF1E9; --blue: #1B7AC3; --blue-soft: #E6F1FA;
   --teal: #46B9BD; --teal-soft: #E3F5F5;
   --bg: #F7F5F1; --panel: #FFFFFF; --panel2: #F2EFEA; --line: #E6E1D9; --text: #22262E; --muted: #6E7480;
   --accent: var(--brand); --accent2: var(--blue); --err: #D93A3A; --ok: #2E9E6B;
@@ -68,13 +68,17 @@ textarea { resize: none; flex: 1; min-height: 44px; max-height: 160px; }
   .auth-logo-m { display: block; height: 30px; width: auto; align-self: flex-start; margin-bottom: 4px; }
 }
 
-/* ---- 旅剪 logo ---- */
-.miao-logo { display: inline-flex; align-items: center; gap: calc(var(--mj, 40px) * .3); line-height: 1; }
-.miao-mark { flex: none; display: block; filter: drop-shadow(0 2px 8px rgba(34,38,46,.12)); }
-.miao-text { display: flex; flex-direction: column; gap: calc(var(--mj, 40px) * .12); }
-.miao-word { font-family: "Noto Sans TC", "PingFang TC", "Heiti TC", sans-serif; font-weight: 900; font-size: calc(var(--mj, 40px) * .92); letter-spacing: .06em; color: var(--text); line-height: 1; }
-.miao-tag { font-family: "Noto Sans TC", "PingFang TC", sans-serif; font-weight: 700; font-size: calc(var(--mj, 40px) * .26); letter-spacing: .14em; color: var(--brand); line-height: 1; }
-.miao-logo.light .miao-word { color: #fff; } .miao-logo.light .miao-tag { color: #FFD9C4; }
+/* ---- 旅剪 TravelCut logo (CI T3c): the pin and the Cut lean 6° together; nothing else leans ---- */
+.tc-logo { display: inline-flex; align-items: center; gap: calc(var(--mj, 40px) * .26); line-height: 1; }
+.tc-mark { flex: none; display: block; }
+.tc-text { display: flex; flex-direction: column; gap: calc(var(--mj, 40px) * .14); }
+.tc-word { display: inline-flex; align-items: baseline; line-height: 1; white-space: nowrap; color: var(--text); }
+.tc-word.en { font-family: "Manrope", "Inter", "Helvetica Neue", Arial, sans-serif; font-weight: 600; font-size: calc(var(--mj, 40px) * .6); letter-spacing: -.03em; }
+.tc-word.zh { font-family: "Noto Sans TC", "PingFang TC", "Heiti TC", sans-serif; font-weight: 900; font-size: calc(var(--mj, 40px) * .72); letter-spacing: .04em; }
+.tc-cut { display: inline-block; color: var(--brand); font-weight: 800; transform: rotate(-6deg) translateY(-.06em); transform-origin: 40% 80%; margin-left: .04em; }
+.tc-word.zh .tc-cut { margin-left: .06em; }
+.tc-tag { font-family: "Noto Sans TC", "PingFang TC", sans-serif; font-weight: 700; font-size: calc(var(--mj, 40px) * .22); letter-spacing: .12em; color: var(--muted); line-height: 1; white-space: nowrap; }
+.tc-logo.light .tc-word { color: #fff; } .tc-logo.light .tc-cut { color: #FF8A55; } .tc-logo.light .tc-tag { color: rgba(255,255,255,.7); }
 
 /* ---- landing ---- */
 .landing { height: 100%; overflow: auto; background: var(--bg); font-family: "Noto Sans TC", -apple-system, "PingFang TC", system-ui, sans-serif; font-weight: 400; font-size: 15.5px; line-height: 1.75; -webkit-font-smoothing: antialiased; }
@@ -88,11 +92,11 @@ textarea { resize: none; flex: 1; min-height: 44px; max-height: 160px; }
 .landing .hiw-tag { font-weight: 600; letter-spacing: .02em; }
 .ld-short { display: none; } .hiw-pills, .hiw-hint { display: none; }
 .ld-nav { display: flex; align-items: center; gap: 10px; padding: 14px 24px; padding-top: calc(14px + env(safe-area-inset-top)); background: rgba(255,255,255,.85); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3; }
-.ld-nav .logo { height: 30px; width: auto; } .ld-nav .spacer { flex: 1; }
+.ld-nav .logo.ld-by { height: 18px; width: auto; opacity: .85; margin-left: 6px; } .ld-nav .spacer { flex: 1; }
 .ld-hero { text-align: center; padding: 64px 20px 36px; max-width: 760px; margin: 0 auto; }
 .ld-kicker { font-size: 13px; color: var(--brand); font-weight: 700; letter-spacing: .08em; }
 .ld-hero h1 { margin: 18px 0 18px; display: flex; justify-content: center; }
-.ld-hero .miao-logo { gap: 22px; } .ld-hero .miao-text { align-items: flex-start; text-align: left; }
+.ld-hero .tc-logo { gap: 22px; } .ld-hero .tc-text { align-items: flex-start; text-align: left; }
 .ld-sub { font-size: 18px; color: var(--muted); margin: 0 auto 24px; max-width: 560px; line-height: 1.7; }
 .ld-cta { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 /* reveal-on-scroll */
@@ -175,7 +179,7 @@ textarea { resize: none; flex: 1; min-height: 44px; max-height: 160px; }
 .ld-footer { text-align: center; padding: 20px; }
 .auth-back { text-align: center; }
 @media (max-width: 760px) {
-  .ld-hero { padding: 36px 18px 24px; } .ld-hero .miao-logo { --mj: 64px !important; gap: 14px; } .ld-sub { font-size: 16px; }
+  .ld-hero { padding: 36px 18px 24px; } .ld-hero .tc-logo { --mj: 64px !important; gap: 14px; } .ld-sub { font-size: 16px; }
   .hiw-grid { grid-template-columns: 1fr; gap: 0; }
   /* phone + caption stick together; the step list is only there to drive the scroll */
   .hiw-sticky { position: sticky; top: 58px; z-index: 2; padding: 10px 0 8px; flex-direction: column; align-items: center; gap: 6px; border-radius: 0 0 28px 28px; transition: background .6s; background: linear-gradient(#FFF3EB 88%, transparent); }
@@ -200,7 +204,7 @@ textarea { resize: none; flex: 1; min-height: 44px; max-height: 160px; }
   .hiw-head h2 { font-size: 28px; }
   .ld-blob { filter: blur(40px); }
   .ld-cmp-grid, .ld-save { grid-template-columns: 1fr; }
-  .ld-nav { padding: 10px 14px; } .ld-nav .btn.ghost { display: none; }
+  .ld-nav { padding: 10px 14px; } .ld-nav .btn.ghost { display: none; } .ld-nav .logo.ld-by { display: none; }
 }
 
 /* ---- app layout ---- */
@@ -975,7 +979,7 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 
 /* ---- 旅剪 logo in the app ---- */
 .brand { gap: 10px; justify-content: space-between; } .brand .brand-by { height: 18px; opacity: .85; }
-.top-miao { --mj: 26px; } .topbar .miao-word { font-size: 18px; }
+.top-logo { --mj: 26px; }
 .dash-by { height: 18px !important; opacity: .8; margin-left: -4px; }
 .share-head .share-by { height: 18px; opacity: .85; }
 .auth-logo-m { display: none; } @media (max-width: 760px) { .auth-logo-m { display: block; margin-bottom: 4px; } }
@@ -1034,7 +1038,7 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .gal-bg { z-index: 50; } .gal-player { width: min(94vw, 420px); background: #000; border-radius: 18px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.45); display: flex; flex-direction: column; }
 .gal-player video { width: 100%; max-height: 78vh; aspect-ratio: 9 / 16; object-fit: contain; background: #000; display: block; }
 .gal-player-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; background: var(--panel); flex-wrap: wrap; } .gal-close { font-size: 18px; color: var(--muted); padding: 0 4px; }
-.brand .miao-logo { --mj: 28px; flex: none; } .brand .miao-word, .topbar .miao-word, .dash-top .miao-word, .share-head .miao-word { white-space: nowrap; }
+.brand .tc-logo { --mj: 30px; flex: none; }
 .brand { padding: 4px 4px 8px; } .brand .brand-by { height: 16px; }
 
 /* step 1: Drive-link guide */
@@ -1469,7 +1473,7 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .pg-ok::after { content: ""; position: absolute; left: 4px; top: 2px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
 .pg-ok.idle { opacity: .45; }
 .pg-ok.tap { box-shadow: 0 0 0 0 rgba(10,132,255,.7); animation: pgPulse 1.4s infinite; }
-.pg-ok.spin::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid transparent; border-top-color: #F5921E; animation: pgSpin .9s linear infinite; }
+.pg-ok.spin::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--brand-2); animation: pgSpin .9s linear infinite; }
 .pg-hand { position: absolute; right: -6px; top: 9px; font-size: 15px; font-style: normal; animation: pgTap 1.4s infinite; }
 .pg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
 .pg-grid i { aspect-ratio: 1; background: #48484a; border-radius: 2px; position: relative; }
@@ -1500,7 +1504,7 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .pga-ok::after { content: ""; position: absolute; left: 8px; top: 4px; width: 6px; height: 11px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
 .s0 .pga-ok { opacity: .4; }
 .s1 .pga-ok { animation: pgaPress 1.3s ease-in-out; }
-.s2 .pga-ok::before { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 3px solid transparent; border-top-color: #F5921E; border-right-color: #F5921E; animation: pgSpin .8s linear infinite; }
+.s2 .pga-ok::before { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--brand-2); border-right-color: var(--brand-2); animation: pgSpin .8s linear infinite; }
 .pga-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
 .pga-grid i { aspect-ratio: 1; border-radius: 3px; background: #48484a; position: relative; }
 .pga-grid i:nth-child(3n+1) { background: #4d5b63; } .pga-grid i:nth-child(4n+2) { background: #6b5a4a; }
@@ -1512,7 +1516,7 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .pga-wait { position: absolute; left: 14px; right: 14px; bottom: 26px; background: rgba(255,255,255,.95); border-radius: 12px; padding: 8px 10px; display: flex; align-items: center; gap: 8px; animation: dlgPop .25s; }
 .pga-wait span { font-size: 18px; animation: pgFlip 1.6s ease-in-out infinite; }
 .pga-fill { flex: 1; height: 7px; border-radius: 4px; background: #E6E1D9; overflow: hidden; }
-.pga-fill i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #F5921E, var(--brand)); animation: pgaWait 3.1s linear forwards; }
+.pga-fill i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--brand-2), var(--brand)); animation: pgaWait 3.1s linear forwards; }
 .pga-app { flex: 1; background: var(--bg); border-radius: 12px; padding: 10px 8px; display: flex; flex-direction: column; gap: 8px; animation: dlgFade .3s; }
 .pga-app b { font-size: 13px; color: var(--brand); }
 .pga-up { display: flex; align-items: center; gap: 6px; background: #fff; border-radius: 8px; padding: 6px; }
@@ -1538,7 +1542,7 @@ table.price.cmp tr.total td { font-weight: 700; border-top: 2px solid var(--line
 .pg1-ok { position: relative; width: 40px; height: 40px; border-radius: 50%; background: #0A84FF; animation: pg1Ok 5.2s infinite; }
 .pg1-ok::after { content: ""; position: absolute; left: 14px; top: 8px; width: 9px; height: 16px; border: solid #fff; border-width: 0 3.5px 3.5px 0; transform: rotate(45deg); animation: pg1Tick 5.2s infinite; }
 .pg1-ok svg { position: absolute; inset: -7px; width: 54px; height: 54px; transform: rotate(-90deg); overflow: visible; }
-.pg1-ok circle { fill: none; stroke: #F5921E; stroke-width: 4.5; stroke-linecap: round; stroke-dasharray: 113.1; stroke-dashoffset: 113.1; animation: pg1Ring 5.2s infinite; }
+.pg1-ok circle { fill: none; stroke: var(--brand-2); stroke-width: 4.5; stroke-linecap: round; stroke-dasharray: 113.1; stroke-dashoffset: 113.1; animation: pg1Ring 5.2s infinite; }
 .pg1-up { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 24px; font-weight: 900; opacity: 0; animation: pg1Up 5.2s infinite; }
 .pg1-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 10px; }
 .pg1-grid i { aspect-ratio: 1; border-radius: 4px; background: #48484a; position: relative; }
@@ -1853,19 +1857,6 @@ body.easy .btn { font-size: 16px; }
 .pf-wholebox textarea { width: 100%; font: inherit; font-size: 16px; line-height: 1.7; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--panel); resize: vertical; }
 .pf-wholebox textarea:focus { outline: 0; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 @media (max-width: 640px) { .pf-tools, .pf-saybox { padding-left: 10px; margin-left: 10px; } .pf-tb { height: 38px; } .pf-txt textarea { font-size: 17px; } }
-/* 英文名 Tripcut 跟在 旅剪 後面，小一號、品牌橘 */
-.miao-word { display: inline-flex; align-items: baseline; gap: calc(var(--mj, 40px) * .22); }
-.miao-en { font-family: "Inter", "Helvetica Neue", Arial, sans-serif; font-weight: 800; font-size: calc(var(--mj, 40px) * .42); letter-spacing: .02em; color: var(--brand); }
-.miao-logo.light .miao-en { color: #FFD9C4; }
-.topbar .miao-en { font-size: 11px; }
-/* Tripcut 字標：Nunito 900、品牌橘漸層、i 的點是地點標記 */
-.miao-en { display: inline-flex; align-items: baseline; font-family: "Nunito", "Inter", "Helvetica Neue", Arial, sans-serif; font-weight: 900; font-size: calc(var(--mj, 40px) * .46); letter-spacing: .01em; line-height: 1; color: var(--brand); }
-.miao-en > span:not(.tc-i) { background: linear-gradient(135deg, #EC5A1E, #F5921E); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.tc-i { position: relative; display: inline-block; color: #EC5A1E; background: linear-gradient(135deg, #EC5A1E, #F5921E); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-.tc-pin { position: absolute; left: 50%; top: -.08em; width: .38em; height: .5em; transform: translateX(-50%) rotate(-8deg); color: #EC5A1E; -webkit-text-fill-color: initial; }
-.miao-logo.light .miao-en > span:not(.tc-i), .miao-logo.light .tc-i { background: #FFD9C4; -webkit-background-clip: text; background-clip: text; }
-.miao-logo.light .tc-pin { color: #FFD9C4; }
-.topbar .miao-en { font-size: 12px; }
 /* 微調面板 */
 .tw { width: 100%; max-width: 520px; background: var(--bg); border-radius: 22px 22px 0 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 -10px 50px rgba(34,38,46,.3); animation: shUp .25s cubic-bezier(.2,.8,.2,1); max-height: 92vh; }
 @media (min-width: 900px) { .tw { border-radius: 22px; } }

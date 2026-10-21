@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MiaoMark } from './Logo'
+import { Mark } from './Logo'
 
 /* Scroll-driven "how it works": a sticky phone on one side, three steps on the other. As each step
    scrolls into view it lights up and the phone screen switches to that moment of the product.
@@ -170,7 +170,7 @@ function Phone({ step }: { step: number }) {
     <div className="phone" data-step={step}>
       <div className="phone-notch" />
       <div className="phone-screen">
-        <div className="ps-bar"><MiaoMark size={18} radius={.28} /><span>旅剪</span><i /></div>
+        <div className="ps-bar"><Mark size={18} /><span>旅剪</span><i /></div>
 
         {/* screen 1: upload queue with videos and photos mixed, exactly like the app */}
         <div className={`ps ps-upload ${step === 0 ? 'on' : ''}`} style={{ ['--i' as string]: 0 }}>

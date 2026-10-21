@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type ShareView, type ThreadMsg } from './api'
 import logo from './assets/logo.png'
-import { MiaoLogo } from './Logo'
+import { Logo } from './Logo'
 import { FbIcon, LineIcon, MessengerIcon, promoText, shareToFacebook, shareToLine, shareToMessenger } from './share'
 
 /* The share page is a small discussion board around one video: the video, then the thread right under it
@@ -64,7 +64,7 @@ export function SharePage({ token }: { token: string }) {
   return (
     <div className="share-page">
       <header className="share-head">
-        <MiaoLogo size={26} />
+        <Logo size={26} />
         <img className="logo share-by" src={logo} alt="人客多 Lakeze" />
         <span className="spacer" />
         <a className="btn small primary" href={data?.signup_url ?? '/signup'}>我也要做</a>
@@ -145,7 +145,7 @@ export function SharePage({ token }: { token: string }) {
               </details>
             )}
             <section className="share-cta">
-              <div className="share-cta-k">旅剪 Tripcut 做的</div>
+              <div className="share-cta-k">旅剪 TravelCut 做的</div>
               <h2>你也做一支？</h2>
               <p>丟影片，15 分鐘拿到成品。<br />註冊送 {data.signup_points ?? 110} 點，第一支免費。</p>
               <a className="btn primary lg" href={data.signup_url ?? '/signup'}>免費試做</a>
@@ -154,7 +154,7 @@ export function SharePage({ token }: { token: string }) {
         )}
       </main>
       {tip && <div className="share-tip">{tip}</div>}
-      <footer className="share-foot muted small">旅剪 Tripcut · 人客多 Lakeze</footer>
+      <footer className="share-foot muted small">旅剪 TravelCut · 人客多 Lakeze</footer>
     </div>
   )
 }

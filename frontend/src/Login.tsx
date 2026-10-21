@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type Me, type Providers } from './api'
 import logo from './assets/logo.png'
-import { MiaoLogo } from './Logo'
+import { Logo } from './Logo'
 import { IN_FB } from './InApp'
 
 const STEPS = [
@@ -51,7 +51,7 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
       <aside className="auth-visual">
         <img className="logo" src={logo} alt="Lakeze 人客多" onClick={onBack} style={{ cursor: onBack ? 'pointer' : undefined }} />
         <div className="auth-copy">
-          <h1><MiaoLogo size={64} tagline /></h1>
+          <h1><Logo size={64} tagline /></h1>
           <p>給素材和賣點，就能收到有旁白、配樂、雙層字幕的直式影片與封面。註冊送 110 點，夠做第一支。</p>
           <ol className="auth-steps">
             {STEPS.map(s => <li key={s.n}><span className="n">{s.n}</span><div><b>{s.t}</b><div className="muted small">{s.d}</div></div></li>)}
@@ -62,7 +62,7 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
 
       <main className="auth-panel">
         <form className="auth-card" onSubmit={go}>
-          <div className="auth-logo-m"><MiaoLogo size={34} /></div>
+          <div className="auth-logo-m"><Logo size={34} /></div>
           <h2>{mode === 'login' ? '歡迎回來' : '建立帳號'}</h2>
           <p className="muted">{mode === 'login' ? '登入後繼續你的專案。' : refToken ? '朋友分享的影片就是這樣做出來的。註冊送 110 點，第一支免費。' : '註冊就送 110 點，第一支影片含封面與 2 輪修改。'}</p>
           {social && (

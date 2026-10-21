@@ -9,7 +9,7 @@ import { SharePage } from './SharePage'
 import { Landing } from './Landing'
 import logo from './assets/logo.png'
 import { StorageMeter } from './Storage'
-import { MiaoLogo } from './Logo'
+import { Logo } from './Logo'
 import { PayResult } from './Pay'
 import { InAppGuide } from './InApp'
 import { ask, DialogHost } from './Dialog'
@@ -96,7 +96,7 @@ function Workspace() {
     document.addEventListener('visibilitychange', onVis)
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis) }
   }, [me?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { document.title = (notes?.unread ? `(${notes.unread}) ` : '') + '旅剪 Tripcut · 人客多 Lakeze' }, [notes?.unread])
+  useEffect(() => { document.title = (notes?.unread ? `(${notes.unread}) ` : '') + '旅剪 TravelCut · 人客多 Lakeze' }, [notes?.unread])
 
   const refreshMe = () => api.me().then(setMe)
   // 輕鬆模式 / 導演模式: an account setting; the body class scales type for the easy mode.
@@ -131,7 +131,7 @@ function Workspace() {
       {/* phone top bar: logo, balance, menu */}
       <div className="topbar">
         <button className="btn icon" aria-label="選單" onClick={() => setMenu(true)}>☰</button>
-        <MiaoLogo size={26} className="top-miao" />
+        <Logo size={26} className="top-logo" />
         <span className="spacer" />
         {(notes?.unread ?? 0) > 0 && <a className="fb-top" onClick={() => { const it = notes!.items[0]; if (it?.project_id) openProject(it.project_id) }}>💬 {notes!.unread}</a>}
         <a className="pts" onClick={() => showCredits()}>{me.balance} <small>點</small></a>
@@ -140,7 +140,7 @@ function Workspace() {
       {menu && <div className="scrim" onClick={() => setMenu(false)} />}
 
       <aside className={`sidebar ${menu ? 'open' : ''}`}>
-        <div className="brand"><MiaoLogo size={34} en={false} /><img className="logo brand-by" src={logo} alt="人客多 Lakeze" title="人客多 Lakeze" /></div>
+        <div className="brand"><Logo size={30} lang="zh" /><img className="logo brand-by" src={logo} alt="人客多 Lakeze" title="人客多 Lakeze" /></div>
         <div className={`balance card ${view === 'credits' ? 'active' : ''}`} onClick={() => showCredits()}>
           <div className="muted small">點數餘額</div>
           <div className="big">{me.balance}</div>

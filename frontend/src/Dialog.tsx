@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MiaoMark } from './Logo'
+import { Mark } from './Logo'
 
 /* Our own prompt / confirm / alert. The browser's built-in ones are headed with the bare domain
    ("editor.lakeze.com 顯示"), which looks like a scam; these carry the 人客多 旅剪 name instead.
@@ -38,7 +38,7 @@ export function DialogHost() {
     <div className="dlg-scrim" onMouseDown={e => { if (e.target === e.currentTarget) cancel() }}
       onKeyDown={e => { if (e.key === 'Escape') cancel() }}>
       <div className="dlg" role="dialog" aria-modal="true">
-        <div className="dlg-brand"><MiaoMark size={24} /><span>人客多 旅剪</span></div>
+        <div className="dlg-brand"><Mark size={24} /><span>人客多 旅剪</span></div>
         <div className="dlg-msg">{cur.message}</div>
         {cur.kind === 'prompt' && (
           <input ref={input} className="dlg-in" value={val} placeholder={cur.placeholder} onChange={e => setVal(e.target.value)}

@@ -23,7 +23,7 @@ export function ReferralCard({ onPlans, compact }: { onPlans?: () => void; compa
   const waiting = r.friends.filter(f => f.points == null).length
   const copy = () => { navigator.clipboard?.writeText(text).then(() => say('邀請文和連結已複製')).catch(() => say('長按網址複製')) }
   const share = () => {
-    if (typeof navigator.share === 'function') navigator.share({ title: '旅剪 Tripcut', text, url }).catch(() => {})
+    if (typeof navigator.share === 'function') navigator.share({ title: '旅剪 TravelCut', text, url }).catch(() => {})
     else copy()
   }
   const when = (iso: string) => { const d = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z'); return `${d.getMonth() + 1}/${d.getDate()}` }

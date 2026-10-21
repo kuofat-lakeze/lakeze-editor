@@ -751,7 +751,7 @@ async def create_order(body: OrderBody, user: User = CurrentUser):
         o.status = "paid"
     elif method in ("card", "atm"):   # PAYUNi's page: the browser posts this form there
         api_base = f"{config.PUBLIC_URL}/api/pay/payuni"
-        nxt = {"form": payuni.upp_form(order_id_=o.id, amount=o.amount_twd, desc=f"旅剪 Tripcut {o.label}", email=user.email, method=method,
+        nxt = {"form": payuni.upp_form(order_id_=o.id, amount=o.amount_twd, desc=f"旅剪 TravelCut {o.label}", email=user.email, method=method,
                                        return_url=f"{api_base}/return", notify_url=f"{api_base}/notify",
                                        back_url=f"{config.PUBLIC_URL}/pay/result?order={o.id}")}
     else:
@@ -1876,7 +1876,7 @@ async def share_thread(token: str):
     return await _thread(p.id)
 
 
-PROMO_TITLE = "{name}｜旅剪 Tripcut"
+PROMO_TITLE = "{name}｜旅剪 TravelCut"
 PROMO_DESC = "15 分鐘剪好的短影音。註冊送 {points} 點，第一支免費。"
 
 
@@ -1903,13 +1903,15 @@ async def share_og(token: str):
     desc = PROMO_DESC.format(points=pricing.SIGNUP_POINTS)
     tags = [f'<meta property="og:title" content="{_esc(title)}">', f'<meta property="og:description" content="{_esc(desc)}">',
             f'<meta property="og:url" content="{_esc(url)}">', '<meta property="og:type" content="video.other">',
-            '<meta property="og:site_name" content="旅剪 Tripcut · 人客多 Lakeze">', '<meta property="og:locale" content="zh_TW">',
+            '<meta property="og:site_name" content="旅剪 TravelCut · 人客多 Lakeze">', '<meta property="og:locale" content="zh_TW">',
             '<meta name="twitter:card" content="summary_large_image">', f'<meta name="description" content="{_esc(desc)}">']
     if config.FACEBOOK_APP_ID:
         tags.append(f'<meta property="fb:app_id" content="{_esc(config.FACEBOOK_APP_ID)}">')
     if cover:
         img = f"{config.PUBLIC_URL}{cover['url']}"   # already the public /api/s/<token>/file/<id> form
         tags += [f'<meta property="og:image" content="{_esc(img)}">', '<meta property="og:image:width" content="1080">', '<meta property="og:image:height" content="1920">']
+    else:   # no cover yet: the brand card, same as the site's own preview
+        tags += [f'<meta property="og:image" content="{_esc(config.PUBLIC_URL)}/og.png">', '<meta property="og:image:width" content="1200">', '<meta property="og:image:height" content="630">']
     if video:
         vid = f"{config.PUBLIC_URL}{video['url']}"
         tags += [f'<meta property="og:video" content="{_esc(vid)}">', '<meta property="og:video:type" content="video/mp4">']
