@@ -496,11 +496,38 @@ class Store:
                 await s.commit()
 
     async def note_export(self, project_id: str) -> None:
+        first = False
         async with Session() as s:
             p = await s.get(Project, project_id)
             if p:
                 p.exports += 1
+                first = p.exports == 1
                 await s.commit()
+        if first:
+            await reward_referrer(self.user_id)
+
+
+async def reward_referrer(friend_id: str) -> int:
+    """朋友做出第一支影片 → the person who referred them gets REFERRAL_POINTS (REFERRAL_POINTS_SUB while
+    they hold a subscription). Paid once per friend, whatever the friend exports later. Returns the points."""
+    from . import pricing
+    async with Session() as s:
+        friend = await s.get(User, friend_id)
+        if not friend or not friend.referrer_id or friend.referrer_id == friend.id:
+            return 0
+        ref = await s.get(User, friend.referrer_id)
+        if not ref or ref.disabled:
+            return 0
+        # only the friend's first finished video pays, and only once
+        done = (await s.execute(select(func.count(CreditTx.id)).where(CreditTx.user_id == ref.id, CreditTx.reason == f"referral {friend.id}"))).scalar()
+        if done:
+            return 0
+        n_exports = (await s.execute(select(func.coalesce(func.sum(Project.exports), 0)).where(Project.user_id == friend.id))).scalar() or 0
+        if n_exports < 1:
+            return 0
+        pts = pricing.REFERRAL_POINTS_SUB if ref.subscription else pricing.REFERRAL_POINTS
+    await add_credits(ref.id, pts, "grant", f"referral {friend.id}", meta={"referral": True, "friend": friend.id, "subscribed": bool(ref.subscription)})
+    return pts
 
 
 def _coalesce(msgs: list[dict]) -> list[dict]:

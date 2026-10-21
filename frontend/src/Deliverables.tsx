@@ -199,7 +199,7 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
         <SheetHead title="分享給朋友" onCancel={onClose} cancelLabel={made ? '關閉' : '取消'} />
         {!made ? (
           <>
-            <p className="muted small share-lead">朋友不用登入，點開就能看。</p>
+            <p className="muted small share-lead">朋友不用登入，點開就能看。<b className="share-ref">朋友從這裡註冊並做出第一支影片，你拿推薦點數。</b></p>
             <div className="note-box">
               <div className="note-h">
                 <b>給朋友的一句話</b>

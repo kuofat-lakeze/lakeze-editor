@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { PayFlow } from './Pay'
 import { api, type CreditsSummary, type Ledger, type Me, type Pricing } from './api'
 import { StorageInline } from './Storage'
+import { ReferralCard } from './Referral'
 
 // Fixed categorical order, validated for colour-vision separation on the light surface.
 const CAT_COLOR: Record<string, string> = { cut: '#E8571C', audio: '#1B7AC3', subs: '#2E9E8F', export: '#7B61C4', cover: '#B8860B', storage: '#5B6B7A' }
-export type CreditsTab = 'overview' | 'projects' | 'ledger' | 'plans' | 'buy' | 'storage'
+export type CreditsTab = 'overview' | 'projects' | 'ledger' | 'plans' | 'buy' | 'storage' | 'referral'
 const TABS: { id: CreditsTab; label: string }[] = [
   { id: 'plans', label: '選方案' }, { id: 'overview', label: '我的方案' }, { id: 'projects', label: '專案明細' }]
 const twd = (n: number) => `NT$${n.toLocaleString()}`
@@ -20,7 +21,7 @@ const dayLabel = (iso: string) => {
 
 export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenProject, onBought }:
   { initialTab?: CreditsTab; needPoints?: number; onClose: () => void; onOpenProject?: (id: string) => void; onBought?: () => void }) {
-  const [tab, setTab] = useState<CreditsTab>(initialTab === 'storage' ? 'plans' : initialTab === 'ledger' ? 'projects' : initialTab)
+  const [tab, setTab] = useState<CreditsTab>(initialTab === 'storage' ? 'plans' : initialTab === 'ledger' ? 'projects' : initialTab === 'referral' ? 'overview' : initialTab)
   const [range, setRange] = useState<7 | 30>(30)
   const [sum, setSum] = useState<CreditsSummary | null>(null)
   const [p, setP] = useState<Pricing | null>(null)
@@ -35,6 +36,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   useEffect(() => { reload(); api.pricing().then(setP) }, [])
   useEffect(() => {
     if (initialTab === 'storage' && p) setTimeout(() => document.getElementById('storage-sec')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+    if (initialTab === 'referral' && p) setTimeout(() => document.getElementById('referral-sec')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250)
   }, [initialTab, p])
   const [toast, setToast] = useState('')
   const [paying, setPaying] = useState<string | null>(null)
@@ -80,7 +82,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
   }
   const ledgerRow = (l: Ledger, i: number, showProject: boolean) => {
     const isCharge = l.kind === 'charge'
-    const title = isCharge ? label(l.reason) : l.kind === 'purchase' ? '儲值' : l.kind === 'grant' ? '加點' : l.kind === 'refund' ? '退點'
+    const title = isCharge ? label(l.reason) : l.kind === 'purchase' ? '儲值' : l.kind === 'grant' ? (l.reason.startsWith('referral') ? '朋友做出第一支影片 · 推薦獎勵' : l.reason === 'signup' ? '註冊禮' : '加點') : l.kind === 'refund' ? '退點'
       : l.kind === 'subscription' ? '訂閱點數入帳' : l.kind === 'expire' ? '訂閱點數到期' : l.reason
     return (
       <div key={i} className="lrow">
@@ -170,6 +172,8 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
                 {sum.free_project && sum.free_project.in_free && <><span className="dot-sep" /><span>「{sum.free_project.name}」還有 <b>{sum.free_project.free_revisions_left ?? '免費'}</b> 輪免費修改</span></>}
               </div>
             </section>
+
+            <ReferralCard onPlans={() => setTab('plans')} />
 
             <section className="card wins">
               <div className="wins-head"><b>你的成果</b><span className="muted small">用旅剪到現在</span></div>

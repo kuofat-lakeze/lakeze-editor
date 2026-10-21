@@ -303,10 +303,12 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
                         <button type="button" onClick={() => setDur(s, durOf(s) + 0.5)} disabled={durOf(s) >= maxDur(s) - 0.05}>+0.5</button>
                         <b className="tl-val">{r1(durOf(s))} 秒</b>
                       </div></div>
-                    <div className="tl-row"><span>畫面從素材第幾秒開始</span>
+                    <div className="tl-row"><span>用素材的哪一段<small className="muted"> · 拖白框換位置，拉兩端改長度</small></span>
+                      <SourceStrip projectId={projectId} s={s} start={startOf(s)} dur={durOf(s)} onChange={(st, du) => edShot(s.i, { start: st, dur: du })} />
                       <div className="tl-ctl">
-                        <button type="button" onClick={() => setStart(s, startOf(s) - 0.5)} disabled={startOf(s) <= 0}>◀ 早一點</button><b className="tl-val">{r1(startOf(s))} 秒</b>
-                        <button type="button" onClick={() => setStart(s, startOf(s) + 0.5)} disabled={startOf(s) >= (s.src_dur ?? 0) - MIN - 0.05}>晚一點 ▶</button>
+                        <button type="button" onClick={() => setStart(s, startOf(s) - 0.5)} disabled={startOf(s) <= 0}>◀ 早 0.5 秒</button>
+                        <button type="button" onClick={() => setStart(s, startOf(s) + 0.5)} disabled={startOf(s) >= (s.src_dur ?? 0) - MIN - 0.05}>晚 0.5 秒 ▶</button>
+                        <span className="spacer" /><b className="tl-val">從 {r1(startOf(s))} 秒</b>
                       </div></div>
                     <div className="tl-row"><span>順序</span>
                       <div className="tl-ctl">
@@ -377,6 +379,53 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
           <button className="btn primary" disabled={!ok || nChanges === 0 || busy} onClick={apply}>{busy ? '重新輸出中…' : '套用 →'}</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/* 用素材的哪一段: the whole source clip as a filmstrip, the part the video uses as a bright window over it.
+   Drag the window to use a different moment, drag either edge to change the length (CapCut-style). The
+   change is committed once, on release, so one drag is one undo step. The start / end frames update then. */
+function SourceStrip({ projectId, s, start, dur, onChange }: { projectId: string; s: Shot; start: number; dur: number; onChange: (start: number, dur: number) => void }) {
+  const total = Math.max(s.src_dur ?? s.start + s.dur, start + dur, MIN)
+  const n = Math.max(4, Math.min(12, Math.round(total / 1.2)))
+  const times = useMemo(() => Array.from({ length: n }, (_, i) => r1((i + 0.5) * total / n)), [n, total])
+  const box = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ kind: 'move' | 'l' | 'r'; x0: number; start: number; dur: number; w: number } | null>(null)
+  const [tmp, setTmp] = useState<{ start: number; dur: number } | null>(null)
+  const cur = tmp ?? { start, dur }
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+  const down = (kind: 'move' | 'l' | 'r') => (e: React.PointerEvent) => {
+    e.stopPropagation()
+    const w = box.current?.getBoundingClientRect().width || 1
+    drag.current = { kind, x0: e.clientX, start, dur, w }
+    ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+  }
+  const move = (e: React.PointerEvent) => {
+    const d = drag.current; if (!d) return
+    const dt = (e.clientX - d.x0) / d.w * total
+    if (d.kind === 'move') setTmp({ start: r1(clamp(d.start + dt, 0, total - d.dur)), dur: d.dur })
+    else if (d.kind === 'l') { const st = clamp(d.start + dt, Math.max(0, d.start + d.dur - MAX), d.start + d.dur - MIN); setTmp({ start: r1(st), dur: r1(d.start + d.dur - st) }) }
+    else setTmp({ start: d.start, dur: r1(clamp(d.dur + dt, MIN, Math.min(MAX, total - d.start))) })
+  }
+  const up = () => { const d = drag.current; drag.current = null; if (d && tmp && (tmp.start !== start || tmp.dur !== dur)) onChange(tmp.start, tmp.dur); setTmp(null) }
+  const pct = (x: number) => `${(x / total) * 100}%`
+  return (
+    <div className="tl-src">
+      <div className="tl-src-ends">
+        <figure><img src={api.frameUrl(projectId, s.clip, r1(start))} alt="" draggable={false} /><figcaption>起點 {r1(start)}s</figcaption></figure>
+        <figure><img src={api.frameUrl(projectId, s.clip, r1(Math.max(start, start + dur - 0.1)))} alt="" draggable={false} /><figcaption>終點 {r1(start + dur)}s</figcaption></figure>
+      </div>
+      <div className="tl-src-strip" ref={box} onPointerMove={move} onPointerUp={up} onPointerCancel={up} style={{ touchAction: 'none' }}>
+        <div className="tl-src-frames">{times.map(t => <img key={t} src={api.frameUrl(projectId, s.clip, t)} alt="" draggable={false} loading="lazy" />)}</div>
+        <div className="tl-src-dim" style={{ left: 0, width: pct(cur.start) }} />
+        <div className="tl-src-dim" style={{ left: pct(cur.start + cur.dur), right: 0 }} />
+        <div className={`tl-src-win ${tmp ? 'live' : ''}`} style={{ left: pct(cur.start), width: pct(cur.dur) }} onPointerDown={down('move')}>
+          <i className="tl-src-h l" onPointerDown={down('l')} /><i className="tl-src-h r" onPointerDown={down('r')} />
+          <b>{r1(cur.dur)} 秒</b>
+        </div>
+      </div>
+      <div className="tl-src-meta muted small"><span>0s</span><span>素材共 {r1(total)} 秒 · 用第 {r1(cur.start)}–{r1(cur.start + cur.dur)} 秒</span><span>{r1(total)}s</span></div>
     </div>
   )
 }

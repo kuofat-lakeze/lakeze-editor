@@ -16,6 +16,10 @@ import os
 DEFAULT_POINT_TWD = 3.9
 POINT_TWD: float = DEFAULT_POINT_TWD   # current price of a point; changed at runtime by apply_point_price()
 SIGNUP_POINTS = 110   # welcome credit: one video with 2 revision rounds, and a little spare
+# 推薦好友: the referrer is paid when the friend finishes their first video (not at signup, so throwaway
+# accounts earn nothing); a referrer with any active subscription gets the bigger reward.
+REFERRAL_POINTS = 30
+REFERRAL_POINTS_SUB = 60
 MARGIN_PAYG = 2.20
 MARGIN_SUB = 1.80     # 專業旅人: the discount path, cheaper per video than pay-as-you-go (220 %)
 MARGIN_SUB_BIG = 1.50 # 超級玩家: volume plan, cheaper again per video
@@ -261,6 +265,7 @@ def public_pricing() -> dict:
     """The numbers the UI shows: list prices plus the subscription savings story."""
     return {
         "point_twd": POINT_TWD, "signup_points": SIGNUP_POINTS, "member_point_twd": MEMBER_POINT_TWD, "member_discount_pct": MEMBER_DISCOUNT_PCT,
+        "referral_points": REFERRAL_POINTS, "referral_points_sub": REFERRAL_POINTS_SUB,
         "margin_payg_pct": round(MARGIN_PAYG * 100), "margin_sub_pct": round(MARGIN_SUB * 100),
         "first_video_points": FIRST_VIDEO_POINTS, "revision_points": REVISION_POINTS,
         "first_video_twd": int(round(FIRST_VIDEO_POINTS * POINT_TWD)), "revision_twd": int(round(REVISION_POINTS * POINT_TWD)),

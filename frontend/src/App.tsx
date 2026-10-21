@@ -146,6 +146,9 @@ function Workspace() {
           <div className="side-sub small"><a onClick={e => { e.stopPropagation(); showCredits('plans') }}>{me.subscription ? `訂閱中 · ${me.subscription.label}` : '看方案'}</a></div>
         </div>
         {me.storage && <div className="side-storage" onClick={() => showCredits('storage')}><StorageMeter s={me.storage} compact /></div>}
+        <a className="side-ref" onClick={() => showCredits('referral')}>
+          <span className="side-ref-ic" aria-hidden="true">🎁</span><b>推薦朋友</b><span className="muted small">每位 +{me.subscription ? 60 : 30} 點</span><span className="gal-arr">›</span>
+        </a>
         {/* 作品庫 is one place (finished videos); the list below is the working projects. */}
         <a className={`gal-link ${view === 'gallery' ? 'active' : ''}`} onClick={() => { setView('gallery'); setMenu(false) }}>
           <span className="gal-ic" aria-hidden="true">▣</span><b>作品庫</b><span className="muted small">已完成 {projects.filter(p => p.final_version != null).length} 支</span><span className="gal-arr">›</span>

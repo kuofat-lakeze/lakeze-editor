@@ -6,6 +6,7 @@ import { Proof } from './Proof'
 import { OwnRead, type Take } from './OwnRead'
 import { Timeline } from './Timeline'
 import { Deliverables } from './Deliverables'
+import { RecBar, useRecorder } from './Recorder'
 import { CAPTION_STYLES, CapPicker, FONTS, FontPicker, SUPER_STYLES, SuperPicker, StyleHint } from './captionStyles'
 import { VoiceCloneDialog } from './VoiceClone'
 import { CLOUD_SECS_PER_VIDEO, CloudDl, DropZone, PickGuide, needsPickGuide, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
@@ -23,48 +24,25 @@ const IS_TOUCH = typeof matchMedia === 'function' && matchMedia('(pointer: coars
    support in many builds), so recognition happens server side. */
 const CAN_REC = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
 const MIC_MAX_SECONDS = 60
+/* 用說的: the same recorder as everywhere else (level meter, clock, one stop button), then speech-to-text
+   into the box. The composer swaps to the red recording strip while it runs, so the state is unmistakable. */
 function useMic(onText: (t: string) => void, projectId: string, onError: (m: string) => void) {
-  const [state, setState] = useState<'idle' | 'rec' | 'busy'>('idle')
-  const [seconds, setSeconds] = useState(0)
-  const rec = useRef<MediaRecorder | null>(null)
-  const chunks = useRef<Blob[]>([])
-  const timer = useRef<number | null>(null)
-  const stopTracks = () => { rec.current?.stream.getTracks().forEach(t => t.stop()) }
-  const stop = () => { if (rec.current && rec.current.state !== 'inactive') rec.current.stop() }
-  const start = async () => {
-    if (!CAN_REC) { onError('這個瀏覽器不支援錄音，請改用 Safari 或 Chrome。'); return }
-    let stream: MediaStream
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }) }
-    catch { onError('沒有麥克風權限。請在瀏覽器網址列允許麥克風，再按一次。'); return }
-    const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find(m => MediaRecorder.isTypeSupported(m)) ?? ''
-    const r = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
-    chunks.current = []
-    r.ondataavailable = e => { if (e.data.size) chunks.current.push(e.data) }
-    r.onstop = async () => {
-      stopTracks()
-      if (timer.current) { clearInterval(timer.current); timer.current = null }
-      const blob = new Blob(chunks.current, { type: r.mimeType || mime || 'audio/webm' })
-      rec.current = null
-      if (blob.size < 1000) { setState('idle'); return }
-      setState('busy')
-      try {
-        const res = await api.stt(blob, projectId)
-        if (res.text) onText(res.text); else onError('沒有聽到聲音，請靠近麥克風再說一次。')
-      } catch (e) { onError((e as Error).message || '語音辨識失敗') }
-      finally { setState('idle'); setSeconds(0) }
-    }
-    rec.current = r
-    r.start(250)
-    setState('rec'); setSeconds(0)
-    const t0 = Date.now()
-    timer.current = window.setInterval(() => {
-      const sec = Math.floor((Date.now() - t0) / 1000); setSeconds(sec)
-      if (sec >= MIC_MAX_SECONDS) stop()
-    }, 250)
-  }
-  useEffect(() => () => { stopTracks(); if (timer.current) clearInterval(timer.current) }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  return { state, on: state === 'rec', busy: state === 'busy', seconds, toggle: () => (state === 'rec' ? stop() : state === 'idle' ? start() : undefined), available: CAN_REC }
+  const [busy, setBusy] = useState(false)
+  const r = useRecorder(async blob => {
+    if (blob.size < 1000) return
+    setBusy(true)
+    try {
+      const res = await api.stt(blob, projectId)
+      if (res.text) onText(res.text); else onError('沒有聽到聲音，請靠近麥克風再說一次。')
+    } catch (e) { onError((e as Error).message || '語音辨識失敗') } finally { setBusy(false) }
+  })
+  useEffect(() => { if (r.err) onError(r.err) }, [r.err]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (r.rec && r.secs >= MIC_MAX_SECONDS) r.stop() }, [r.rec, r.secs]) // eslint-disable-line react-hooks/exhaustive-deps
+  const start = () => { if (!CAN_REC) { onError('這個瀏覽器不支援錄音，請改用 Safari 或 Chrome。'); return } r.start() }
+  return { rec: r, on: r.rec, busy, seconds: r.secs, toggle: () => (r.rec ? r.stop() : !busy ? start() : undefined), available: CAN_REC }
 }
+/** 辨識中 strip: same shape as the recording strip, so the eye stays in one place. */
+const SttBar = () => <div className="recbar busy" role="status" aria-live="polite"><span className="spinner" /><span className="recbar-lab"><b>辨識中</b><em>文字馬上出現</em></span></div>
 const MicIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M12 15a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v5a4 4 0 0 0 4 4zm7-4a7 7 0 0 1-14 0M12 18v3M8 21h8" />
@@ -1088,9 +1066,10 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                       {!text.trim() && <span className="coach">在這裡打字</span>}
                       <textarea rows={4} value={text} onChange={e => setText(e.target.value)} autoFocus={!text}
                         placeholder={'例：宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑。'} />
-                      {mic.available && <button type="button" className={`attach mic ob-mic ${mic.on ? 'on' : ''} ${mic.busy ? 'busy' : ''}`} title="用說的" aria-label="語音輸入" onClick={mic.toggle} disabled={mic.busy}>{mic.busy ? <span className="spinner" /> : <MicIcon />}</button>}
+                      {mic.available && !mic.on && !mic.busy && <button type="button" className="attach mic ob-mic" title="用說的" aria-label="語音輸入" onClick={mic.toggle}><MicIcon /></button>}
                     </div>}
-                    {!ezBrief && (mic.on || mic.busy) && <div className="small mic-hint">{mic.on ? `錄音中 ${mic.seconds}s · 說完再按一次麥克風` : '辨識中，文字馬上出現…'}</div>}
+                    {!ezBrief && mic.on && <RecBar r={mic.rec} label="說出這支要賣什麼" stopLabel="說完了" hint="地點、特色、價格，想到什麼說什麼" />}
+                    {!ezBrief && mic.busy && <SttBar />}
                     {!ezBrief && <div className="chips inline">
                       {!analysis && <a className="chipbtn on" onClick={() => setText(EXAMPLE_BRIEF)}>給我範例</a>}
                       {['地點：', '價格：平日每人 NT$', '店名：', '語氣：輕鬆活潑'].map(c => (
@@ -1343,18 +1322,21 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
           <ClipIcon />
           <input ref={attachInput} type="file" multiple accept="video/*,.mp4,.mov,.m4v" hidden disabled={uploading} onClick={pick}
             onChange={e => { onFiles(e.target.files); e.target.value = '' }} /></label>
-        <textarea ref={taRef} value={text} onChange={e => setText(e.target.value)} rows={2}
-          placeholder={uploading ? '上傳中，完成後再送出…' : PLACEHOLDER[stage]}
-          onKeyDown={e => {
-            // Enter sends only on desktop, never while the IME (注音／拼音) is still composing, and never on phones
-            // (there Enter is a newline; send with the button). Shift+Enter is always a newline.
-            const composing = e.nativeEvent.isComposing || e.keyCode === 229
-            if (e.key === 'Enter' && !e.shiftKey && !composing && !IS_TOUCH) { e.preventDefault(); send() }
-          }} />
-        {mic.available && <button type="button" className={`attach mic ${mic.on ? 'on' : ''} ${mic.busy ? 'busy' : ''}`} title={mic.on ? '按一下結束，開始辨識' : mic.busy ? '辨識中…' : '語音輸入（按一下開始說）'} aria-label="語音輸入" onClick={mic.toggle} disabled={mic.busy}>{mic.busy ? <span className="spinner" /> : <MicIcon />}{mic.on && <b className="mic-sec">{mic.seconds}s</b>}</button>}
-        <button className="btn primary" onClick={send} disabled={running || uploading || (!text.trim() && !DEFAULT_CHIP[stage])}>{!text.trim() && DEFAULT_CHIP[stage] ? DEFAULT_CHIP[stage] : '送出'}</button>
-        {(mic.on || mic.busy) ? <span className="composer-hint small mic-hint">{mic.on ? `錄音中 ${mic.seconds}s · 說完再按一次麥克風` : '辨識中，文字馬上出現…'}</span>
-          : !IS_TOUCH && <span className="composer-hint muted small">Enter 送出 · Shift+Enter 換行 · 🎙 可以用說的</span>}
+        {mic.on ? <RecBar r={mic.rec} label="說出要改什麼" stopLabel="說完了" hint="例如「第 2 段換泳池、價格字再大」" />
+          : mic.busy ? <SttBar /> : <>
+            {/* a chat box, not a form field: no password / card / address autofill */}
+            <textarea ref={taRef} value={text} onChange={e => setText(e.target.value)} rows={2} name="instruction" autoComplete="off" autoCapitalize="off" spellCheck={false} lang="zh-Hant" {...{ 'data-lpignore': 'true', 'data-1p-ignore': '' }}
+              placeholder={uploading ? '上傳中，完成後再送出…' : PLACEHOLDER[stage]}
+              onKeyDown={e => {
+                // Enter sends only on desktop, never while the IME (注音／拼音) is still composing, and never on phones
+                // (there Enter is a newline; send with the button). Shift+Enter is always a newline.
+                const composing = e.nativeEvent.isComposing || e.keyCode === 229
+                if (e.key === 'Enter' && !e.shiftKey && !composing && !IS_TOUCH) { e.preventDefault(); send() }
+              }} />
+            {mic.available && <button type="button" className="attach mic" title="語音輸入（按一下開始說）" aria-label="語音輸入" onClick={mic.toggle}><MicIcon /></button>}
+            <button className="btn primary" onClick={send} disabled={running || uploading || (!text.trim() && !DEFAULT_CHIP[stage])}>{!text.trim() && DEFAULT_CHIP[stage] ? DEFAULT_CHIP[stage] : '送出'}</button>
+            {!IS_TOUCH && <span className="composer-hint muted small">Enter 送出 · Shift+Enter 換行 · 🎙 可以用說的</span>}
+          </>}
       </footer>}
       </>}
     </div>

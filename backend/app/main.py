@@ -206,11 +206,15 @@ class Creds(BaseModel):
 
 
 async def referrer_from_share(token: str) -> str | None:
-    """Owner of the share link a new user arrived through, or None."""
+    """Owner of the share link a new user arrived through (ref=<share token>), or the person whose personal
+    推薦連結 it was (ref=u-<user id>), or None."""
     token = (token or "").strip()[:64]
     if not token:
         return None
     async with Session() as s:
+        if token.startswith("u-"):
+            u = await s.get(User, token[2:])
+            return u.id if u and not u.disabled else None
         sh = (await s.execute(select(Share).where(Share.token == token))).scalar_one_or_none()
         if not sh:
             return None
@@ -275,6 +279,24 @@ async def me(user: User = CurrentUser):
             "voice_trial": {"used": round(user.voice_trial_seconds or 0.0, 1), "limit": pricing.TRIAL_VOICE_SECONDS} if tier == "free" else None,
             "provider": user.provider or None, "name": user.display_name, "ui_mode": user.ui_mode or "pro",
             "test_account": user.email in config.TEST_EMAILS}   # purchases are credited directly, no payment
+
+
+@app.get("/api/referral")
+async def referral(user: User = CurrentUser):
+    """推薦好友: the personal link, what a friend is worth right now, and how each referred friend is doing."""
+    async with Session() as s:
+        friends = (await s.execute(select(User).where(User.referrer_id == user.id).order_by(User.created_at.desc()))).scalars().all()
+        ids = [f.id for f in friends]
+        ex = dict((await s.execute(select(Project.user_id, func.coalesce(func.sum(Project.exports), 0)).where(Project.user_id.in_(ids)).group_by(Project.user_id))).all()) if ids else {}
+        paid = dict((await s.execute(select(CreditTx.reason, CreditTx.delta).where(CreditTx.user_id == user.id, CreditTx.reason.like("referral %")))).all())
+    def mask(e: str) -> str:
+        name, _, dom = e.partition("@")
+        return f"{name[:2]}{'＊' * max(1, min(4, len(name) - 2))}@{dom}"
+    rows = [{"email": mask(f.email), "name": (f.display_name or "")[:20] or None, "joined_at": f.created_at.isoformat(),
+             "made_video": int(ex.get(f.id, 0) or 0) > 0, "points": paid.get(f"referral {f.id}")} for f in friends]
+    return {"link": f"/signup?ref=u-{user.id}", "points": pricing.REFERRAL_POINTS, "points_sub": pricing.REFERRAL_POINTS_SUB,
+            "subscribed": bool(user.subscription), "earned": sum(p for p in paid.values() if p), "friends": rows,
+            "signup_points": pricing.SIGNUP_POINTS, "fb_app_id": config.FACEBOOK_APP_ID or None}
 
 
 class ModeBody(BaseModel):
