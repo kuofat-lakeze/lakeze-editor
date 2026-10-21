@@ -44,7 +44,17 @@ export function OwnRead({ projectId, version, onClose, onDone, onUsage, initialT
   const onTime = () => { const v = video.current; if (v && stopAt.current !== null && v.currentTime >= stopAt.current) { v.pause(); stopAt.current = null; setPlaying(null) } }
   const playMine = (url: string) => { stopAll(); const a = new Audio(url); audio.current = a; a.onended = () => setPlaying(null); a.play().then(() => setPlaying('mine')).catch(() => {}) }
   const start = async () => { stopAll(); setErr(''); await rec.start() }
-  const next = () => { if (i < lines.length - 1) setI(i + 1) }
+  const go = (k: number) => { if (k < 0 || k >= lines.length) return; stopAll(); setI(k) }
+  const next = () => go(i + 1)
+  const prev = () => go(i - 1)
+  // arriving on a line: hear how it sounds right now (your take if you made one, else the current narration)
+  const autoOnce = useRef(-1)
+  useEffect(() => {
+    if (!ok || !cur || autoOnce.current === i || rec.rec) return
+    autoOnce.current = i
+    const t = setTimeout(() => { const m = takes[cur.key!]; if (m) playMine(m.url); else if (src) playOrig() }, 250)
+    return () => clearTimeout(t)
+  }, [i, ok]) // eslint-disable-line react-hooks/exhaustive-deps
   const apply = async () => {
     setApplying(true); setErr('')
     try { await api.quick(projectId, { lines: Object.entries(takes).map(([key, t]) => ({ key, take: t.take })) }); onUsage?.(); onDone?.(); onClose() }
@@ -65,7 +75,10 @@ export function OwnRead({ projectId, version, onClose, onDone, onUsage, initialT
         {ok && cur && (
           <div className="own-body">
             <div className="own-dots" aria-hidden="true">{lines.map((l, k) => <i key={l.n} className={`${k === i ? 'on' : ''} ${takes[l.key!] ? 'done' : ''}`} onClick={() => { stopAll(); setI(k) }} />)}</div>
-            <div className="own-tip">{i === 0 && n === 0 ? '手機拿近一點，用平常講話的語氣，照著唸這一句就好。' : mine ? '唸好了，聽聽看；可以重唸，或直接下一句。' : '按下麥克風開始唸，唸完按右邊。'}</div>
+            <div className={`own-now ${playing ? 'on' : ''}`} aria-live="polite">
+              {playing === 'orig' ? <><i className="own-eq"><b /><b /><b /></i>正在播：原本的配音</> : playing === 'mine' ? <><i className="own-eq"><b /><b /><b /></i>正在播：我唸的</> : mine ? '這句已經換成你唸的，可以再聽或重唸' : '到每一句都會先播現在的配音給你聽'}
+            </div>
+            <div className="own-tip">{i === 0 && n === 0 ? '手機拿近一點，用平常講話的語氣，照著唸這一句就好。' : mine ? '聽聽看；可以重唸，或往下一句。' : '按下麥克風開始唸，唸完按右邊。'}</div>
             <div className={`own-line ${rec.rec ? 'live' : ''}`}>
               <span className="own-n">{i + 1}</span>
               <p>{cur.text}</p>
@@ -77,11 +90,15 @@ export function OwnRead({ projectId, version, onClose, onDone, onUsage, initialT
                   <i aria-hidden="true" />{busy ? '處理中…' : mine ? '重唸這句' : '開始唸這句'}
                 </button>
                 <div className="own-row">
-                  {src && <button type="button" className="pf-tb" onClick={playing === 'orig' ? stopAll : playOrig}><i>▶</i>{playing === 'orig' ? '停' : '聽原本的'}</button>}
-                  {mine && <button type="button" className="pf-tb on" onClick={playing === 'mine' ? stopAll : () => playMine(mine.url)}><i>▶</i>{playing === 'mine' ? '停' : '聽我唸的'}</button>}
+                  {src && <button type="button" className={`pf-tb ${playing === 'orig' ? 'on' : ''}`} onClick={playing === 'orig' ? stopAll : playOrig}><i>▶</i>{playing === 'orig' ? '停' : '聽原本的'}</button>}
+                  {mine && <button type="button" className={`pf-tb ${playing === 'mine' ? 'on' : ''}`} onClick={playing === 'mine' ? stopAll : () => playMine(mine.url)}><i>▶</i>{playing === 'mine' ? '停' : '聽我唸的'}</button>}
+                </div>
+                <div className="own-nav">
+                  <button type="button" className="pf-tb" disabled={i === 0} onClick={prev}><i>←</i>上一句</button>
+                  <span className="muted small">{i + 1} / {lines.length}</span>
                   {i < lines.length - 1
-                    ? <button type="button" className={`pf-tb ${mine ? 'next' : ''}`} onClick={next}><i>→</i>{mine ? '下一句' : '這句先跳過'}</button>
-                    : <span className="muted small own-last">{left ? `還有 ${left} 句沒唸（沒唸的會保留原本的聲音）` : '全部唸好了，按右上「套用」'}</span>}
+                    ? <button type="button" className={`pf-tb ${mine ? 'next' : ''}`} onClick={next}>{mine ? '下一句' : '先跳過'}<i>→</i></button>
+                    : <span className="muted small own-last">{left ? `還有 ${left} 句沒唸` : '全部唸好了'}</span>}
                 </div>
               </div>)}
             {(err || rec.err) && <div className="error small">{err || rec.err}</div>}

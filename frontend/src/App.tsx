@@ -28,8 +28,11 @@ const PROJECT_EXAMPLES = [
 ]
 const FIRST_EXAMPLES = ['民宿介紹', '餐廳食記', '景點一日遊', '新品開箱', '活動花絮']
 
+import { VersionBar } from './Version'
+
 export default function App() {
   return <>
+    <VersionBar />
     {LEGAL_PAGE ? <LegalPage kind={LEGAL_PAGE} /> : SHARE_TOKEN ? <SharePage token={SHARE_TOKEN} /> : IS_DASH ? <DashboardGate /> : <Workspace />}
     <DialogHost />
   </>

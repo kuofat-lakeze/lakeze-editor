@@ -148,6 +148,7 @@ class ShareComment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)   # when the owner opened it
     owner: Mapped[bool] = mapped_column(Boolean, default=False)   # a reply by the project owner, shown in the public thread
+    parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # a reply under another comment (one level, like Facebook)
 
 
 class Order(Base):
@@ -195,7 +196,7 @@ _MIGRATIONS = [
     ("users", "tags", "VARCHAR(200) DEFAULT ''"), ("users", "last_seen_at", "DATETIME"),
     ("share_comments", "read_at", "DATETIME"), ("users", "referrer_id", "VARCHAR(12)"), ("share_comments", "owner", "BOOLEAN DEFAULT 0"),
     ("users", "storage_free_since", "DATETIME"), ("users", "ui_mode", "VARCHAR(10) DEFAULT 'pro'"),
-    ("projects", "version_names", "TEXT"),
+    ("projects", "version_names", "TEXT"), ("share_comments", "parent_id", "INTEGER"),
 ]
 
 

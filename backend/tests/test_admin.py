@@ -226,6 +226,23 @@ def test_voice_input_stt(client, monkeypatch, tmp_path: Path):
     assert c.post("/api/stt", files={"audio": ("v.webm", clip.read_bytes(), "audio/webm")}).status_code == 502
 
 
+def test_share_replies(client):
+    """Share-page comments can be answered under each other (one level, like Facebook)."""
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = b
+    pid = c.post("/api/projects", json={"name": "討論"}).json()["id"]
+    tok = c.post(f"/api/projects/{pid}/share", json={}).json()["token"]
+    top = c.post(f"/api/s/{tok}/comment", json={"name": "小美", "text": "封面好看"}).json()["comment"]
+    rep = c.post(f"/api/s/{tok}/comment", json={"name": "阿明", "text": "同意", "parent_id": top["id"]}).json()["comment"]
+    assert rep["parent_id"] == top["id"]
+    deep = c.post(f"/api/s/{tok}/comment", json={"name": "小華", "text": "+1", "parent_id": rep["id"]}).json()["comment"]
+    assert deep["parent_id"] == top["id"]   # a reply to a reply stays under the top comment
+    assert c.post(f"/api/s/{tok}/comment", json={"text": "x", "parent_id": 999999}).status_code == 404
+    th = c.get(f"/api/s/{tok}/comments").json()["comments"]
+    assert [m.get("parent_id") for m in th] == [None, top["id"], top["id"]]
+
+
 def test_share_og_page_and_default_admins(client):
     from app import config as C
     assert {"kuofat@gmail.com", "lodestar0115@gmail.com"} <= C.ADMIN_EMAILS

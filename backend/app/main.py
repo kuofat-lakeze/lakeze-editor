@@ -1837,7 +1837,7 @@ async def _thread(project_id: str) -> dict:
     async with Session() as s:
         rows = (await s.execute(select(ShareComment).where(ShareComment.project_id == project_id)
                                 .order_by(ShareComment.id).limit(THREAD_LIMIT))).scalars().all()
-    return {"comments": [{"id": c.id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat(), "owner": bool(c.owner)} for c in rows],
+    return {"comments": [{"id": c.id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat(), "owner": bool(c.owner), "parent_id": c.parent_id} for c in rows],
             "comments_limit": THREAD_LIMIT, "comments_full": len(rows) >= THREAD_LIMIT}
 
 
@@ -1911,6 +1911,7 @@ async def share_file(token: str, asset_id: str, download: int = 0):
 class CommentBody(BaseModel):
     name: str = ""
     text: str
+    parent_id: int | None = None
 
 
 @app.post("/api/s/{token}/comment")
@@ -1923,10 +1924,17 @@ async def share_comment(token: str, body: CommentBody):
         n = (await s.execute(select(func.count(ShareComment.id)).where(ShareComment.project_id == p.id))).scalar()
         if n >= THREAD_LIMIT:
             raise HTTPException(409, f"這支影片的留言已達 {THREAD_LIMIT} 則上限，沒辦法再留了")
-        c = ShareComment(project_id=p.id, share_id=sh.id, name=body.name.strip()[:80], text=text_[:2000])
+        parent = None
+        if body.parent_id:
+            parent = await s.get(ShareComment, body.parent_id)
+            if not parent or parent.project_id != p.id:
+                raise HTTPException(404, "要回覆的留言不存在")
+            if parent.parent_id:   # one level deep: a reply to a reply goes under the same top comment
+                parent = await s.get(ShareComment, parent.parent_id)
+        c = ShareComment(project_id=p.id, share_id=sh.id, name=body.name.strip()[:80], text=text_[:2000], parent_id=parent.id if parent else None)
         s.add(c)
         await s.commit()
-    return {"ok": True, "comment": {"id": c.id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat(), "owner": False}}
+    return {"ok": True, "comment": {"id": c.id, "name": c.name, "text": c.text, "created_at": c.created_at.isoformat(), "owner": False, "parent_id": c.parent_id}}
 
 
 @app.get("/api/gallery")
