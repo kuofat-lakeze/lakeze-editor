@@ -1,20 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, verLabel, type DeliverableVersion, type ScriptInfo } from './api'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
-import { ask } from './Dialog'
 
 /* 我親自一句一句配音: the owner reads the narration one line at a time and the recordings themselves become
    the narration — no AI voice in between (that's the other path, AI 生成我的聲音). One big line at a time,
    record, listen, redo or move on; 套用 re-renders from the recipe with the takes in place. */
 type Line = ScriptInfo['lines'][number]
-type Take = { take: string; url: string; secs: number }
+export type Take = { take: string; url: string; secs: number }
 
-export function OwnRead({ projectId, version, onClose, onDone, onUsage }:
-  { projectId: string; version: DeliverableVersion | null; onClose: () => void; onDone?: () => void; onUsage?: () => void }) {
+export function OwnRead({ projectId, version, onClose, onDone, onUsage, initialTakes, onTakes }:
+  { projectId: string; version: DeliverableVersion | null; onClose: () => void; onDone?: () => void; onUsage?: () => void; initialTakes?: Record<string, Take>; onTakes?: (t: Record<string, Take>) => void }) {
   const [lines, setLines] = useState<Line[]>([])
   const [ok, setOk] = useState<boolean | null>(null)
   const [i, setI] = useState(0)
-  const [takes, setTakes] = useState<Record<string, Take>>({})
+  const [takes, setTakes] = useState<Record<string, Take>>(initialTakes ?? {})
+  useEffect(() => { onTakes?.(takes) }, [takes]) // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false)
   const [applying, setApplying] = useState(false)
   const [err, setErr] = useState('')
@@ -50,14 +50,14 @@ export function OwnRead({ projectId, version, onClose, onDone, onUsage }:
     try { await api.quick(projectId, { lines: Object.entries(takes).map(([key, t]) => ({ key, take: t.take })) }); onUsage?.(); onDone?.(); onClose() }
     catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? '點數不足，先儲值再套用' : ex.message); setApplying(false) }
   }
-  const cancel = async () => { if (applying || rec.rec) return; if (n === 0 || await ask.confirm('放棄已經唸好的句子？', { ok: '放棄', danger: true })) onClose() }
+  const cancel = () => { if (!applying && !rec.rec) onClose() }   // ← 返回 keeps the takes (Chat holds them)
   const mine = cur ? takes[cur.key!] : undefined
   const left = lines.filter(l => !takes[l.key!]).length
 
   return (
     <div className="pf-scrim" onClick={e => { if (e.target === e.currentTarget) cancel() }}>
       <div className="pf own" role="dialog" aria-label="我親自配音">
-        <SheetHead title="我親自配音" badge={version ? verLabel(version.version) : undefined} sub={lines.length ? `第 ${i + 1} 句 / 共 ${lines.length} 句` : undefined} onCancel={cancel}
+        <SheetHead title="我親自配音" badge={version ? verLabel(version.version) : undefined} sub={lines.length ? `第 ${i + 1} 句 / 共 ${lines.length} 句` : undefined} onCancel={cancel} cancelLabel="← 返回"
           right={<button className="btn primary small" disabled={n === 0 || applying || rec.rec} onClick={apply}>{applying ? '輸出中…' : n ? `套用 ${n}` : '套用'}</button>} />
         {src && <video ref={video} src={src} preload="metadata" playsInline onTimeUpdate={onTime} className="own-video" />}
         {ok === null && <div className="muted small tl-msg">載入旁白稿…</div>}

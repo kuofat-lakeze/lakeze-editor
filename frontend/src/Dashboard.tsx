@@ -253,10 +253,16 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
   const load = () => api.admin.user(id).then(setU)
   useEffect(() => { setU(null); setMsgs(null); load() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
   const patch = async (body: Record<string, unknown>) => { await api.admin.patch(id, body); load(); onChanged() }
+  const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null)
+  const say = (ok: boolean, text: string) => { setToast({ ok, text }); setTimeout(() => setToast(null), 4500) }
   const grant = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); const f = new FormData(e.currentTarget)
-    await api.admin.grant(id, Number(f.get('delta')), String(f.get('reason') || 'manual'), Number(f.get('twd') || 0))
-    e.currentTarget.reset(); load(); onChanged()
+    e.preventDefault(); const form = e.currentTarget; const f = new FormData(form)
+    const delta = Number(f.get('delta')), paid = Number(f.get('twd') || 0)
+    try {
+      await api.admin.grant(id, delta, String(f.get('reason') || 'manual'), paid)
+      form.reset(); await load(); onChanged()
+      say(true, `✓ 已${delta >= 0 ? '加' : '扣'} ${Math.abs(delta)} 點給 ${u?.email ?? '用戶'}${paid ? `，實收 ${twd(paid)}` : ''}`)
+    } catch (x) { say(false, `✕ 加點失敗（${delta} 點${paid ? `、${twd(paid)}` : ''}）：${(x as Error).message}`) }
   }
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
   const stages: Record<Stage, string> = { sub: '訂閱中', paid: '付費用戶', churn: '流失風險', trial_done: '做過影片未付費', trial: '試用中', new: '註冊未使用', disabled: '停用' }
@@ -265,6 +271,7 @@ function UserDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
   return (
     <>
       <div className="scrim" onClick={onClose} />
+      {toast && <div className={`buy-toast ${toast.ok ? 'ok' : 'bad'}`}>{toast.text}</div>}
       <aside className="drawer">
         {!u ? <div className="center muted">載入中…</div> : (
           <>

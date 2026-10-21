@@ -2199,3 +2199,29 @@ body.easy .recbar-lab em { font-size: 22px; } body.easy .recbar-stop { font-size
 .pf-editbox { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
 .pf-editbox textarea { width: 100%; font: inherit; font-size: 19px; line-height: 1.6; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--brand); background: var(--panel); resize: none; box-shadow: 0 0 0 3px var(--brand-soft); }
 .pf-editacts { display: flex; gap: 8px; justify-content: flex-end; } .pf-editacts .btn { min-height: 44px; }
+
+/* sheets fit the real iPhone viewport (toolbars take part of 100vh) */
+.pf-scrim, .sh-scrim, .pg-scrim { height: 100dvh; }
+.pf { height: calc(100dvh - 6px); max-height: calc(100dvh - 6px); }
+.tw { max-height: calc(100dvh - 10px); }
+/* admin toast */
+.buy-toast.ok { background: #1E7A4C; } .buy-toast.bad { background: #B4380F; }
+/* 完成 (final) button */
+.btn.done { border-color: #1E7A4C; color: #1E7A4C; } .btn.done.on { background: #1E7A4C; color: #fff; }
+/* first project */
+.first { display: flex; align-items: center; justify-content: center; height: 100%; padding: 20px; }
+.first-card { width: min(100%, 460px); background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 28px 22px; display: flex; flex-direction: column; gap: 10px; text-align: center; box-shadow: var(--shadow); }
+.first-emoji { font-size: 40px; } .first-card h2 { margin: 0; font-size: 24px; } .first-card p { margin: 0 0 6px; }
+.first-ex { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; } .first-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+/* 還缺 pills are buttons now */
+.pill.miss { border: 0; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 6px 12px; background: #FFF3C4; color: #7A5A00; }
+.pill.miss:hover { background: #FFE89A; }
+/* picker guide: the dimmed ✓ (downloading) and the iCloud spinner on picked items */
+.pg1-ok { animation: pg1OkDim 5.2s infinite; }
+@keyframes pg1OkDim { 0%, 34% { background: #0A84FF; } 40%, 92% { background: #7FB7F5; } 100% { background: #0A84FF; } }
+.pg1-ok::after { animation: none; opacity: 1; }
+.pg1-cloud { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; border: 3px solid rgba(255,255,255,.35); border-top-color: #fff; animation: pgSpin .9s linear infinite, pg1CloudShow 5.2s infinite; }
+@keyframes pg1CloudShow { 0%, 36% { opacity: 0; } 40%, 92% { opacity: 1; } 100% { opacity: 0; } }
+.pg1-chip.dim { background: #7FB7F5; }
+.pg-facts { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.pg-facts span { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; background: var(--panel2); border-radius: 999px; padding: 6px 11px; } .pg-facts i { font-style: normal; }

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, verLabel, type DeliverableVersion, type LineEdit, type QuickEdits, type ScriptInfo } from './api'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
-import { ask } from './Dialog'
 
 /* 校對旁白 (輕鬆模式): the finished video and its narration, one big row per line. Each row can be
    listened to, re-read by the owner (speech-to-speech in the video's voice) or dropped — the picture
@@ -90,12 +89,12 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
       await api.quick(projectId, e); onUsage?.(); onDone?.(); onClose()
     } catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? '點數不足，先儲值再套用' : ex.message); setApplying(false) }
   }
-  const cancel = async () => { if (applying) return; if (changed === 0 || await ask.confirm('放棄這些修改？', { ok: '放棄', danger: true })) onClose() }
+  const cancel = () => { if (!applying) onClose() }   // ← 返回 keeps the edits (Chat holds them) so the sidebar and chat stay reachable
 
   return (
     <div className="pf-scrim" onClick={e => { if (e.target === e.currentTarget) cancel() }}>
       <div className="pf" role="dialog" aria-label="校對旁白">
-        <SheetHead title="校對旁白" badge={version ? verLabel(version.version) : undefined} sub="聽一聽：改字、唸給 AI 聽，或拿掉" onCancel={cancel}
+        <SheetHead title="校對旁白" badge={version ? verLabel(version.version) : undefined} sub={changed ? '改了還沒套用；返回會先留著' : '聽一聽：改字、唸給 AI 聽，或拿掉'} onCancel={cancel} cancelLabel="← 返回"
           right={<button className="btn primary small" disabled={changed === 0 || applying} onClick={apply}>{applying ? '輸出中…' : '套用'}</button>} />
         <div className="pf-body">
           <div className="pf-video">

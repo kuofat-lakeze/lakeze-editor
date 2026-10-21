@@ -20,6 +20,14 @@ const SHARE_TOKEN = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/)?.[1]
 const IS_DASH = location.hostname.startsWith('dashboard.') || /^\/dashboard(\/|$)/.test(location.pathname)
 const LEGAL_PAGE = location.pathname === '/privacy' ? 'privacy' : location.pathname === '/terms' ? 'terms' : null
 
+/* 專案名稱 examples: a different one each time, across the kinds of video people make. */
+const PROJECT_EXAMPLES = [
+  '雲岫海景渡假會館', '礁溪溫泉 villa 秋季', '東林餐館 桌邊片烤鴨', '台南巷弄老宅咖啡', '花蓮七星潭一日遊', '阿里山日出小旅行',
+  '九份夜景老街散步', '墾丁包棟泳池趴', '新竹露營車開箱', '民宿早餐開箱', '日月潭環湖自行車', '台東熱氣球嘉年華',
+  '宜蘭親子農場', '北投溫泉飯店評測', '高雄駁二文青一日', '澎湖花火節', '烘焙工作室新品', '健身房開幕', '美甲工作室春季款', '家具展示間導覽',
+]
+const FIRST_EXAMPLES = ['民宿介紹', '餐廳食記', '景點一日遊', '新品開箱', '活動花絮']
+
 export default function App() {
   return <>
     {LEGAL_PAGE ? <LegalPage kind={LEGAL_PAGE} /> : SHARE_TOKEN ? <SharePage token={SHARE_TOKEN} /> : IS_DASH ? <DashboardGate /> : <Workspace />}
@@ -93,8 +101,9 @@ function Workspace() {
     ? <Login initialMode={auth} initialError={oauthError} refToken={refToken} onDone={m => { setMe(m); history.replaceState(null, '', '/') }} onBack={() => { setAuth(null); history.replaceState(null, '', '/') }} />
     : <Landing onStart={() => { setAuth('signup'); history.pushState(null, '', '/signup') }} onLogin={() => { setAuth('login'); history.pushState(null, '', '/login') }} />}</>
 
-  const newProject = async () => {
-    const name = (await ask.prompt('幫這個新專案取個名字', { placeholder: '例如：雲岫海景渡假會館', ok: '建立專案' }))?.trim()
+  const newProject = async (prefill = '') => {
+    const ex = PROJECT_EXAMPLES[Math.floor(Math.random() * PROJECT_EXAMPLES.length)]
+    const name = (await ask.prompt('幫這個新專案取個名字', { placeholder: `例如：${ex}`, value: prefill, ok: '建立專案' }))?.trim()
     if (!name) return
     const p = await api.createProject(name)
     setProjects([p, ...projects]); setCurrent(p.id); setView('chat'); setMenu(false)
@@ -131,7 +140,7 @@ function Workspace() {
         </a>
         <div className="proj-sec">
           <span className="proj-sec-t">專案<small>{projects.length}</small></span>
-          <button className="btn primary small" onClick={newProject}>＋ 新專案</button>
+          <button className="btn primary small" onClick={() => newProject()}>＋ 新專案</button>
         </div>
         <nav aria-label="專案">
           {projects.length === 0 && <span className="muted small" style={{ padding: '6px 10px' }}>還沒有專案，按上面「＋ 新專案」開始。</span>}
@@ -162,7 +171,16 @@ function Workspace() {
           : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} needPoints={needPoints} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} onBought={refreshMe} />
           : current ? <Chat key={current} easy={easy} onMode={setMode} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits(me.subscription ? 'buy' : 'plans', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
               onProjectsChanged={() => api.projects().then(setProjects)} feedbackUnread={notes?.by_project[current] ?? 0} onFeedbackRead={pollNotes} />
-            : <div className="center muted">建立一個專案開始剪片。第一個專案免費。</div>}
+            : <div className="first">
+                <div className="first-card">
+                  <div className="first-emoji" aria-hidden="true">🎬</div>
+                  <h2>先建一個專案</h2>
+                  <p className="muted">一個專案＝一支影片。取個名字就好，素材下一步再給。</p>
+                  <button className="btn primary lg block" onClick={() => newProject()}>＋ 建立第一個專案</button>
+                  <div className="first-ex"><span className="muted small">或直接用這些名字開始</span>
+                    <div className="first-chips">{FIRST_EXAMPLES.map(n => <a key={n} className="chipbtn" onClick={() => newProject(n)}>{n}</a>)}</div></div>
+                </div>
+              </div>}
       </main>
     </div>
   )

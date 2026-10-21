@@ -1230,8 +1230,9 @@ async def project_proof_file(project_id: str, name: str, user: User = CurrentUse
 
 
 @app.get("/api/projects/{project_id}/frame/{n}")
-async def frame(project_id: str, n: int, t: float = 0.0, user: User = CurrentUser):
-    """One frame of clip #n at second t (cached), for the storyboard the analysis shows."""
+async def frame(project_id: str, n: int, t: float = 0.0, hq: int = 0, user: User = CurrentUser):
+    """One frame of clip #n at second t (cached), for the storyboard the analysis shows; hq=1 renders it at
+    full height for the cover preview."""
     await _own(project_id, user)
     root = project_dir(project_id)
     try:
@@ -1239,11 +1240,11 @@ async def frame(project_id: str, n: int, t: float = 0.0, user: User = CurrentUse
     except (FileNotFoundError, KeyError):
         raise HTTPException(404, "no such clip")
     t = max(0.0, min(float(t), 36000.0))
-    dest = root / "sheets" / "frames" / f"{n:02d}_{t:.1f}.jpg"
+    dest = root / "sheets" / "frames" / f"{n:02d}_{t:.1f}{'_hq' if hq else ''}.jpg"
     if not dest.exists():
         dest.parent.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(ff.ffmpeg, "-ss", f"{t:.2f}", "-i", str(root / "raw" / rel), "-frames:v", "1",
-                                "-vf", "scale=-2:360", "-q:v", "4", str(dest))
+                                "-vf", "scale=-2:1080" if hq else "scale=-2:360", "-q:v", "2" if hq else "4", str(dest))
     return FileResponse(dest, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 

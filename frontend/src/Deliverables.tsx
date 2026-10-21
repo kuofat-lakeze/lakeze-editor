@@ -87,20 +87,20 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak
             <div className="ver-head">
               <div className="ver-title">
                 <b>{verLabel(v.version)}</b>
-                {isFinal && <span className="pill final">最終版</span>}
+                {isFinal && <span className="pill final">完成</span>}
                 {!isFinal && project.final_version == null && v === versions[0] && <span className="pill">最新</span>}
                 <span className="muted small">{fmtDate(v.created_at)}{sizeOf(v) > 0 && ` · ${fmtBytes(sizeOf(v))}`}</span>
                 {v.expires_at && <ExpiryPill at={v.expires_at} onKeep={onStorage} />}
                 <button type="button" className="ver-name" onClick={() => rename(v)} title="改這一版的名字，下載時就是這個檔名">{v.name || `${project.name}_${verLabel(v.version)}`}<i>✎</i></button>
               </div>
               <div className="ver-actions">
-                {isFinal
-                  ? <button className="btn small" onClick={() => setFinal(null)}>取消最終版</button>
-                  : <button className="btn small" onClick={() => setFinal(v.version)}>標成最終版</button>}
                 {onProof && v.main && <button className="btn small" onClick={() => onProof(v)}>{onTweak ? '時間軸' : '校對旁白'}</button>}
+                {isFinal
+                  ? <button className="btn small done on" onClick={() => setFinal(null)} title="取消完成">✓ 已完成</button>
+                  : <button className="btn small done" onClick={() => setFinal(v.version)} title="標成完成的那一版：分享連結和作品庫都用這版">完成</button>}
                 {onTweak && v.main && v === versions[0] && <button className="btn small" onClick={onTweak}>樣式</button>}
                 <button className="btn primary small" onClick={() => setSharing(v.version)}>分享給朋友</button>
-                <button className="btn small ghost danger" disabled={isFinal || busy === v.version} title={isFinal ? '先取消最終版才能刪' : '刪除這一版，釋放空間'}
+                <button className="btn small ghost danger" disabled={isFinal || busy === v.version} title={isFinal ? '已完成的這版不能刪，先取消完成' : '刪除這一版，釋放空間'}
                   onClick={() => del(v.version)}>{busy === v.version ? '刪除中…' : '刪除'}</button>
               </div>
             </div>

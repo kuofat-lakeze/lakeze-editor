@@ -129,7 +129,7 @@ export const api = {
   script: (id: string) => fetch(`/api/projects/${id}/script`).then(j<ScriptInfo>),
   quick: (id: string, body: QuickEdits) => post(`/api/projects/${id}/quick`, body).then(j<{ ok: boolean; revoiced: string[]; charged: number; balance: number }>),
   say: (id: string, text: string, voice_id = '') => post(`/api/projects/${id}/say`, { text, voice_id }).then(j<{ url: string; balance: number }>),
-  frameUrl: (id: string, clip: number, t: number) => `/api/projects/${id}/frame/${clip}?t=${t}`,
+  frameUrl: (id: string, clip: number, t: number, hq = false) => `/api/projects/${id}/frame/${clip}?t=${t}${hq ? '&hq=1' : ''}`,
   projects: () => fetch('/api/projects').then(j<Project[]>),
   createProject: (name: string) => post('/api/projects', { name }).then(j<Project>),
   project: (id: string) => fetch(`/api/projects/${id}`).then(j<ProjectDetail>),

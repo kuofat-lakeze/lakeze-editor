@@ -39,7 +39,7 @@ def _head(style: str = DEFAULT_STYLE, font: str = DEFAULT_FONT, super_style: str
 ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
-WrapStyle: 2
+WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
@@ -85,6 +85,7 @@ def build_ass(vo: list[dict], supers: list[dict], counter: dict | None, dest: Pa
         supers = []
     st = CAPTION_STYLES.get(style, CAPTION_STYLES[DEFAULT_STYLE])
     base = st["size"]
+    sp_size = SUPER_STYLES.get(super_style, SUPER_STYLES[DEFAULT_SUPER])["size"]
     fs = f"\\fs{int(round(base * vo_scale))}" if abs(vo_scale - 1.0) > 1e-3 else ""
     for c in vo:
         y = int(c.get("y", 1300))
@@ -92,7 +93,10 @@ def build_ass(vo: list[dict], supers: list[dict], counter: dict | None, dest: Pa
     for s in supers:
         y = int(s.get("y", 330))
         txt = s["text"].replace("**", "").replace("\n", "\\N")  # highlight markup is VO-only
-        ev.append(f"Dialogue: 0,{_t(s['start'])},{_t(s['end'])},Super,,0,0,0,,{{\\pos(540,{y})\\fad(150,150)}}{txt}")
+        # a long title shrinks to stay on one line inside the safe width (≈ 13 CJK glyphs at full size); longer still wraps
+        n = max(len(t) for t in txt.split("\\N"))
+        shrink = f"\\fs{int(round(sp_size * max(0.7, 13 / n)))}" if n > 13 else ""
+        ev.append(f"Dialogue: 0,{_t(s['start'])},{_t(s['end'])},Super,,0,0,0,,{{\\pos(540,{y})\\fad(150,150){shrink}}}{txt}")
     if counter:
         a0, end = float(counter["start"]), float(counter["end"])
         amount = int(counter["amount"])

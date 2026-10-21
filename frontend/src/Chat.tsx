@@ -3,7 +3,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { api, verLabel, type Analysis, type Asset, type DeliverableVersion, type DriveCheck, type LineEdit, type Me, type Msg, type ProjectDetail, type Voice } from './api'
 import { Proof } from './Proof'
-import { OwnRead } from './OwnRead'
+import { OwnRead, type Take } from './OwnRead'
 import { Timeline } from './Timeline'
 import { Deliverables } from './Deliverables'
 import { CAPTION_STYLES, CapPicker, FONTS, FontPicker, SUPER_STYLES, SuperPicker, StyleHint } from './captionStyles'
@@ -290,6 +290,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [timeline, setTimeline] = useState<{ version: DeliverableVersion | null; tab: 'tracks' | 'style' } | null>(null)   // 時間軸 (導演模式)
   const [voicePick, setVoicePick] = useState(false)                  // 換成我的聲音: 我親自一句一句配音 or AI 生成我的聲音
   const [ownRead, setOwnRead] = useState<DeliverableVersion | null | false>(false)   // 我親自配音 flow
+  const carryTakes = useRef<Record<string, Take>>({})                // 我親自配音 takes kept across ← 返回
   const carry = useRef<Record<string, LineEdit>>({})                  // line edits (incl. the owner's takes) kept across 輕鬆 ⇄ 導演
   const [ideas, setIdeas] = useState(false)                            // 導演模式: 更多改法 sheet
   const [ownBusy, setOwnBusy] = useState(false)                        // re-voicing the video with the owner's voice
@@ -553,6 +554,16 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     }
     goStep(2)
   }
+  // 還缺 → the narration line that is waiting for it (a （店名）／（價格） placeholder or the same word), opened for editing
+  const jumpMissing = (m: string) => {
+    if (!analysis) return
+    const keys = m.replace(/^補充?/, '').split(/[與和、／/\s]+/).filter(k => k.length >= 2)
+    const line = analysis.script.find(l => /（[^）]+）/.test(l.text) && keys.some(k => l.text.includes(k)))
+      ?? analysis.script.find(l => keys.some(k => l.text.includes(k))) ?? analysis.script.find(l => /（[^）]+）/.test(l.text))
+    if (!line) { useAnalysis(); return }
+    setEditText(edits[line.n] && edits[line.n] !== REWRITE ? edits[line.n] : line.text); setEditing(line.n); setSheet(null)
+    setTimeout(() => threadRef.current?.querySelector(`[data-n="${line.n}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+  }
   const copyScript = () => { if (analysis) navigator.clipboard?.writeText(analysis.script.map(l => l.text).join('\n')).catch(() => {}) }
   const stageNow = (): Stage => !proj ? 'start' : running ? 'working' : proj.messages.length === 0 ? 'start' : proj.credits.exports > 0 ? 'revise' : 'progress'
   const send = async () => {
@@ -739,8 +750,8 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
       )}
       {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} onProof={running ? undefined : v => (easy ? openProof(v) : openTimeline('tracks', v))} onTweak={running || easy ? undefined : () => openTimeline('style')} />}
       {proof && easy && <Proof projectId={projectId} version={proof.version} onOwnVoice={() => { setProof(null); setVoicePick(true) }}
-        onPro={onMode ? () => onMode('pro') : undefined} initialLines={carry.current} onLines={l => { carry.current = l }} onClose={() => { carry.current = {}; setProof(null) }} onUsage={onUsage} onDone={() => { carry.current = {}; afterQuick() }} />}
-      {ownRead !== false && <OwnRead projectId={projectId} version={ownRead} onClose={() => setOwnRead(false)} onDone={afterQuick} onUsage={onUsage} />}
+        onPro={onMode ? () => onMode('pro') : undefined} initialLines={carry.current} onLines={l => { carry.current = l }} onClose={() => setProof(null)} onUsage={onUsage} onDone={() => { carry.current = {}; afterQuick() }} />}
+      {ownRead !== false && <OwnRead projectId={projectId} version={ownRead} initialTakes={carryTakes.current} onTakes={t => { carryTakes.current = t }} onClose={() => setOwnRead(false)} onDone={() => { carryTakes.current = {}; afterQuick() }} onUsage={onUsage} />}
       {voicePick && (
         <div className="sh-scrim" onClick={e => { if (e.target === e.currentTarget) setVoicePick(false) }}>
           <div className="sh vpick" role="dialog" aria-label="換成我的聲音">
@@ -752,7 +763,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
             <a className="sh-cancel" onClick={() => setVoicePick(false)}>關閉</a>
           </div>
         </div>)}
-      {timeline && !easy && <Timeline projectId={projectId} version={timeline.version} tab={timeline.tab} initialLines={carry.current} onLines={l => { carry.current = l }} onClose={() => { carry.current = {}; setTimeline(null) }} onDone={() => { carry.current = {}; afterQuick() }} onUsage={onUsage} />}
+      {timeline && !easy && <Timeline projectId={projectId} version={timeline.version} tab={timeline.tab} initialLines={carry.current} onLines={l => { carry.current = l }} onClose={() => setTimeline(null)} onDone={() => { carry.current = {}; afterQuick() }} onUsage={onUsage} />}
       {tab === 'chat' && <>
       <VoiceSwapCtx.Provider value={voiceSwap}>
       <div className="thread" ref={threadRef} onScroll={onScroll}>
@@ -875,7 +886,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                           const line = analysis.script.find(l => l.n === s.n)
                           const star = stars.includes(s.n), drop = drops.includes(s.n), ed = edits[s.n]
                           return (
-                            <li key={s.n} className={`an-shot ${s.role} ${star ? 'star' : ''} ${drop ? 'drop' : ''}`} onClick={() => editing === s.n ? null : setSheet(s.n)}>
+                            <li key={s.n} data-n={s.n} className={`an-shot ${s.role} ${star ? 'star' : ''} ${drop ? 'drop' : ''}`} onClick={() => editing === s.n ? null : setSheet(s.n)}>
                               <span className="an-fr"><img src={api.frameUrl(projectId, s.clip, s.t)} alt="" loading="lazy" /><i>#{String(s.clip).padStart(2, '0')} · {s.dur}s</i>{star && <b className="an-star">⭐</b>}</span>
                               <span className="an-shot-main">
                                 <span className="an-shot-top"><b>{s.n}</b><em className={`an-role ${s.role}`}>{ROLE_LABEL[s.role]}</em><span>{s.shot}</span>
@@ -919,7 +930,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                     </div>
                     {analysis.missing.length > 0 && (
                       <div className="an-sec an-miss">
-                        <b>還缺</b>{analysis.missing.map(m => <span key={m} className="pill">{m}</span>)}<span className="muted small">下一步可以補在賣點裡，或之後再補拍。</span>
+                        <b>還缺</b>{analysis.missing.map(m => <button type="button" key={m} className="pill miss" onClick={() => jumpMissing(m)}>{m} ›</button>)}<span className="muted small">點一下跳到那句旁白補上；或下一步補在賣點裡。</span>
                       </div>
                     )}
                     <div className={`an-est ${analysis.estimate.enough_two ? 'ok' : analysis.estimate.enough_first ? 'warn' : 'short'}`}>
@@ -1387,9 +1398,9 @@ function ObPreview({ projectId, step, style, length, voiceName, uploads, linkOk,
   const price = (text.match(/NT\$\s?[\d,]{3,}|[\d,]{3,}\s?元/) || [])[0]
   // real frames for the cover mock-ups: the hook shot, and the next different clip
   const sb = analysis?.storyboard ?? []
-  const frameA = sb[0] ? api.frameUrl(projectId, sb[0].clip, sb[0].t) : null
+  const frameA = sb[0] ? api.frameUrl(projectId, sb[0].clip, sb[0].t, true) : null
   const altB = sb.find(x => x.clip !== sb[0]?.clip) ?? sb[1]
-  const frameB = altB ? api.frameUrl(projectId, altB.clip, altB.t) : null
+  const frameB = altB ? api.frameUrl(projectId, altB.clip, altB.t, true) : null
   return (
     <aside className="ob-prev">
       <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? (analysis ? '封面會像這樣' : analyzing ? '解析完你會看到' : '解析完你會看到') : '選好或貼好，剪輯師會自己把素材抓下來'}</span></div>
@@ -1411,7 +1422,7 @@ function ObPreview({ projectId, step, style, length, voiceName, uploads, linkOk,
           <div className="pc-top">{analysis.selling_points.slice(1, 3).map(x => shortPt(x, 8)).join(' · ')}</div>
           <div className="pc-title">{place}<em>{shortPt(analysis.selling_points[0])}</em></div>
           <div className="pc-price">{price ?? '價格補上後會放這裡'}</div>
-          <div className="pc-note">封面 · 用開頭那一幕 · 做好會給兩款挑</div>
+          <div className="pc-note">完成時會有 2–3 款可選</div>
         </div>
       )}
       {step === 0 && (
