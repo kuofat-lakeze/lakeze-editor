@@ -2284,7 +2284,8 @@ body.easy .recbar-lab em { font-size: 22px; } body.easy .recbar-stop { font-size
 .miss-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 28px; } .miss-top b { font-size: 15px; }
 .miss-ic { font-style: normal; width: 24px; height: 24px; border-radius: 8px; background: #fff; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; flex: none; }
 .miss-row.info .miss-ic { color: #1B5E8F; font-weight: 900; }
-.miss-badge { font-style: normal; font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 8px; background: var(--panel); color: var(--muted); border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 5px; }
+.miss-badge { font-style: normal; font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 8px; background: var(--panel); color: var(--muted); border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 96px); }
+.miss-badge.ok { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; line-height: 1.5; }
 .miss-badge.ok { background: #E4F5EC; color: #1E7A4C; border-color: #BFE5CE; } .miss-badge.wait { color: var(--brand); }
 .miss-row.skip .miss-top b { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(0,0,0,.25); }
 .miss-acts { display: flex; gap: 6px; flex-wrap: wrap; } .miss-acts .pf-tb { background: var(--panel); } .miss-acts .pf-tb.quiet { border-color: transparent; background: transparent; color: var(--muted); font-weight: 600; }
