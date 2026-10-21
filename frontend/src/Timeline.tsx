@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, verLabel, type DeliverableVersion, type LineEdit, type QuickEdits, type ScriptInfo, type Voice } from './api'
 import { CapPicker, FontPicker, SuperPicker, StyleHint } from './captionStyles'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
+import { FixSay } from './Pronounce'
 
 /* 時間軸 (導演模式): the whole finished video laid out like a cutting room — one track per kind of thing,
    the playhead running through all of them:
@@ -55,10 +56,9 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
   const [voices, setVoices] = useState<Voice[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const [sayOpen, setSayOpen] = useState(false)
   const [saying, setSaying] = useState(false)
   const [takeBusy, setTakeBusy] = useState(false)
-  const takeMode = useRef<'ai' | 'raw'>('ai')
+  const [fixing, setFixing] = useState(false)
   const video = useRef<HTMLVideoElement>(null)
   const audio = useRef<HTMLAudioElement | null>(null)
   const scroll = useRef<HTMLDivElement>(null)
@@ -164,7 +164,7 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
     if (!curLine) return
     setTakeBusy(true); setErr('')
     try {
-      const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'take.m4a' : 'take.webm'); fd.append('n', String(curLine.n)); fd.append('voice_id', info?.voice_id ?? ''); fd.append('mode', takeMode.current)
+      const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'take.m4a' : 'take.webm'); fd.append('n', String(curLine.n)); fd.append('mode', 'raw')
       const res = await fetch(`/api/projects/${projectId}/take`, { method: 'POST', body: fd }); const d = await res.json().catch(() => ({}))
       if (!res.ok) throw Object.assign(new Error(d.detail ?? '轉換失敗'), { needed: d.needed })
       onUsage?.(); edLine(curLine.key!, { take: d.key }); audio.current?.pause(); const a = new Audio(d.url); audio.current = a; a.play().catch(() => {})
@@ -263,7 +263,7 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
                       {placedLines.map(({ l, s, e, drop }) => {
                         const ed = st.lines[l.key ?? ''] ?? {}; const on = sel?.kind === 'line' && sel.key === l.key
                         return <span key={l.n} className={`tl-line ${on ? 'on' : ''} ${drop ? 'drop' : ''} ${ed.take ? 'take' : ed.text !== undefined || ed.say !== undefined ? 'ed' : ''} ${ed.star ? 'star' : ''} ${!drop && e > lay.total + 0.2 ? 'over' : ''}`}
-                          style={{ left: s * pps, width: Math.max(10, (e - s) * pps - 2) }} title={shownText(l)} onClick={() => { if (l.key) { setSel({ kind: 'line', key: l.key }); setSayOpen(false); seekOld(l.start) } }}>{ed.star && '⭐'}{ed.take && '🎙'}{shownText(l)}</span>
+                          style={{ left: s * pps, width: Math.max(10, (e - s) * pps - 2) }} title={shownText(l)} onClick={() => { if (l.key) { setSel({ kind: 'line', key: l.key }); seekOld(l.start) } }}>{ed.star && '⭐'}{ed.take && '🎙'}{shownText(l)}</span>
                       })}
                     </div>
                     {sups.length > 0 && (
@@ -326,22 +326,21 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
               return (
                 <div className="tl-panel">
                   <div className="tl-ph"><b>第 {l.n} 句</b><span className="muted small">{tc(l.start)}</span>
-                    {e.take && <em className="pf-badge take">{e.take.startsWith('R') ? '我親自唸的' : 'AI 照我唸的'}</em>}{e.text !== undefined && <em className="pf-badge ed">已改</em>}{e.say !== undefined && !e.take && <em className="pf-badge say">唸法</em>}{e.star && <em className="pf-badge star">重點</em>}{e.drop && <em className="pf-badge drop">刪掉</em>}
+                    {e.take && <em className="pf-badge take">我親自唸的</em>}{e.text !== undefined && <em className="pf-badge ed">已改</em>}{e.say !== undefined && !e.take && <em className="pf-badge say">唸法</em>}{e.star && <em className="pf-badge star">重點</em>}{e.drop && <em className="pf-badge drop">刪掉</em>}
                     <span className="spacer" /><a className="small" onClick={() => playLine(l)}>▶ 聽這句</a>{st.lines[l.key!] && <a className="small muted" onClick={() => commit(x => { const n = { ...x.lines }; delete n[l.key!]; return { ...x, lines: n } })}>還原</a>}</div>
                   <textarea className="tl2-ta" rows={2} value={txt} disabled={!!e.drop} onChange={ev => edLine(l.key!, { text: ev.target.value })} />
-                  {sayOpen && !e.drop && <div className="pf-saybox"><span>怎麼唸<small>唸錯字時用同音字寫給配音看；字幕不受影響</small></span><input value={e.say ?? ''} placeholder={txt} onChange={ev => edLine(l.key!, { say: ev.target.value })} /></div>}
                   {recorder.rec ? <RecBar r={recorder} hint="照這句唸一次，唸完按右邊" /> : (
                     <div className="pf-tools">
                       {!e.drop && <>
                         <button type="button" className="pf-tb" disabled={saying || !txt.trim()} onClick={say}><i>▶</i>{saying ? '播放中' : '試聽'}</button>
-                        <button type="button" className={`pf-tb ${e.take && !e.take.startsWith('R') ? 'on' : ''}`} disabled={takeBusy} onClick={() => { takeMode.current = 'ai'; recorder.start() }} title="AI 會用影片的聲音照你的唸法再唸一次"><i>🎙</i>{takeBusy ? '處理中…' : '唸給 AI 聽'}</button>
-                        <button type="button" className={`pf-tb ${e.take?.startsWith('R') ? 'on' : ''}`} disabled={takeBusy} onClick={() => { takeMode.current = 'raw'; recorder.start() }} title="這句直接用你本人的聲音"><i>🗣</i>我親自唸</button>
-                        <button type="button" className={`pf-tb ${sayOpen || e.say !== undefined ? 'on' : ''}`} onClick={() => setSayOpen(o => !o)}><i>ㄅ</i>唸法</button>
+                        {!e.take && <button type="button" className={`pf-tb ${e.say !== undefined ? 'on' : ''}`} onClick={() => setFixing(true)}><i>ㄅ</i>唸錯了</button>}
+                        <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={takeBusy} onClick={() => recorder.start()} title="這句直接用你本人的聲音，會自動對上時間"><i>🗣</i>{takeBusy ? '處理中…' : e.take ? '再親自唸' : '我親自唸'}</button>
                         <button type="button" className={`pf-tb ${e.star ? 'on' : ''}`} disabled={!e.star && stars >= 3} onClick={() => edLine(l.key!, { star: !e.star })}><i>⭐</i>重點</button>
                       </>}
                       <button type="button" className={`pf-tb ${e.drop ? 'on' : ''}`} onClick={() => edLine(l.key!, { drop: !e.drop })}><i>✕</i>{e.drop ? '還是要' : '刪掉'}</button>
                     </div>)}
                   {recorder.err && <div className="error small">{recorder.err}</div>}
+                  {fixing && <FixSay text={txt} say={e.say} projectId={projectId} voiceId={st.style.voice ?? info.voice_id} onUsage={onUsage} onSay={s => edLine(l.key!, { say: s ?? '' })} onOwn={() => recorder.start()} onClose={() => setFixing(false)} />}
                 </div>)
             })()}
 

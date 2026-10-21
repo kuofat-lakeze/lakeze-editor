@@ -38,14 +38,22 @@ export function VoiceCloneDialog({ current, onClose, onDone }: { current?: Voice
       <div className="modal card vc" onClick={e => e.stopPropagation()}>
         <SheetHead title={current ? '重新讓 AI 學我的聲音' : 'AI 生成我的聲音'} onCancel={() => { r.stop(); onClose() }}
           right={<button className="btn primary small" disabled={!blob || busy || rec} onClick={submit}>{busy ? '建立中…' : '建立'}</button>} />
-        <p className="muted small">錄 30 到 60 秒，找安靜的地方、用平常講話的語氣念下面這段。AI 會學你的聲音，之後的旁白由 AI 用這個聲音配；想要影片裡是你本人唸的，做好後選「我親自一句一句配音」。</p>
+        <p className="muted small">找安靜的地方，錄 30 到 60 秒。AI 會學你的聲音來配旁白；你用什麼語氣唸，學到的聲音就是那個個性。</p>
         <div className="tabs vc-tabs">
           <a className={mode === 'rec' ? 'active' : ''} onClick={() => setMode('rec')}>直接錄</a>
           <a className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}>上傳檔案</a>
         </div>
         {mode === 'rec' && (
           <>
-            <div className={`vc-script tpish ${rec ? 'live' : ''}`}>{SCRIPT.map((l, i) => <p key={i} className={rec ? (i === Math.min(SCRIPT.length - 1, Math.floor(secs / 15)) ? 'on' : i < Math.floor(secs / 15) ? 'past' : '') : ''}>{l}</p>)}</div>
+            <div className="vc-moods" aria-label="語氣會變成聲音的個性">
+              <span><i>😊</i><b>開心唸</b><small>聲音就開朗</small></span>
+              <span><i>😌</i><b>沉穩唸</b><small>聲音就沉穩</small></span>
+              <span><i>🙂</i><b>自然唸</b><small>聲音就自然</small></span>
+            </div>
+            <div className="vc-script">
+              <div className="muted small vc-script-h">像平常講話一樣，照自己的速度唸完就好，不用跟節奏。</div>
+              {SCRIPT.map((l, i) => <p key={i}>{l}</p>)}
+            </div>
             {rec ? <RecBar r={r} label="錄音中" stopLabel={secs < 30 ? `再 ${30 - secs} 秒` : '錄好了'} hint={secs < 30 ? '至少 30 秒更像你' : '長度夠了，念完可以停'} />
               : <div className="vc-rec"><button className={`btn ${blob ? '' : 'primary'} vc-btn`} onClick={start}><i className="vc-dot" />{blob ? '重錄' : '開始錄音'}</button>{blob && <span className="muted small ok">錄好了，聽一下再建立</span>}</div>}
             {r.err && <div className="error">{r.err}</div>}

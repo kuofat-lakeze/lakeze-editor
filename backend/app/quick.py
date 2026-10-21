@@ -224,7 +224,10 @@ def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
         if record_usage:
             record_usage("elevenlabs_tts_chars", sum(len(l["text"]) * r["takes"] for l, r in zip(to_tts, res)), {"voice_id": voice_id})
     placements = []
-    for p in sorted(comp["placements"], key=lambda x: float(x["at"])):
+    ordered = sorted(comp["placements"], key=lambda x: float(x["at"]))
+    old_slot = {p["key"]: (float(ordered[i + 1]["at"]) if i + 1 < len(ordered) else float(comp.get("duration") or 0)) - float(p["at"])
+                for i, p in enumerate(ordered)}   # how long each line had on the old timeline
+    for p in ordered:
         e = by_key.get(p["key"], {})
         if e.get("drop"):
             continue
@@ -235,8 +238,16 @@ def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
             src = vo_dir / f"{e['take']}.mp3"
             if not src.exists():
                 raise QuickError(f"找不到你唸的第 {e['take']} 句錄音")
-            ff.ffmpeg("-i", str(src), "-ac", "1", "-ar", "44100", str(vo_dir / f"{p['key']}.wav"))
+            wav = vo_dir / f"{p['key']}.wav"
+            ff.ffmpeg("-i", str(src), "-ac", "1", "-ar", "44100", str(wav))
             q.pop("trim_end", None)
+            q.pop("tempo", None)
+            # a take that runs past the line's slot is sped up a little so the picture stays in sync; beyond
+            # MAX_TEMPO the following lines are pushed back instead (step 2)
+            slot = old_slot.get(p["key"], 0.0) - GAP
+            dur = ff.duration(wav)
+            if slot > 0.5 and dur > slot:
+                q["tempo"] = round(min(MAX_TEMPO, dur / slot), 3)
         if e.get("text") and not e.get("drop"):
             texts[p["key"]] = e["text"].strip()
         placements.append(q)

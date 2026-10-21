@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, verLabel, type DeliverableVersion, type LineEdit, type QuickEdits, type ScriptInfo } from './api'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
+import { FixSay } from './Pronounce'
 
 /* 校對旁白 (輕鬆模式): the finished video and its narration, one big row per line. Each row can be
    listened to, re-read by the owner (speech-to-speech in the video's voice) or dropped — the picture
@@ -19,6 +20,7 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
   const [cur, setCur] = useState(-1)
   const [takeFor, setTakeFor] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)   // row whose 改字 box is open
+  const [fixing, setFixing] = useState<Row | null>(null)        // row in the 唸錯了 sheet
   const [draft, setDraft] = useState('')
   const [takeBusy, setTakeBusy] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -55,11 +57,13 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
   })
   const setTake = (key: string, take: string) => commit(s => ({ ...s, lines: { ...s.lines, [key]: { ...(s.lines[key] ?? {}), take } } }))
   const setText = (r: Row, text: string) => commit(s => { const key = r.line.key ?? ''; const cur = { ...(s.lines[key] ?? {}) }; if (text.trim() && text.trim() !== r.line.text) cur.text = text.trim(); else delete cur.text; const ln = { ...s.lines }; if (Object.keys(cur).length) ln[key] = cur; else delete ln[key]; return { ...s, lines: ln } })
+  const setSay = (r: Row, say: string | undefined) => commit(s => { const key = r.line.key ?? ''; const cur = { ...(s.lines[key] ?? {}) }; if (say) cur.say = say; else delete cur.say; const ln = { ...s.lines }; if (Object.keys(cur).length) ln[key] = cur; else delete ln[key]; return { ...s, lines: ln } })
   const nTexts = Object.values(st.lines).filter(e => e.text !== undefined).length
+  const nSays = Object.values(st.lines).filter(e => e.say !== undefined && !e.take).length
   const nTakes = Object.values(st.lines).filter(e => e.take).length
   const nDrops = Object.values(st.lines).filter(e => e.drop).length
   const moved = st.order.some((i, k) => shots[k]?.i !== i)
-  const changed = nTakes + nDrops + nTexts + (moved ? 1 : 0)
+  const changed = nTakes + nDrops + nTexts + nSays + (moved ? 1 : 0)
   const keptRows = rows.filter(r => !isDropped(r))
 
   const onTime = () => { const v = video.current; if (!v) return; const t = v.currentTime; setCur(rows.findIndex(r => t >= r.line.start && t < r.line.end)); if (stopAt.current !== null && t >= stopAt.current) { v.pause(); stopAt.current = null } }
@@ -69,9 +73,9 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
     if (!key || !r) return
     setTakeBusy(true); setErr('')
     try {
-      const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'take.m4a' : 'take.webm'); fd.append('n', String(r.line.n)); fd.append('voice_id', info?.voice_id ?? '')
+      const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'take.m4a' : 'take.webm'); fd.append('n', String(r.line.n)); fd.append('mode', 'raw')
       const res = await fetch(`/api/projects/${projectId}/take`, { method: 'POST', body: fd }); const d = await res.json().catch(() => ({}))
-      if (!res.ok) throw Object.assign(new Error(d.detail ?? '轉換失敗'), { needed: d.needed })
+      if (!res.ok) throw Object.assign(new Error(d.detail ?? '處理錄音失敗'), { needed: d.needed })
       onUsage?.(); setTake(key, d.key); audio.current?.pause(); const a = new Audio(d.url); audio.current = a; a.play().catch(() => {})
     } catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? `點數不足：需要 ${ex.needed} 點` : ex.message) } finally { setTakeBusy(false) }
   })
@@ -94,7 +98,7 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
   return (
     <div className="pf-scrim" onClick={e => { if (e.target === e.currentTarget) cancel() }}>
       <div className="pf" role="dialog" aria-label="校對旁白">
-        <SheetHead title="校對旁白" badge={version ? verLabel(version.version) : undefined} sub={changed ? '改了還沒套用；返回會先留著' : '聽一聽：改字、唸給 AI 聽，或拿掉'} onCancel={cancel} cancelLabel="← 返回"
+        <SheetHead title="校對旁白" badge={version ? verLabel(version.version) : undefined} sub={changed ? '改了還沒套用；返回會先留著' : '聽一聽：改字、唸錯了，或拿掉'} onCancel={cancel} cancelLabel="← 返回"
           right={<button className="btn primary small" disabled={changed === 0 || applying} onClick={apply}>{applying ? '輸出中…' : '套用'}</button>} />
         <div className="pf-body">
           <div className="pf-video">
@@ -115,7 +119,7 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
                     {r.shot ? <img className="pf-thumb" src={api.frameUrl(projectId, r.shot.clip, r.shot.start)} alt="" /> : <span className="pf-thumb" />}
                     <a className="pf-tc"><b>{drop ? '✕' : n}</b><span>{tc(r.line.start)}</span></a>
                     <div className="pf-txt"><div className="pf-ez-text">{e.text ?? r.line.text}</div>
-                      {e.text !== undefined && !drop && <em className="pf-badge ed">已改字</em>}{e.take && !drop && <em className="pf-badge take">✓ AI 照你唸的</em>}{drop && <em className="pf-badge drop">會拿掉</em>}
+                      {e.text !== undefined && !drop && <em className="pf-badge ed">已改字</em>}{e.say !== undefined && !e.take && !drop && <em className="pf-badge say">唸法已改</em>}{e.take && !drop && <em className="pf-badge take">✓ 我親自唸的</em>}{drop && <em className="pf-badge drop">會拿掉</em>}
                     </div>
                   </div>
                   {editing === r.line.key && (
@@ -127,12 +131,13 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
                         <button type="button" className="btn primary" onClick={() => { setText(r, draft); setEditing(null) }}>改好了</button>
                       </div>
                     </div>)}
-                  {recHere ? <RecBar r={recorder} hint="照這句唸一次" /> : (
+                  {recHere ? <RecBar r={recorder} hint="用你本人的聲音唸這一句" /> : (
                     <div className="pf-tools" onClick={ev => ev.stopPropagation()}>
                       {!drop && <>
                         <button type="button" className="pf-tb" onClick={() => play(r)}><i>▶</i>聽這句</button>
                         <button type="button" className={`pf-tb ${e.text !== undefined ? 'on' : ''}`} onClick={() => { setDraft(e.text ?? r.line.text); setEditing(editing === r.line.key ? null : (r.line.key ?? null)) }}><i>✎</i>改字</button>
-                        <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={recorder.rec || takeBusy} onClick={() => startTake(r)} title="AI 會用影片的聲音照你的唸法再唸一次"><i>🎙</i>{takeBusy && takeFor === null && e.take === undefined ? '轉換中…' : e.take ? '再唸給 AI 聽' : '唸錯了，唸給 AI 聽'}</button>
+                        {!e.take && <button type="button" className={`pf-tb ${e.say !== undefined ? 'on' : ''}`} onClick={() => setFixing(r)}><i>ㄅ</i>唸錯了</button>}
+                        {e.take && <button type="button" className="pf-tb on" disabled={recorder.rec || takeBusy} onClick={() => startTake(r)}><i>🗣</i>{takeBusy ? '處理中…' : '再唸一次'}</button>}
                       </>}
                       <button type="button" className={`pf-tb ${drop ? 'on' : ''}`} disabled={!drop && keptRows.length <= 1} onClick={() => toggleDrop(r)}><i>✕</i>{drop ? '還是要' : '拿掉'}</button>
                     </div>)}
@@ -141,10 +146,12 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
             {onPro && !loading && <li className="pf-topro"><span>想逐句改字、調每段長度？</span><a onClick={onPro}>到導演模式細改 →</a></li>}
           </ol>
         </div>
+        {fixing && <FixSay text={fixing.line.text} say={st.lines[fixing.line.key ?? '']?.say} projectId={projectId} voiceId={info?.voice_id ?? ''} onUsage={onUsage}
+          onSay={s => setSay(fixing, s)} onOwn={() => startTake(fixing)} onClose={() => setFixing(null)} />}
         {(err || recorder.err) && <div className="error small pf-err">{err || recorder.err}</div>}
         <div className="pf-foot">
           {past.current.length > 0 && !applying && <button type="button" className="btn small" onClick={undo}>↶ 復原</button>}
-          <span className="muted small">{changed > 0 ? [nTexts && `改字 ${nTexts} 句`, nTakes && `重唸 ${nTakes} 句`, nDrops && `拿掉 ${nDrops} 句`, moved && '換了順序'].filter(Boolean).join(' · ') : '唸得都對就不用改'}</span>
+          <span className="muted small">{changed > 0 ? [nTexts && `改字 ${nTexts} 句`, nSays && `改唸法 ${nSays} 句`, nTakes && `親自唸 ${nTakes} 句`, nDrops && `拿掉 ${nDrops} 句`, moved && '換了順序'].filter(Boolean).join(' · ') : '唸得都對就不用改'}</span>
           <span className="spacer" />
           <button className="btn primary" disabled={changed === 0 || applying} onClick={apply}>{applying ? '重新輸出中…（約 1–2 分鐘）' : '套用修改 →'}</button>
         </div>

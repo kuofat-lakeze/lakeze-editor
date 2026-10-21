@@ -285,6 +285,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [font, setFont] = useState<string>('black')                   // 導演模式: 字型
   const [superStyle, setSuperStyle] = useState<string>('chip')        // 導演模式: 標題樣式
   const [moreStyle, setMoreStyle] = useState(false)                   // 字型與標題樣式 unfolded on step 3
+  const [uqFold, setUqFold] = useState(false)                         // the upload list folds to one line once the editor has the files
   const [fills, setFills] = useState<Record<string, string>>({})      // 輕鬆模式: what the analysis said is still missing (價格、店名…)
   const [skipFill, setSkipFill] = useState(false)                     // 輕鬆模式: 先不補，之後再補
   const [timeline, setTimeline] = useState<{ version: DeliverableVersion | null; tab: 'tracks' | 'style' } | null>(null)   // 時間軸 (導演模式)
@@ -573,6 +574,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   }
   const submit = async (t: string, withAnalysis = false) => {
     setErr(''); setText(''); setNeedCredits(null); setNeedStorage(null); atBottom.current = true; turnStart.current = Date.now()
+    if (uploads.length && uploads.every(u => u.status === 'ok')) setUqFold(true)
     setProj(p => p && { ...p, messages: [...p.messages, { id: 'tmp', role: 'user', parts: [{ type: 'text', text: t }], created_at: '' }] })
     try { await api.send(projectId, t, withAnalysis ? { with_analysis: true } : {}); setLive(emptyLive()); listen() } catch (e) { setErr((e as Error).message) }
   }
@@ -1126,11 +1128,20 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
             <button className="btn small" onClick={() => setTab('files')}>刪舊版本</button>
           </div>
         )}
-        {uploads.length > 0 && stage !== 'start' && (
+        {uploads.length > 0 && stage !== 'start' && (uqFold && uploads.every(u => u.status === 'ok') ? (
+          <div className="uq-fold">
+            <span className="uq-fold-ok">✓</span>
+            <span><b>{uploads.length} 個素材已交給剪輯師</b><small className="muted"> · {fmtMB(uploads.reduce((a, u) => a + u.size, 0))}</small></span>
+            <span className="spacer" />
+            <a className="small" onClick={() => setUqFold(false)}>看清單</a>
+            <a className="small muted" onClick={() => setUploads([])}>關閉</a>
+          </div>
+        ) : (
           <div className="card uq-card">
             <UploadQueue ups={uploads} onRetry={retryUpload} onRemove={removeUpload} onDelete={deleteUpload} onClose={() => setUploads([])} hint={IOS ? '別離開這頁' : undefined} />
+            {uploads.every(u => u.status === 'ok') && stage !== 'progress' && <a className="small uq-foldlink" onClick={() => setUqFold(true)}>收起</a>}
           </div>
-        )}
+        ))}
         {err && <div className="error">{err}</div>}
         <div ref={bottom} />
       </div>

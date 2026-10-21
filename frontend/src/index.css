@@ -2225,3 +2225,26 @@ body.easy .recbar-lab em { font-size: 22px; } body.easy .recbar-stop { font-size
 .pg1-chip.dim { background: #7FB7F5; }
 .pg-facts { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
 .pg-facts span { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; background: var(--panel2); border-radius: 999px; padding: 6px 11px; } .pg-facts i { font-style: normal; }
+
+/* 唸錯了 sheet */
+.sh.fix { gap: 12px; }
+.fix-chars { display: flex; flex-wrap: wrap; gap: 4px; }
+.fix-ch { font: inherit; font-size: 20px; font-weight: 700; min-width: 38px; height: 44px; padding: 0 6px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
+.fix-ch.p { border-color: transparent; background: transparent; color: var(--muted); cursor: default; min-width: 18px; }
+.fix-ch.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+.fix-rep { display: flex; flex-direction: column; gap: 6px; font-weight: 700; }
+.fix-rep input { width: 100%; font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); background: var(--panel); }
+.fix-prev { font-size: 15px; padding: 10px 12px; border-radius: 10px; background: #F3F8FD; color: #1B5E8F; } .fix-prev b { color: var(--text); }
+.fix-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .fix-acts .spacer { flex: 1; }
+.fix-own { display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px 14px; border-radius: 14px; border: 1.5px dashed var(--line); background: var(--panel2); font: inherit; cursor: pointer; color: var(--text); }
+.fix-own i { font-style: normal; font-size: 22px; } .fix-own span { display: flex; flex-direction: column; gap: 2px; } .fix-own b { font-size: 15px; } .fix-own small { font-size: 12.5px; color: var(--muted); }
+/* AI 學聲音: moods */
+.vc-moods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.vc-moods span { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 10px 6px; border-radius: 12px; background: var(--panel2); text-align: center; }
+.vc-moods i { font-style: normal; font-size: 24px; } .vc-moods b { font-size: 14px; } .vc-moods small { font-size: 12px; color: var(--muted); }
+.vc-script-h { margin-bottom: 8px; }
+/* uploads folded */
+.uq-fold { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; background: #E8F6EE; font-size: 14px; }
+.uq-fold-ok { width: 26px; height: 26px; border-radius: 50%; background: #2E9E6B; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; flex: none; }
+.uq-fold .spacer { flex: 1; } .uq-fold a { white-space: nowrap; }
+.uq-foldlink { display: block; text-align: right; margin-top: 6px; }
