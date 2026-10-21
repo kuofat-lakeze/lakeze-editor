@@ -81,6 +81,7 @@ class TurnRunner:
         # allowance only shrinks) once it actually runs a chargeable tool.
         self._exports_at_start = (await self.store.credit_state(self.project_id))["exports"]
         self._revision_noted = False
+        self.ctx.lean = self._exports_at_start > 0   # revisions save tokens; the first version gets the full look
         for _round in range(40):  # hard cap on tool rounds per turn
             if self.cancelled:
                 break
@@ -119,6 +120,9 @@ class TurnRunner:
                   f"。餘額 {st['balance']} 點。點數夠用時不要向用戶提點數。"
         else:
             txt = f"餘額 {st['balance']} 點。點數夠用時不要向用戶提點數，只有工具回報點數不足才說。"
+        if self._exports_at_start > 0:
+            txt += ("\n[修改回合] 省 token：不要重新 probe_footage / sample_frames（畫面已經看過，除非用戶要換畫面才 sample_frames 看候選畫面）；"
+                    "只重做有改到的步驟（旁白沒改就沿用音檔、畫面沒改就不 build_cut）；檢查圖只看一次；回覆兩三句就好，不要重列整份旁白稿，除非旁白有改。")
         if self.ui_mode == "easy":
             txt += ("\n[介面模式] 輕鬆模式：用戶只想看結論。每則回覆第一行是一句結論（25 字內，像「影片做好了，開頭是泳池」），"
                     "接著最多兩句說明；其他細節放在「---」之後（介面會收起來）。一次最多問一個問題、給兩個選項，能自己決定的就自己決定。")

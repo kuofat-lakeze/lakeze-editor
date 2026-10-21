@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { api, type Analysis, type Asset, type DeliverableVersion, type DriveCheck, type Me, type Msg, type ProjectDetail, type Voice } from './api'
-import { Proof, Tweak } from './Proof'
+import { api, type Analysis, type Asset, type DeliverableVersion, type DriveCheck, type LineEdit, type Me, type Msg, type ProjectDetail, type Voice } from './api'
+import { Proof } from './Proof'
 import { Timeline } from './Timeline'
 import { Deliverables } from './Deliverables'
-import { CAPTION_STYLES, CapPicker } from './captionStyles'
+import { CAPTION_STYLES, CapPicker, FONTS, FontPicker, SUPER_STYLES, SuperPicker, StyleHint } from './captionStyles'
 import { VoiceCloneDialog } from './VoiceClone'
 import { CLOUD_SECS_PER_VIDEO, CloudDl, DropZone, PickGuide, needsPickGuide, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
 import { fmtBytes } from './Storage'
@@ -80,7 +80,7 @@ const PLACEHOLDER: Record<Stage, string> = {
 const CHIPS: Record<Stage, string[]> = {
   start: [], working: [],
   progress: ['照建議做', '先給我看分鏡', '旁白稿先給我看'],
-  revise: ['微調字幕、配樂、速度', '調時間軸', '校對旁白', '換字幕樣式', '更多改法…'],
+  revise: ['時間軸細調', '換成我的聲音', '更多改法…'],
 }
 // The chip that is the default answer for a stage: shown as the main button, and sent when the box is empty.
 const DEFAULT_CHIP: Partial<Record<Stage, string>> = { progress: '照建議做' }
@@ -140,14 +140,14 @@ const STYLES = [
 ]
 /* 導演模式「更多改法」: ready-made requests. Picking one drops it into the box (to edit or combine before
    sending) — the point is to show that any change can simply be asked for. `tool` opens a panel instead. */
-type Idea = { l: string; send?: string; tool?: 'tweak' | 'proof' | 'timeline' }
+type Idea = { l: string; send?: string; tool?: 'style' | 'timeline' }
 const IDEAS: { t: string; items: Idea[] }[] = [
   { t: '風格', items: [
     ...STYLES.map(st => ({ l: `改成${st.name}`, send: `整支改成「${st.name}」風格重剪：${st.brief.replace(/^風格：[^。]*。/, '')}` })),
     { l: '節奏再快一點', send: '節奏再快一點，多剪幾刀，每個畫面短一點。' },
     { l: '節奏放慢', send: '節奏放慢，鏡頭停久一點，留點呼吸。' }] },
   { t: '字幕', items: [
-    { l: '換字幕樣式、大小', tool: 'tweak' },
+    { l: '換字幕樣式、字型、大小', tool: 'style' },
     { l: '重點詞再放大', send: '重點詞的字幕再放大、更明顯。' },
     { l: '加店名／房型標題', send: '上方加上店名和房型的標題字（Super title）。' }] },
   { t: '畫面', items: [
@@ -156,11 +156,11 @@ const IDEAS: { t: string; items: Idea[] }[] = [
     { l: '多用空拍和戶外', send: '多用空拍和戶外的畫面，室內少一點。' },
     { l: '換一張封面畫面', send: '換一張封面畫面。' }] },
   { t: '旁白', items: [
-    { l: '逐句改字、改唸法', tool: 'proof' },
+    { l: '逐句改字、改唸法', tool: 'timeline' },
     { l: '更口語、更活潑', send: '旁白改得更口語、更活潑一點。' },
     { l: '旁白短一點', send: '旁白再精簡，每句短一點，留多一點畫面。' }] },
   { t: '配樂與長度', items: [
-    { l: '配樂音量、旁白速度', tool: 'tweak' },
+    { l: '配樂音量、旁白速度', tool: 'timeline' },
     { l: '換一首配樂', send: '換一首不同感覺的配樂。' },
     { l: '再剪一支短版', send: `再剪一支短版：${LENGTHS[0].brief}` },
     { l: '再剪一支完整導覽', send: `再剪一支完整導覽版：${LENGTHS[2].brief}` }] },
@@ -280,26 +280,40 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [sheet, setSheet] = useState<number | null>(null)           // shot open in the bottom sheet
   const [adv, setAdv] = useState(false)                             // 輕鬆模式: 風格／長度／聲音 are behind 更多選項
   const [cheer, setCheer] = useState<number | null>(null)           // 輕鬆模式: 影片完成 celebration (export count)
-  const [proof, setProof] = useState<{ version: DeliverableVersion | null; lines?: Line[] } | null>(null)   // 導演模式: 校對台
-  const [tweak, setTweak] = useState(false)   // 微調 panel (quick re-render without the editor)
+  const [proof, setProof] = useState<{ version: DeliverableVersion | null } | null>(null)   // 輕鬆模式: 校對旁白
   const [capStyle, setCapStyle] = useState<string>('gold')            // 導演模式: 字幕樣式 for the first cut
-  const [timeline, setTimeline] = useState<DeliverableVersion | null | false>(false)   // 時間軸 panel (導演模式)
+  const [font, setFont] = useState<string>('black')                   // 導演模式: 字型
+  const [superStyle, setSuperStyle] = useState<string>('chip')        // 導演模式: 標題樣式
+  const [timeline, setTimeline] = useState<{ version: DeliverableVersion | null; tab: 'tracks' | 'style' } | null>(null)   // 時間軸 (導演模式)
+  const carry = useRef<Record<string, LineEdit>>({})                  // line edits (incl. the owner's takes) kept across 輕鬆 ⇄ 導演
   const [ideas, setIdeas] = useState(false)                            // 導演模式: 更多改法 sheet
   const [ownBusy, setOwnBusy] = useState(false)                        // re-voicing the video with the owner's voice
   const [vidVoice, setVidVoice] = useState<string | null>(null)        // the voice the latest version was narrated with
   const afterQuick = () => { reload(); onProjectsChanged?.(); onUsage(); setTab('files') }
-  const openProof = async (lines?: Line[], version?: DeliverableVersion) => {
+  const openProof = async (version?: DeliverableVersion) => {
     let v = version ?? null
     if (!v) { try { v = (await api.deliverables(projectId)).versions[0] ?? null } catch { v = null } }
-    setProof({ version: v, lines })
+    setProof({ version: v })
   }
-  // 輕鬆模式 → 導演模式 for line-by-line edits: the remounted Chat reopens the 校對台.
-  const toPro = () => { try { sessionStorage.setItem('lk_open_proof', projectId) } catch { /* ignore */ } onMode?.('pro') }
+  const openTimeline = async (tab: 'tracks' | 'style' = 'tracks', version?: DeliverableVersion | null) => {
+    let v = version ?? null
+    if (!v) { try { v = (await api.deliverables(projectId)).versions[0] ?? null } catch { v = null } }
+    setTimeline({ version: v, tab })
+  }
+  // 輕鬆 ⇄ 導演 while editing: the open panel changes shape but keeps the line edits and the owner's takes.
   useEffect(() => {
-    if (easy) return
-    try { if (sessionStorage.getItem('lk_open_proof') === projectId) { sessionStorage.removeItem('lk_open_proof'); openProof() } } catch { /* ignore */ }
+    if (easy && timeline) { setTimeline(null); setProof({ version: timeline.version }) }
+    if (!easy && proof) { setProof(null); setTimeline({ version: proof.version, tab: 'tracks' }) }
+  }, [easy]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The wizard's choices survive a reload or a mode switch.
+  const draftKey = `lk_draft_${projectId}`
+  useEffect(() => {
+    try { const d = JSON.parse(sessionStorage.getItem(draftKey) || 'null'); if (d) { if (d.text) setText(d.text); if (d.style) setStyle(d.style); if (d.length) setLength(d.length); if (d.theme) setTheme(d.theme); if (d.themeText) setThemeText(d.themeText); if (d.capStyle) setCapStyle(d.capStyle); if (d.font) setFont(d.font); if (d.superStyle) setSuperStyle(d.superStyle); if (d.link) setLink(d.link) } } catch { /* ignore */ }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  const openTimeline = async () => { let v: DeliverableVersion | null = null; try { v = (await api.deliverables(projectId)).versions[0] ?? null } catch { v = null } setTimeline(v) }
+  useEffect(() => {
+    if (!proj || proj.messages.length) return
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ text, style, length, theme, themeText, capStyle, font, superStyle, link })) } catch { /* ignore */ }
+  }, [text, style, length, theme, themeText, capStyle, font, superStyle, link]) // eslint-disable-line react-hooks/exhaustive-deps
   const prevExports = useRef<number | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
   const [voices, setVoices] = useState<Voice[]>([])
@@ -346,7 +360,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     if (!proj) return
     // The wizard picks a default voice; in a running project the list feeds 旁白稿 → 換一個聲音.
     const fresh = proj.messages.length === 0
-    api.voices().then(vs => { setVoices(vs); if (fresh) setVoice(v => v ?? vs[0]?.voice_id ?? NO_VOICE) }).catch(() => { if (fresh) setVoice(NO_VOICE) })
+    api.voices().then(vs => { setVoices(vs); if (fresh) setVoice(v => v ?? (easy ? vs.find(x => !x.custom) : vs[0])?.voice_id ?? NO_VOICE) }).catch(() => { if (fresh) setVoice(NO_VOICE) })
     if (fresh) api.me().then(setMe).catch(() => {})
   }, [proj?.id, proj?.messages.length === 0]) // eslint-disable-line react-hooks/exhaustive-deps
   const recloneForScript = useRef(false)   // the clone was (re)recorded from a 旁白稿 card: re-voice with it
@@ -383,8 +397,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   }
   const pickIdea = (it: Idea) => {
     setIdeas(false)
-    if (it.tool === 'tweak') return setTweak(true)
-    if (it.tool === 'proof') return void openProof()
+    if (it.tool === 'style') return void openTimeline('style')
     if (it.tool === 'timeline') return void openTimeline()
     setText(t => (t.trim() ? t.replace(/\s*$/, '\n') : '') + (it.send ?? ''))
     setTimeout(() => taRef.current?.focus(), 50)
@@ -471,11 +484,14 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
       st.brief,
       len.brief,
       !easy ? `字幕樣式：${capStyle}（${CAPTION_STYLES.find(c => c.id === capStyle)?.name ?? ''}）` : '',
+      !easy && font !== 'black' ? `字型：${font}（${FONTS.find(c => c.id === font)?.name ?? ''}）` : '',
+      !easy && superStyle !== 'chip' ? `標題樣式：${superStyle}（${SUPER_STYLES.find(c => c.id === superStyle)?.name ?? ''}）` : '',
       ...adjustLines(),
       voice === NO_VOICE ? '不要配音：只要配樂和字幕，賣點用字幕呈現。'
         : v ? `旁白用 ${v.name}（voice_id ${v.voice_id}），直接做到輸出影片和封面，不用再問我選聲音或確認稿子。` : '',
     ]
     api.clientLog('start_project', { style: st.id, length: len.id, theme, adjust: nAdjust, voice, link: linkOk, uploads: okUploads, analysis: !!analysis })
+    try { sessionStorage.removeItem(draftKey) } catch { /* ignore */ }
     await submit(parts.filter(Boolean).join('\n'), !!analysis)
   }
   const runAnalyze = async () => {
@@ -620,19 +636,19 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     onReclone: () => { recloneForScript.current = true; setCloning(true) },
     onPick: v => { setVoice(v.voice_id); submit(`旁白改用「${v.name}」的聲音（voice_id ${v.voice_id}）重新生成，稿子、秒數和其他都不變，配好後重新輸出影片。`) },
     onMore: () => submit('這份旁白稿想換個聲音：請再找 3 個台灣腔的聲音，各用稿子第一句做試聽給我選，先不要重新輸出。'),
-    onProof: running ? undefined : lines => openProof(lines),
+    onProof: running ? undefined : () => (easy ? openProof() : openTimeline()),
   }
   const voiceBlock = (
     <>
                     <div className="muted small ob-sub">旁白聲音</div>
                     <div className="voice-row">
                       {/* 推薦用自己的聲音：還沒錄的人這張卡排第一；錄過的人自己的聲音本來就排第一、預設選中 */}
-                      {me && !voices.some(v => v.custom) && (
+                      {me && !easy && !voices.some(v => v.custom) && (
                         <div className="voice add rec" onClick={() => setCloning(true)}>
                           <div className="voice-name"><span className="pill rec">推薦</span>＋ 用自己的聲音{me.voice_trial && <span className="lock-tag">試用 {me.voice_trial.limit} 秒</span>}</div>
                           <div className="muted small">{me.voice_trial ? `錄 30 秒就能試，客人聽到的是老闆本人；儲值後不限` : '錄 30 秒，旁白就是你的聲音，客人更有感'}</div>
                         </div>)}
-                      {voices.map(v => (
+                      {voices.filter(v => !(easy && v.custom)).map(v => (
                         <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''} ${v.custom ? 'mine' : ''}`} onClick={() => setVoice(v.voice_id)}>
                           <div className="voice-name">{v.custom && <><span className="pill rec">推薦</span><span className="mine-tag">我的聲音</span></>}{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
                           {v.description && <div className="muted small">{v.description}</div>}
@@ -705,10 +721,10 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
           </aside>
         </>
       )}
-      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} onProof={running ? undefined : v => openProof(undefined, v)} onTweak={running || easy ? undefined : () => setTweak(true)} />}
-      {proof && <Proof projectId={projectId} version={proof.version} lines={proof.lines} easy={easy} hasOwnVoice={voices.some(v => v.custom)} onClone={() => { setProof(null); recloneQuick.current = true; setCloning(true) }} onOwnVoice={easy && ownVoice && !usedOwn ? () => { setProof(null); switchToOwnVoice() } : undefined} onPro={easy && onMode ? () => { setProof(null); toPro() } : undefined} onTimeline={easy ? undefined : () => { const v = proof?.version ?? null; setProof(null); setTimeline(v) }} onClose={() => setProof(null)} onUsage={onUsage} onDone={afterQuick} onSend={t => { setTab('chat'); submit(t) }} />}
-      {timeline !== false && <Timeline projectId={projectId} version={timeline} onClose={() => setTimeline(false)} onDone={afterQuick} onUsage={onUsage} />}
-      {tweak && <Tweak projectId={projectId} onClose={() => setTweak(false)} onDone={afterQuick} onUsage={onUsage} />}
+      {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} onProof={running ? undefined : v => (easy ? openProof(v) : openTimeline('tracks', v))} onTweak={running || easy ? undefined : () => openTimeline('style')} />}
+      {proof && easy && <Proof projectId={projectId} version={proof.version} hasOwnVoice={voices.some(v => v.custom)} onClone={() => { setProof(null); recloneQuick.current = true; setCloning(true) }} onOwnVoice={ownVoice && !usedOwn ? () => { setProof(null); switchToOwnVoice() } : undefined}
+        onPro={onMode ? () => onMode('pro') : undefined} initialLines={carry.current} onLines={l => { carry.current = l }} onClose={() => { carry.current = {}; setProof(null) }} onUsage={onUsage} onDone={() => { carry.current = {}; afterQuick() }} />}
+      {timeline && !easy && <Timeline projectId={projectId} version={timeline.version} tab={timeline.tab} initialLines={carry.current} onLines={l => { carry.current = l }} onClose={() => { carry.current = {}; setTimeline(null) }} onDone={() => { carry.current = {}; afterQuick() }} onUsage={onUsage} />}
       {tab === 'chat' && <>
       <VoiceSwapCtx.Provider value={voiceSwap}>
       <div className="thread" ref={threadRef} onScroll={onScroll}>
@@ -904,7 +920,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                 {obStep === 2 && (
                   <>
                     <h3>{easy ? '選你的聲音和風格' : '最後：賣點、風格、字幕、長度、聲音'}</h3>
-                    <p className="muted">{easy ? '用你自己的聲音配旁白，客人最有感。'  : analysis ? '賣點已經幫你填好，想改就改；加上價格、店名、語氣更好。' : '地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。'}</p>
+                    <p className="muted">{easy ? '先選一個聲音做第一版；做好後一鍵就能換成你自己的聲音。'  : analysis ? '賣點已經幫你填好，想改就改；加上價格、店名、語氣更好。' : '地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。'}</p>
                     {easy && voiceBlock}
                     {easy && <>
                       <div className="muted small ob-sub">風格</div>
@@ -937,8 +953,13 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                         </div>
                       ))}
                     </div>
-                    <div className="muted small ob-sub">字幕樣式<span className="ob-sub-note">做好後也能在「微調」換，不用重剪</span></div>
-                    <CapPicker value={capStyle} onChange={setCapStyle} />
+                    <div className="muted small ob-sub">字幕樣式<span className="ob-sub-note">做好後也能在「時間軸」換，不用重剪</span></div>
+                    <CapPicker value={capStyle} onChange={setCapStyle} font={font} />
+                    <div className="muted small ob-sub">字型</div>
+                    <FontPicker value={font} onChange={setFont} style={capStyle} />
+                    <div className="muted small ob-sub">標題樣式<span className="ob-sub-note">上方的店名、房型等補充資訊</span></div>
+                    <SuperPicker value={superStyle} onChange={setSuperStyle} font={font} />
+                    <StyleHint what="字幕或標題風格" />
                     </>}
                     <div className="muted small ob-sub">影片長度</div>
                     {(() => {
@@ -980,7 +1001,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
             </div>
           </div>
         )}
-        {proj.messages.map((m, i) => <Bubble key={m.id} m={m} easy={easy} assets={assetsFor(m, i)} onOpenFiles={() => setTab('files')} onRecord={running ? undefined : setPrompter} />)}
+        {proj.messages.map((m, i) => <Bubble key={m.id} m={m} easy={easy} brief={m.role === 'user' && i === proj.messages.findIndex(x => x.role === 'user')} assets={assetsFor(m, i)} onOpenFiles={() => setTab('files')} onRecord={running ? undefined : setPrompter} />)}
         {running && easy && (
           <div className="bubble assistant ez">
             <div className="working"><span className="spinner" /><b>剪輯師正在做</b>{turnStart.current && <span className="muted">· 已 {fmtDur(now - turnStart.current)}</span>}</div>
@@ -1131,18 +1152,18 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
           <div className="qr-row">
             {EASY_CHIPS[stage].filter(c => !(c.own && usedOwn)).map(c => (
               <button key={c.label} type="button" className={`qrb ez ${c.main ? 'main' : ''} ${c.own ? 'own' : ''}`} disabled={running || ownBusy}
-                onClick={() => { if (c.send) submit(c.send); else if (c.files) setTab('files'); else if (c.proof) openProof(); else if (c.own) switchToOwnVoice(); else taRef.current?.focus() }}>{c.label}</button>))}
+                onClick={() => { if (c.send) submit(c.send); else if (c.files) setTab('files'); else if (c.proof) openProof(); else if (c.own) switchToOwnVoice(); else taRef.current?.focus() }}>{c.own && <em className="qr-rec">推薦</em>}{c.label}</button>))}
           </div>
         </div>
       )}
       {!easy && stage !== 'start' && CHIPS[stage].length > 0 && !uploading && (
         <div className="qr">
-          <span className="qr-lbl">{stage === 'revise' ? '常用改法 · 或直接打字跟剪輯師說想怎麼改' : '下一步 · 點一下就送出'}</span>
+          <span className="qr-lbl">{stage === 'revise' ? '細調 · 或直接打字跟剪輯師說想怎麼改' : '下一步 · 點一下就送出'}</span>
           <div className="qr-row">
-            {CHIPS[stage].map(c => {
-              const main = c === DEFAULT_CHIP[stage]
+            {CHIPS[stage].filter(c => !(c === '換成我的聲音' && usedOwn)).map(c => {
+              const main = c === DEFAULT_CHIP[stage] || c === '時間軸細調'
               return (
-                <button key={c} type="button" className={`qrb ${main ? 'main' : ''}`} disabled={running} onClick={() => c === '微調字幕、配樂、速度' || c === '換字幕樣式' ? setTweak(true) : c === '校對旁白' ? openProof() : c === '更多改法…' ? setIdeas(true) : c === '調時間軸' ? openTimeline() : submit(c)}>
+                <button key={c} type="button" className={`qrb ${main ? 'main' : ''}`} disabled={running || ownBusy} onClick={() => c === '時間軸細調' ? openTimeline() : c === '換成我的聲音' ? switchToOwnVoice() : c === '更多改法…' ? setIdeas(true) : submit(c)}>
                   {main && <em>建議</em>}<span>{c}</span>
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </button>)
@@ -1174,7 +1195,39 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   )
 }
 
-function Bubble({ m, assets, onOpenFiles, onRecord, easy = false }: { m: Msg; assets: Asset[]; onOpenFiles?: () => void; onRecord?: (lines: Line[]) => void; easy?: boolean }) {
+/* 需求摘要: the first message is the wizard's whole brief (theme, footage, selling points, style, length, caption
+   style, adjustments, voice) — far too much to read back. Both modes show the gist as chips; 導演模式 can unfold it. */
+const BRIEF_KEYS: [RegExp, string][] = [[/^主題：/, '主題'], [/^風格：/, '風格'], [/^長度：/, '長度'], [/^字幕樣式：/, '字幕'], [/^字型：/, '字型'], [/^標題樣式：/, '標題'], [/^旁白用 /, '聲音'], [/^不要配音/, '聲音']]
+function BriefCard({ text, easy }: { text: string; easy: boolean }) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+  const chips: { k: string; v: string }[] = []
+  const free: string[] = []
+  let adjust = 0
+  for (const l of lines) {
+    const hit = BRIEF_KEYS.find(([re]) => re.test(l))
+    if (hit) {
+      let v = l.replace(hit[0], '').split(/[。（(]/)[0].replace(/^(旅遊短影音|質感形象片|促銷活動|短版|標準|完整導覽)\b.*/, '$1').trim()
+      if (hit[1] === '聲音') v = l.startsWith('不要配音') ? '不配音，只有字幕' : l.replace(/^旁白用 /, '').split('（')[0]
+      if (hit[1] === '主題') v = v.replace(/（.*$/, '')
+      if (hit[1] === '長度') v = v.split(' ')[0]
+      if (!chips.some(c => c.k === hit[1])) chips.push({ k: hit[1], v })
+    } else if (/^調整：/.test(l)) adjust++
+    else if (/^素材(已上傳|在這個)|^我上傳了 \d+ 支素材/.test(l)) { /* footage line: implied */ }
+    else free.push(l)
+  }
+  const gist = free.join(' ').replace(/https?:\/\/\S+\s*。?/g, '').replace(/^素材在\s*/, '').replace(/^賣點：/, '').trim()
+  return (
+    <div className="brief">
+      <div className="brief-h">你的需求</div>
+      {gist && <div className="brief-gist">{gist.length > 90 ? gist.slice(0, 90) + '…' : gist}</div>}
+      <div className="brief-chips">{chips.map(c => <span key={c.k}><i>{c.k}</i>{c.v}</span>)}{adjust > 0 && <span><i>調整</i>{adjust} 處</span>}</div>
+      {!easy && <details className="brief-more"><summary>看完整需求</summary><pre>{text}</pre></details>}
+    </div>
+  )
+}
+
+function Bubble({ m, assets, onOpenFiles, onRecord, easy = false, brief = false }: { m: Msg; assets: Asset[]; onOpenFiles?: () => void; onRecord?: (lines: Line[]) => void; easy?: boolean; brief?: boolean }) {
+  if (brief) return <BriefCard text={m.parts.filter(p => p.type === 'text').map(p => (p as { text: string }).text).join('\n')} easy={easy} />
   // Consecutive tool parts collapse into one quiet "did N steps" line; the editor's words stay prominent.
   const groups: ({ kind: 'text'; text: string } | { kind: 'tools'; names: string[] })[] = []
   for (const p of m.parts) {

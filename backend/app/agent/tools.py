@@ -12,6 +12,7 @@ from typing import Callable
 
 from ..pipeline import cover as cover_mod
 from ..pipeline import cut, eleven, ff, footage, mix, subs
+from ..pipeline.fonts import DEFAULT_FONT
 
 
 @dataclass
@@ -22,6 +23,7 @@ class ToolContext:
     notes: dict = field(default_factory=dict)
     voice_trial: Callable[[str], dict | None] = lambda voice_id: None   # (voice_id) -> {used, limit} when the trial cap applies
     voice_used: Callable[[float], None] = lambda seconds: None           # add generated seconds to the trial counter
+    lean: bool = False   # a revision turn: smaller check images (fewer frames, lower height) to save tokens; the first version is never lean
 
 
 MANDARIN_CHARS_PER_SEC = 3.5   # for estimating narration length before generating it
@@ -119,6 +121,10 @@ TOOLS: list[dict] = [
                                                                 "color": {"type": "string", "description": "gold（預設）、white、red、blue"}}},
                                      "style": {"type": "string", "enum": ["gold", "white", "box", "soft"],
                                                "description": "旁白字幕樣式：gold 金字醒目（預設）、white 白字黑邊、box 黃底黑字、soft 清爽細字。用戶指定「字幕樣式」時照用"},
+                                     "font": {"type": "string", "enum": ["black", "round", "kai", "serif", "hand"],
+                                              "description": "字型：black 粗黑體（預設）、round 圓體、kai 楷體、serif 明體、hand 手寫感。用戶指定「字型」時照用"},
+                                     "super_style": {"type": "string", "enum": ["chip", "bar", "outline", "label", "none"],
+                                                     "description": "Super title 樣式：chip 藍底圓角（預設）、bar 品牌色橫條、outline 白字描邊、label 白底黑字、none 不要標題。用戶指定「標題樣式」時照用"},
                                      "check_times": {"type": "array", "items": {"type": "number"},
                                                      "description": "要抽格檢查的秒數，省略則自動"}}}},
     {"name": "export_video", "description": "合成畫面與混音，輸出母帶、上傳用 1080p（<30MB）、預覽 720p 三個檔案給用戶。",
@@ -194,8 +200,8 @@ def _build_cut(inp, ctx):
     r = cut.build_cut(ctx.root, inp["segments"])
     ctx.notes["segments"] = inp["segments"]
     dur = r["duration"]
-    times = [round(x, 1) for x in _spread(dur, 16)]
-    sb = cut.storyboard(r["path"], times, ctx.root / "sheets" / "storyboard.jpg")
+    times = [round(x, 1) for x in _spread(dur, 8 if ctx.lean else 16)]
+    sb = cut.storyboard(r["path"], times, ctx.root / "sheets" / "storyboard.jpg", height=200 if ctx.lean else 266)
     prev = ctx.root / "out" / "cut_preview.mp4"
     ff.ffmpeg("-i", str(r["path"]), "-vf", "scale=540:960", "-c:v", "libx264", "-crf", "28", "-preset", "fast", "-an", str(prev))
     a = ctx.add_asset(prev, "video", "剪輯預覽（無聲）")
@@ -313,15 +319,18 @@ def _compose(inp, ctx):
 
 def _captions(inp, ctx):
     base = ctx.root / "work" / "base.mp4"
-    style = inp.get("style") or subs.DEFAULT_STYLE
-    ass = subs.build_ass(inp["vo"], inp.get("supers") or [], inp.get("counter"), ctx.root / "work" / "subs.ass", style=style)
-    plan_update(ctx.root, "captions", {"vo": inp["vo"], "supers": inp.get("supers") or [], "counter": inp.get("counter"), "style": style})
+    prev = plan_load(ctx.root).get("captions") or {}
+    style = inp.get("style") or prev.get("style") or subs.DEFAULT_STYLE
+    font = inp.get("font") or prev.get("font") or DEFAULT_FONT
+    super_style = inp.get("super_style") or prev.get("super_style") or subs.DEFAULT_SUPER
+    ass = subs.build_ass(inp["vo"], inp.get("supers") or [], inp.get("counter"), ctx.root / "work" / "subs.ass", style=style, font=font, super_style=super_style)
+    plan_update(ctx.root, "captions", {"vo": inp["vo"], "supers": inp.get("supers") or [], "counter": inp.get("counter"), "style": style, "font": font, "super_style": super_style})
     dark = None
     if inp.get("counter"):
         dark = (float(inp["counter"]["start"]) - 0.6, float(inp["counter"]["end"]))
     video = subs.burn(base, ass, ctx.root / "work" / "video.mp4", dark)
-    times = inp.get("check_times") or [round((c["start"] + c["end"]) / 2, 1) for c in inp["vo"]][:14]
-    sb = cut.storyboard(video, times, ctx.root / "sheets" / "captions_check.jpg", height=300)
+    times = inp.get("check_times") or [round((c["start"] + c["end"]) / 2, 1) for c in inp["vo"]][:(6 if ctx.lean else 14)]
+    sb = cut.storyboard(video, times, ctx.root / "sheets" / "captions_check.jpg", height=220 if ctx.lean else 300)
     return [_text("字幕已燒入 video.mp4。檢查圖（每格標示秒數）："), _image(sb)]
 
 

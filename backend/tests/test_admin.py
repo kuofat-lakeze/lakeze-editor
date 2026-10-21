@@ -528,7 +528,7 @@ def test_quick_render(client, monkeypatch, tmp_path: Path):
     monkeypatch.setattr(eleven, "tts_verified", fake_tts)
     monkeypatch.setattr(mix, "compose", lambda root, placements, music, dur, **kw: {"words": [], "transcript": "", "lines": []})
     built = {}
-    monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, vo_scale=1.0, style="gold": built.update(vo=vo, scale=vo_scale, style=style) or dest)
+    monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, vo_scale=1.0, style="gold", **kw: built.update(vo=vo, scale=vo_scale, style=style, **kw) or dest)
     monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None: dest.write_bytes(b"v") or dest)
     def fake_export(video, mixw, out_dir, stem="final"):
         out_dir.mkdir(exist_ok=True)
@@ -593,7 +593,7 @@ def test_quick_recut(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(cut, "build_cut", fake_cut)
     got = {}
     monkeypatch.setattr(mix, "compose", lambda r, placements, music, dur, **kw: got.update(at=[p["at"] for p in placements], dur=dur))
-    monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, **kw: got.update(supers=supers, counter=counter) or dest)
+    monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, **kw: got.update(supers=supers, counter=counter, **kw) or dest)
     monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None: dest)
     monkeypatch.setattr(mix, "mux_and_export", lambda v, m, out, stem: {})
     assert Q.shot_sources(root)[0]["src_dur"] == 20.0
@@ -609,5 +609,15 @@ def test_quick_recut(monkeypatch, tmp_path: Path):
     except RuntimeError:
         pass
     assert (root / "work" / "cut.json").read_text() == before
+    # reorder + drop: segment 2 dropped, segment 1 moved first; narration follows its segment
+    monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None: dest)
+    (root / "work" / "cut.json").write_text(J.dumps([{"i": 0, "clip": 1, "start": 1, "dur": 4, "at": 0}, {"i": 1, "clip": 2, "start": 0, "dur": 4, "at": 4},
+                                                     {"i": 2, "clip": 1, "start": 6, "dur": 4, "at": 8}]))
+    T.plan_update(root, "compose", {"placements": [{"key": "A", "at": 0}, {"key": "B", "at": 4.5}, {"key": "C", "at": 8.2}], "music": None, "sfx": [], "duration": 12})
+    T.plan_update(root, "captions", {"vo": [], "supers": [{"start": 0.5, "end": 3, "text": "店名"}, {"start": 8.5, "end": 10, "text": "周邊"}], "counter": None})
+    Q.render(root, {"order": [1, 0, 2], "shots": [{"i": 2, "drop": True}], "lines": [{"key": "C", "drop": True}], "supers": [{"i": 1, "drop": True}, {"i": 0, "text": "新店名"}], "font": "kai", "super_style": "bar"})
+    assert got["at"] == [0.5, 4.0] and got["dur"] == 8          # B now first (0.5), A second (4.0); C dropped with its segment
+    assert [x["text"] for x in got["supers"]] == ["新店名"] and got["supers"][0]["start"] == 4.5
+    assert got["font"] == "kai" and got["super_style"] == "bar" and T.plan_load(root)["captions"]["font"] == "kai"
     (root / "raw" / "c2.mp4").unlink()     # originals expired: no 時間軸
     assert Q.shot_sources(root) is None

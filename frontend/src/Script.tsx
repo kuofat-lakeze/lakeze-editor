@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { api, type Voice } from './api'
+import { RecBar, useRecorder } from './Recorder'
 
 /* The other way to voice a script: pick another AI voice (or the user's cloned one). Chat provides the
    voice list and what to do with a choice; script cards in assistant messages show the picker. */
@@ -43,7 +44,7 @@ export function ScriptCard({ lines, onRecord }: { lines: Line[]; onRecord?: () =
         <span className="vo-ic" aria-hidden="true">🎙</span>
         <b>旁白稿</b><span className="muted small">{lines.length} 句 · 約 {Math.round(total)} 秒</span>
         <span className="spacer" />
-        {onRecord && swap?.onProof && <a className="small vo-proof" onClick={() => swap.onProof!(lines)}>校對台 ▸</a>}
+        {onRecord && swap?.onProof && <a className="small vo-proof" onClick={() => swap.onProof!(lines)}>細調 ▸</a>}
         <a className="small" onClick={() => { navigator.clipboard?.writeText(lines.map(l => l.text).join('\n')).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>{copied ? '已複製' : '複製'}</a>
       </div>
       <ol className="vo-lines">
@@ -122,47 +123,38 @@ export function Teleprompter({ lines, projectId, onClose, onUploaded }:
   const [t, setT] = useState(0)
   const [blob, setBlob] = useState<Blob | null>(null)
   const [err, setErr] = useState('')
-  const mr = useRef<MediaRecorder | null>(null)
-  const chunks = useRef<Blob[]>([])
   const t0 = useRef(0)
   const raf = useRef(0)
   const listRef = useRef<HTMLDivElement>(null)
   const total = lines.length ? lines[lines.length - 1].end : 0
   const cur = Math.max(0, lines.findIndex(l => t < l.end) === -1 ? lines.length - 1 : lines.findIndex(l => t < l.end))
   const url = blob ? URL.createObjectURL(blob) : ''
+  const rec = useRecorder(b => { cancelAnimationFrame(raf.current); setBlob(b); setPhase('review') })
   useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
-  useEffect(() => () => { cancelAnimationFrame(raf.current); mr.current?.stream.getTracks().forEach(x => x.stop()) }, [])
+  useEffect(() => () => { cancelAnimationFrame(raf.current) }, [])
   useEffect(() => { listRef.current?.querySelector('.tp-line.on')?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, [cur, phase])
 
   const begin = async () => {
     setErr('')
-    let stream: MediaStream
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }) }
-    catch { setErr('打不開麥克風。請在網址列允許使用麥克風，再按一次。'); return }
-    const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(x => MediaRecorder.isTypeSupported(x))
-    const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
-    chunks.current = []
-    r.ondataavailable = e => { if (e.data.size) chunks.current.push(e.data) }
-    r.onstop = () => { stream.getTracks().forEach(x => x.stop()); setBlob(new Blob(chunks.current, { type: r.mimeType || 'audio/webm' })); setPhase('review') }
-    mr.current = r
     setPhase('count'); setCount(3); setT(0)
     let c = 3
-    const iv = setInterval(() => {
+    const iv = setInterval(async () => {
       c -= 1; setCount(c)
       if (c === 0) {
         clearInterval(iv)
-        r.start(250); setPhase('rec'); t0.current = performance.now()
+        if (!(await rec.start())) { setPhase('ready'); setErr(rec.err || '打不開麥克風。請在網址列允許使用麥克風，再按一次。'); return }
+        setPhase('rec'); t0.current = performance.now()
         const tick = () => {
           const s = (performance.now() - t0.current) / 1000
           setT(s)
-          if (s >= total + 1.5) { r.state !== 'inactive' && r.stop(); return }
+          if (s >= total + 1.5) { rec.stop(); return }
           raf.current = requestAnimationFrame(tick)
         }
         raf.current = requestAnimationFrame(tick)
       }
     }, 800)
   }
-  const stop = () => { cancelAnimationFrame(raf.current); if (mr.current && mr.current.state !== 'inactive') mr.current.stop() }
+  const stop = () => { cancelAnimationFrame(raf.current); rec.stop() }
   const upload = async () => {
     if (!blob) return
     setPhase('up'); setErr('')
@@ -178,7 +170,7 @@ export function Teleprompter({ lines, projectId, onClose, onUploaded }:
   return (
     <div className="tp">
       <div className="tp-top">
-        <a className="tp-x" onClick={() => { stop(); onClose() }}>✕</a>
+        <a className="tp-x" onClick={() => { stop(); onClose() }}>取消</a>
         <span className="tp-title">{phase === 'rec' ? <><i className="tp-dot" />錄音中</> : phase === 'review' ? '聽聽看' : '照稿唸旁白'}</span>
         <span className="tp-time">{tc(Math.min(t, total))} / {tc(total)}</span>
       </div>
@@ -200,7 +192,7 @@ export function Teleprompter({ lines, projectId, onClose, onUploaded }:
           <button className="tp-btn rec" onClick={begin}><i />開始錄音</button>
         </>}
         {phase === 'count' && <div className="tp-tip">準備…</div>}
-        {phase === 'rec' && <button className="tp-btn stop" onClick={stop}><i />唸完了</button>}
+        {phase === 'rec' && <RecBar r={rec} label="錄音中" stopLabel="唸完了" onStop={stop} />}
         {phase === 'review' && url && <>
           <audio src={url} controls className="tp-audio" />
           <div className="tp-row"><button className="tp-btn ghost" onClick={() => { setBlob(null); setPhase('ready'); setT(0) }}>重錄</button><button className="tp-btn ok" onClick={upload}>用這段當旁白 →</button></div>

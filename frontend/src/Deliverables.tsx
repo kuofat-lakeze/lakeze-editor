@@ -3,6 +3,7 @@ import { api, type Asset, type DeliverableVersion, type DeliverablesData, type S
 import { StorageMeter, fmtBytes } from './Storage'
 import { ask } from './Dialog'
 import { FbIcon, LineIcon, MessengerIcon, promoText, shareToFacebook, shareToLine, shareToMessenger } from './share'
+import { SheetHead } from './Recorder'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 /* 給朋友的一句話: six ready-made lines. Shown in grey as the default; sent as-is unless the user edits. */
@@ -89,8 +90,8 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak
                 {isFinal
                   ? <button className="btn small" onClick={() => setFinal(null)}>取消最終版</button>
                   : <button className="btn small" onClick={() => setFinal(v.version)}>標成最終版</button>}
-                {onProof && v.main && <button className="btn small" onClick={() => onProof(v)}>校對</button>}
-                {onTweak && v.main && v === versions[0] && <button className="btn small" onClick={onTweak}>微調</button>}
+                {onProof && v.main && <button className="btn small" onClick={() => onProof(v)}>{onTweak ? '時間軸' : '校對旁白'}</button>}
+                {onTweak && v.main && v === versions[0] && <button className="btn small" onClick={onTweak}>樣式</button>}
                 <button className="btn primary small" onClick={() => setSharing(v.version)}>分享給朋友</button>
                 <button className="btn small ghost danger" disabled={isFinal || busy === v.version} title={isFinal ? '先取消最終版才能刪' : '刪除這一版，釋放空間'}
                   onClick={() => del(v.version)}>{busy === v.version ? '刪除中…' : '刪除'}</button>
@@ -188,7 +189,7 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal card share-dlg" onClick={e => e.stopPropagation()}>
-        <div className="modal-head"><h3>分享給朋友</h3><a onClick={onClose}>✕</a></div>
+        <SheetHead title="分享給朋友" onCancel={onClose} cancelLabel={made ? '關閉' : '取消'} />
         {!made ? (
           <>
             <p className="muted small share-lead">朋友不用登入，點開就能看。</p>

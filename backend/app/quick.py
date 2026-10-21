@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .agent.tools import plan_load, plan_update
 from .pipeline import cut, eleven, ff, mix, subs
+from .pipeline.fonts import DEFAULT_FONT, FONT_PRESETS
 from .pipeline.footage import load_index
 
 log = logging.getLogger("quick")
@@ -77,35 +78,55 @@ def shot_sources(root: Path) -> list[dict] | None:
     return out
 
 
-def remap(t: float, old: list[tuple[float, float]], new: list[tuple[float, float]]) -> float:
+def remap(t: float, old: list[tuple[float, float]], new: list[tuple[float, float] | None]) -> float:
     """A moment on the old timeline → the same moment on the re-cut one: same offset into the same segment,
-    clamped to that segment's new length. old/new: [(at, dur)] per segment, in order."""
-    for (oa, od), (na, nd) in zip(old, new):
+    clamped to that segment's new length. old: [(at, dur)] per original segment; new: that segment's (at, dur)
+    after the re-cut, in the same order, or None when it was dropped (the moment lands where the next kept
+    segment starts, with no length)."""
+    for k, (oa, od) in enumerate(old):
         if t < oa + od - 1e-6:
+            nxt = next((x for x in new[k:] if x), None)
+            if new[k] is None:
+                return round(nxt[0], 2) if nxt else round(max(x[0] + x[1] for x in new if x), 2) if any(new) else 0.0
+            na, nd = new[k]
             return round(na + min(max(t - oa, 0.0), nd), 2)
-    (oa, od), (na, nd) = old[-1], new[-1]
+    kept = [x for x in new if x]
+    oa, od = old[-1]
+    na, nd = kept[-1] if kept else (0.0, 0.0)
     return round(na + nd + max(0.0, t - oa - od), 2)
 
 
-def recut(root: Path, shot_edits: list[dict]) -> tuple[float, "callable"]:
-    """Re-cut base.mp4 with new segment lengths / source starts. Returns the new duration and a function that
-    maps old timeline seconds to new ones (for narration, supers, the price counter and sound effects)."""
+def recut(root: Path, shot_edits: list[dict], order: list[int] | None = None) -> tuple[float, "callable"]:
+    """Re-cut base.mp4 with new segment lengths / source starts, dropped segments and a new order. Returns the
+    new duration and a function that maps old timeline seconds to new ones (for narration, supers, the price
+    counter and sound effects). shot_edits: [{i, dur?, start?, drop?}]; order: original indices in their new
+    order (missing ones keep their relative place at the end)."""
     src = shot_sources(root)
     if not src:
         raise QuickError("原始素材已超過保存期限，沒辦法再調段落長度；可以直接跟剪輯師說要怎麼改")
     by_i = {int(e["i"]): e for e in shot_edits if "i" in e}
-    segs = []
-    for s in src:
-        e = by_i.get(int(s["i"]), {})
+    idx = [int(s["i"]) for s in src]
+    seq = [i for i in (order or []) if i in idx] + [i for i in idx if i not in (order or [])]
+    segs, kept = [], []
+    for i in seq:
+        s = next(x for x in src if int(x["i"]) == i)
+        e = by_i.get(i, {})
+        if e.get("drop"):
+            continue
         start = max(0.0, min(float(e.get("start", s["start"])), s["src_dur"] - MIN_SHOT))
         dur = max(MIN_SHOT, min(float(e.get("dur", s["dur"])), s["src_dur"] - start))
         seg = {"clip": s["clip"], "start": round(start, 2), "dur": round(dur, 2)}
         if "crop_x" in s:
             seg["crop_x"] = s["crop_x"]
         segs.append(seg)
+        kept.append(i)
+    if not segs:
+        raise QuickError("至少要留一段畫面")
     old_t = [(float(s["at"]), float(s["dur"])) for s in src]
     r = cut.build_cut(root, segs)
-    new_t = [(float(x["at"]), float(x["dur"])) for x in json.loads((root / "work" / "cut.json").read_text())]
+    built = json.loads((root / "work" / "cut.json").read_text())
+    pos = {i: k for k, i in enumerate(kept)}
+    new_t = [(float(built[pos[i]]["at"]), float(built[pos[i]]["dur"])) if i in pos else None for i in idx]
     return float(r["duration"]), (lambda t: remap(float(t), old_t, new_t))
 
 
@@ -143,7 +164,7 @@ def plan_changes(root: Path, edits: dict) -> dict:
     new_voice = edits.get("voice_id") and edits["voice_id"] != voice.get("voice_id")
     if new_voice:
         revoice = [p["key"] for p in comp["placements"] if not any(e.get("key") == p["key"] and (e.get("drop") or e.get("take")) for e in edits.get("lines") or [])]
-    if edits.get("shots") and not shot_sources(root):
+    if (edits.get("shots") or edits.get("order")) and not shot_sources(root):
         raise QuickError("原始素材已超過保存期限，沒辦法再調段落長度；可以直接跟剪輯師說要怎麼改")
     return {"revoice": revoice, "new_voice": bool(new_voice), "plan": plan}
 
@@ -151,7 +172,7 @@ def plan_changes(root: Path, edits: dict) -> dict:
 def render(root: Path, edits: dict, *, record_usage=None) -> dict:
     """See _render. A 時間軸 change rewrites base.mp4 and cut.json before anything else, so they are backed up
     and put back if the render fails — the picture and the recipe never disagree."""
-    if not edits.get("shots"):
+    if not edits.get("shots") and not edits.get("order"):
         return _render(root, edits, record_usage=record_usage)
     work = root / "work"
     keep = [work / "base.mp4", work / "cut.json"]
@@ -173,8 +194,8 @@ def render(root: Path, edits: dict, *, record_usage=None) -> dict:
 
 def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
     """Apply `edits` to the recipe and produce a new export. Blocking (ffmpeg, ElevenLabs): run in a thread.
-    edits: {lines:[{key,text?,say?,drop?,take?,star?}], shots:[{i,dur?,start?}], voice_id?, music_gain?, speed?,
-            caption_scale?, caption_style?, counter_color?}
+    edits: {lines:[{key,text?,say?,drop?,take?,star?}], shots:[{i,dur?,start?,drop?}], order:[i…], supers:[{i,text?,drop?}],
+            voice_id?, music_gain?, speed?, caption_scale?, caption_style?, font?, super_style?, counter_color?}
     Returns {"files": {master, upload, preview}, "revoiced": [keys]}."""
     info = plan_changes(root, edits)
     plan = info["plan"]
@@ -185,8 +206,8 @@ def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
 
     # 0. 時間軸: re-cut the picture first; everything placed in time moves with its segment
     tmap = None
-    if edits.get("shots"):
-        new_dur, tmap = recut(root, edits["shots"])
+    if edits.get("shots") or edits.get("order"):
+        new_dur, tmap = recut(root, edits.get("shots") or [], edits.get("order"))
 
     # 1. re-voice the lines whose words (or voice) changed; the owner's take replaces a line's audio
     vo_dir = root / "work" / "vo"
@@ -224,12 +245,14 @@ def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
         for q in placements:
             q["tempo"] = tp
 
-    # 2. keep lines from overlapping when one got longer: push the following ones back
+    # 2. keep lines from overlapping when one got longer: push the following ones back (after a reorder the
+    #    lines are in their new timeline order)
+    placements.sort(key=lambda q: float(q["at"]))
     timing = line_timing(root, placements)
     prev_end = 0.0
     for q in placements:
         s, e = timing[q["key"]]
-        if s < prev_end + GAP and prev_end > 0:
+        if s < prev_end and prev_end > 0:    # only a real overlap pushes a line back
             shift = prev_end + GAP - s
             q["at"] = round(float(q["at"]) + shift, 2)
             s, e = s + shift, e + shift
@@ -254,6 +277,9 @@ def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
     old_vo = caps.get("vo") or []
     supers = caps.get("supers") or []
     counter = dict(caps.get("counter") or {}) or None
+    sup_ed = {int(e["i"]): e for e in edits.get("supers") or [] if "i" in e}
+    supers = [{**c, **({"text": sup_ed[k]["text"].strip()} if sup_ed.get(k, {}).get("text") else {})}
+              for k, c in enumerate(supers) if not sup_ed.get(k, {}).get("drop")]
     if tmap:
         old_vo = [{**c, "start": tmap(c["start"]), "end": tmap(c["end"])} for c in old_vo]
         supers = [{**c, "start": tmap(c["start"]), "end": min(tmap(c["end"]), dur)} for c in supers]
@@ -267,9 +293,11 @@ def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
         vo.append(_caption_for(q["key"], s, min(e, dur), old_vo, texts.get(q["key"], q["key"]), changed, bool(ed.get("star"))))
     if counter and edits.get("counter_color"):
         counter["color"] = edits["counter_color"]
-    scale = float(edits.get("caption_scale") or 1.0)
+    scale = float(edits.get("caption_scale") or caps.get("scale") or 1.0)
     style = edits.get("caption_style") if edits.get("caption_style") in subs.CAPTION_STYLES else caps.get("style", subs.DEFAULT_STYLE)
-    ass = subs.build_ass(vo, supers, counter, root / "work" / "subs.ass", vo_scale=scale, style=style)
+    font = edits.get("font") if edits.get("font") in FONT_PRESETS else caps.get("font", DEFAULT_FONT)
+    super_style = edits.get("super_style") if edits.get("super_style") in subs.SUPER_STYLES else caps.get("super_style", subs.DEFAULT_SUPER)
+    ass = subs.build_ass(vo, supers, counter, root / "work" / "subs.ass", vo_scale=scale, style=style, font=font, super_style=super_style)
     dark = (float(counter["start"]) - 0.6, float(counter["end"])) if counter else None
     video = subs.burn(base, ass, root / "work" / "video.mp4", dark)
 
@@ -279,5 +307,6 @@ def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
     # 6. the recipe now describes this version
     plan_update(root, "voice", {**voice, "voice_id": voice_id, "lines": texts})
     plan_update(root, "compose", {**comp, "placements": placements, "music_gain": gain, "duration": dur, "sfx": sfx_plan})
-    plan_update(root, "captions", {"vo": vo, "supers": supers, "counter": counter, "style": style})
+    plan_update(root, "captions", {"vo": vo, "supers": supers, "counter": counter, "style": style, "font": font, "super_style": super_style,
+                                   "scale": scale if edits.get("caption_scale") else caps.get("scale", 1.0)})
     return {"files": files, "revoiced": info["revoice"]}

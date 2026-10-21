@@ -7,7 +7,7 @@ Plus an optional animated price counter and a darkened price window.
 from pathlib import Path
 
 from . import ff
-from .fonts import SUPER_FONT, VO_FONT, ensure_fonts
+from .fonts import DEFAULT_FONT, SUPER_FONT, VO_FONT, ensure_fonts, font_family
 
 # 字幕樣式 presets: the VO line style and its **highlight** colour. Colours are ASS &HAABBGGRR.
 CAPTION_STYLES = {
@@ -17,10 +17,24 @@ CAPTION_STYLES = {
     "soft":  {"label": "清爽細字", "size": 84,  "style": "&H00FFFFFF,&H000000FF,&H00303030,&H64000000,0,0,0,0,100,100,1,0,1,4,2", "hl": "B4E6FF"},
 }
 DEFAULT_STYLE = "gold"
+# Super title (上方補充資訊) presets: the Super style line fields after the font size.
+SUPER_STYLES = {
+    "chip":    {"label": "藍底圓角", "size": 76, "style": "&H00FFFFFF,&H000000FF,&H00A88F0E,&H00000000,0,0,0,0,100,100,4,0,3,18,0"},
+    "bar":     {"label": "品牌色橫條", "size": 72, "style": "&H00FFFFFF,&H000000FF,&H00205DEC,&H00000000,-1,0,0,0,100,100,6,0,3,22,0"},
+    "outline": {"label": "白字描邊", "size": 80, "style": "&H00FFFFFF,&H000000FF,&H00202020,&H80000000,-1,0,0,0,100,100,5,0,1,7,4"},
+    "label":   {"label": "白底黑字", "size": 70, "style": "&H00141414,&H000000FF,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,4,0,3,16,0"},
+    "none":    {"label": "不要標題", "size": 70, "style": "&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0"},
+}
+DEFAULT_SUPER = "chip"
 
 
-def _head(style: str = DEFAULT_STYLE) -> str:
+def _head(style: str = DEFAULT_STYLE, font: str = DEFAULT_FONT, super_style: str = DEFAULT_SUPER) -> str:
     st = CAPTION_STYLES.get(style, CAPTION_STYLES[DEFAULT_STYLE])
+    fam, bold = font_family(font)
+    vo_style = st["style"]
+    if fam != VO_FONT:   # a lighter face keeps its own weight flag
+        vo_style = ",".join([*vo_style.split(",")[:4], str(bold), *vo_style.split(",")[5:]])
+    sp = SUPER_STYLES.get(super_style, SUPER_STYLES[DEFAULT_SUPER])
     return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -29,8 +43,8 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: VO,{VO_FONT},{st["size"]},{st["style"]},5,50,50,0,1
-Style: Super,{SUPER_FONT},76,&H00FFFFFF,&H000000FF,&H00A88F0E,&H00000000,0,0,0,0,100,100,4,0,3,18,0,5,60,60,0,1
+Style: VO,{fam},{st["size"]},{vo_style},5,50,50,0,1
+Style: Super,{SUPER_FONT if font in ("black", "round") else fam},{sp["size"]},{sp["style"]},5,60,60,0,1
 Style: Title,{VO_FONT},200,&H0037C0F5,&H000000FF,&H00101C2E,&H8C000000,-1,0,0,0,100,100,6,0,1,12,10,5,40,40,0,1
 Style: Sub,{VO_FONT},92,&H00FFFFFF,&H000000FF,&H00101C2E,&H8C000000,-1,0,0,0,100,100,4,0,1,8,6,5,40,40,0,1
 
@@ -61,10 +75,14 @@ def _markup(text: str, hl_size: int = 124, hl: str = "FFFFFF") -> str:
     return out.replace("\n", "\\N")
 
 
-def build_ass(vo: list[dict], supers: list[dict], counter: dict | None, dest: Path, vo_scale: float = 1.0, style: str = DEFAULT_STYLE) -> Path:
+def build_ass(vo: list[dict], supers: list[dict], counter: dict | None, dest: Path, vo_scale: float = 1.0, style: str = DEFAULT_STYLE,
+              font: str = DEFAULT_FONT, super_style: str = DEFAULT_SUPER) -> Path:
     """vo: [{start,end,text,y?}]  supers: [{start,end,text,y?}]
-    counter: {start,end,amount,prefix,label,y?} – animated count-up (price reveal).  style: a CAPTION_STYLES key."""
+    counter: {start,end,amount,prefix,label,y?} – animated count-up (price reveal).
+    style: a CAPTION_STYLES key; font: a FONT_PRESETS key; super_style: a SUPER_STYLES key ("none" hides supers)."""
     ev = []
+    if super_style == "none":
+        supers = []
     st = CAPTION_STYLES.get(style, CAPTION_STYLES[DEFAULT_STYLE])
     base = st["size"]
     fs = f"\\fs{int(round(base * vo_scale))}" if abs(vo_scale - 1.0) > 1e-3 else ""
@@ -92,7 +110,7 @@ def build_ass(vo: list[dict], supers: list[dict], counter: dict | None, dest: Pa
             b = a + dt if i < steps else end
             ev.append(f"Dialogue: 1,{_t(a)},{_t(b)},VO,,0,0,0,,{{\\pos(540,{y})}}{POP if i == 0 else ''}"
                       f"{{\\fs{size}\\c&H{color}&}}{prefix}{v:,}")
-    dest.write_text(_head(style) + "\n".join(ev) + "\n")
+    dest.write_text(_head(style, font, super_style) + "\n".join(ev) + "\n")
     return dest
 
 

@@ -1027,7 +1027,10 @@ async def project_script(project_id: str, user: User = CurrentUser):
     lines: list[dict] = []
     voice_id = ""
     from_plan = quick.script_lines(project_dir(project_id))
-    caption_style = (tools.plan_load(project_dir(project_id)).get("captions") or {}).get("style", "gold")
+    plan = tools.plan_load(project_dir(project_id))
+    caps = plan.get("captions") or {}
+    comp = plan.get("compose") or {}
+    caption_style = caps.get("style", "gold")
     if from_plan:
         lines = from_plan
         voice_id = (tools.plan_load(project_dir(project_id)).get("voice") or {}).get("voice_id", "")
@@ -1057,12 +1060,20 @@ async def project_script(project_id: str, user: User = CurrentUser):
         pass
     return {"lines": lines, "voice_id": voice_id or user.voice_id or (config.VOICE_PRESETS[0]["voice_id"] if config.VOICE_PRESETS else ""),
             "say_points": pricing.VOICE_SAMPLE_POINTS, "shots": shots, "quick": bool(from_plan), "caption_style": caption_style,
-            "recut": recut}
+            "recut": recut, "font": caps.get("font", "black"), "super_style": caps.get("super_style", "chip"), "caption_scale": caps.get("scale", 1.0),
+            "supers": [{"i": k, "start": c["start"], "end": c["end"], "text": c["text"].replace("**", "")} for k, c in enumerate(caps.get("supers") or [])],
+            "counter": caps.get("counter"), "music": bool(comp.get("music")), "music_gain": comp.get("music_gain", 0.55),
+            "speed": next((float(p.get("tempo", 1.0)) for p in comp.get("placements") or []), 1.0),
+            "sfx": [{"name": x.get("name"), "at": x.get("at")} for x in comp.get("sfx") or []], "duration": comp.get("duration")}
 
 
 class QuickBody(BaseModel):
     lines: list[dict] = []
     shots: list[dict] = []
+    order: list[int] | None = None
+    supers: list[dict] = []
+    font: str | None = None
+    super_style: str | None = None
     voice_id: str | None = None
     music_gain: float | None = None
     speed: float | None = None

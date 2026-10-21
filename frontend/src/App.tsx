@@ -160,7 +160,7 @@ function Workspace() {
         {payOrder ? <PayResult orderId={payOrder} onDone={() => { setPayOrder(null); history.replaceState(null, '', '/'); refreshMe() }} />
           : view === 'gallery' ? <Gallery onOpen={openProject} />
           : view === 'credits' ? <Credits key={creditsTab + me.balance} initialTab={creditsTab} needPoints={needPoints} onClose={() => { setView('chat'); refreshMe() }} onOpenProject={openProject} onBought={refreshMe} />
-          : current ? <Chat key={current + (easy ? ':e' : ':p')} easy={easy} onMode={setMode} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits(me.subscription ? 'buy' : 'plans', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
+          : current ? <Chat key={current} easy={easy} onMode={setMode} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits(me.subscription ? 'buy' : 'plans', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
               onProjectsChanged={() => api.projects().then(setProjects)} feedbackUnread={notes?.by_project[current] ?? 0} onFeedbackRead={pollNotes} />
             : <div className="center muted">建立一個專案開始剪片。第一個專案免費。</div>}
       </main>
