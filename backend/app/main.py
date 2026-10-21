@@ -1126,9 +1126,12 @@ async def quick_render(project_id: str, body: QuickBody, user: User = CurrentUse
 
 
 @app.post("/api/projects/{project_id}/take")
-async def line_take(project_id: str, audio: UploadFile, n: int = Form(...), voice_id: str = Form(""), user: User = CurrentUser):
-    """校對台「我唸這句」: the owner reads one line; speech-to-speech turns it into the video's voice, keeping
-    their pronunciation. Saved as VO key L<n> so compose_audio can place it instead of a generated line."""
+async def line_take(project_id: str, audio: UploadFile, n: int = Form(...), voice_id: str = Form(""), mode: str = Form("ai"), user: User = CurrentUser):
+    """One line read by the owner. Two very different things:
+      mode=raw  我親自一句一句配音 — the recording itself becomes that line's narration (key R<n>, free).
+      mode=ai   唸給 AI 聽 — speech-to-speech turns it into the video's AI voice, keeping their pronunciation
+                (key L<n>, costs a sample line).
+    Saved under work/vo so the recipe can place it instead of a generated line."""
     import tempfile
     await _own(project_id, user)
     data = await audio.read()
@@ -1136,14 +1139,33 @@ async def line_take(project_id: str, audio: UploadFile, n: int = Form(...), voic
         raise HTTPException(400, "沒有收到錄音")
     if len(data) > 8 * 2**20:
         raise HTTPException(413, "錄音太大")
-    voice = re.sub(r"[^A-Za-z0-9]", "", voice_id) or user.voice_id or (config.VOICE_PRESETS[0]["voice_id"] if config.VOICE_PRESETS else "")
-    if not voice:
-        raise HTTPException(400, "沒有可用的聲音")
     root = project_dir(project_id)
     vo = root / "work" / "vo"
     vo.mkdir(parents=True, exist_ok=True)
-    key = f"L{max(1, min(int(n), 99))}"
     store = Store(user.id)
+    if mode == "raw":
+        key = f"R{max(1, min(int(n), 99))}"
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                src = Path(td) / ("in" + (Path(audio.filename or "a.webm").suffix or ".webm"))
+                src.write_bytes(data)
+                wav = Path(td) / "take.wav"
+                await asyncio.to_thread(ff.ffmpeg, "-i", str(src), "-vn", "-ac", "1", "-ar", "44100",
+                                        "-af", "highpass=f=80,afftdn=nf=-25,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.15,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.25,areverse,loudnorm=I=-16:TP=-1.5", str(wav))
+                seconds = await asyncio.to_thread(ff.duration, wav)
+                if seconds < 0.5:
+                    raise HTTPException(400, "錄音太短，再唸一次")
+                await asyncio.to_thread(ff.ffmpeg, "-i", str(wav), "-c:a", "libmp3lame", "-b:a", "128k", str(vo / f"{key}.mp3"))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(502, f"處理錄音失敗：{str(e)[:160]}")
+        a = await store.add_asset(project_id, vo / f"{key}.mp3", "audio", f"我親自唸的第 {n} 句", {"role": "line_take", "key": key, "line": int(n), "raw": True})
+        return {"key": key, "seconds": round(seconds, 1), "url": a["url"], "balance": await balance(user.id)}
+    voice = re.sub(r"[^A-Za-z0-9]", "", voice_id) or user.voice_id or (config.VOICE_PRESETS[0]["voice_id"] if config.VOICE_PRESETS else "")
+    if not voice:
+        raise HTTPException(400, "沒有可用的聲音")
+    key = f"L{max(1, min(int(n), 99))}"
     ok, bal = await store.charge(project_id, pricing.VOICE_SAMPLE_POINTS, "voice_sample")
     if not ok:
         return JSONResponse({"detail": f"點數不足：需要 {pricing.VOICE_SAMPLE_POINTS} 點，目前 {bal} 點", "needed": pricing.VOICE_SAMPLE_POINTS, "balance": bal}, 402)

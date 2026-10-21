@@ -10,15 +10,17 @@ type Row = { line: ScriptInfo['lines'][number]; shot: ScriptInfo['shots'][number
 type State = { order: number[]; drops: Set<number>; lines: Record<string, LineEdit> }
 const tc = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
-export function Proof({ projectId, version, onClose, onUsage, onDone, hasOwnVoice = false, onClone, onOwnVoice, onPro, initialLines, onLines }:
+export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice, onPro, initialLines, onLines }:
   { projectId: string; version: DeliverableVersion | null; onClose: () => void; onUsage?: () => void; onDone?: () => void
-    hasOwnVoice?: boolean; onClone?: () => void; onOwnVoice?: () => void; onPro?: () => void; initialLines?: Record<string, LineEdit>; onLines?: (l: Record<string, LineEdit>) => void }) {
+    onOwnVoice?: () => void; onPro?: () => void; initialLines?: Record<string, LineEdit>; onLines?: (l: Record<string, LineEdit>) => void }) {
   const [info, setInfo] = useState<ScriptInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [st, setSt] = useState<State>({ order: [], drops: new Set(), lines: initialLines ?? {} })
   const past = useRef<State[]>([]); const [, bump] = useState(0)
   const [cur, setCur] = useState(-1)
   const [takeFor, setTakeFor] = useState<string | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)   // row whose 改字 box is open
+  const [draft, setDraft] = useState('')
   const [takeBusy, setTakeBusy] = useState(false)
   const [applying, setApplying] = useState(false)
   const [err, setErr] = useState('')
@@ -53,10 +55,12 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, hasOwnVoic
     return { ...s, lines: ln, drops }
   })
   const setTake = (key: string, take: string) => commit(s => ({ ...s, lines: { ...s.lines, [key]: { ...(s.lines[key] ?? {}), take } } }))
+  const setText = (r: Row, text: string) => commit(s => { const key = r.line.key ?? ''; const cur = { ...(s.lines[key] ?? {}) }; if (text.trim() && text.trim() !== r.line.text) cur.text = text.trim(); else delete cur.text; const ln = { ...s.lines }; if (Object.keys(cur).length) ln[key] = cur; else delete ln[key]; return { ...s, lines: ln } })
+  const nTexts = Object.values(st.lines).filter(e => e.text !== undefined).length
   const nTakes = Object.values(st.lines).filter(e => e.take).length
   const nDrops = Object.values(st.lines).filter(e => e.drop).length
   const moved = st.order.some((i, k) => shots[k]?.i !== i)
-  const changed = nTakes + nDrops + (moved ? 1 : 0)
+  const changed = nTakes + nDrops + nTexts + (moved ? 1 : 0)
   const keptRows = rows.filter(r => !isDropped(r))
 
   const onTime = () => { const v = video.current; if (!v) return; const t = v.currentTime; setCur(rows.findIndex(r => t >= r.line.start && t < r.line.end)); if (stopAt.current !== null && t >= stopAt.current) { v.pause(); stopAt.current = null } }
@@ -91,7 +95,7 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, hasOwnVoic
   return (
     <div className="pf-scrim" onClick={e => { if (e.target === e.currentTarget) cancel() }}>
       <div className="pf" role="dialog" aria-label="校對旁白">
-        <SheetHead title="校對旁白" badge={version ? verLabel(version.version) : undefined} sub="聽一聽，唸錯的自己唸；不要的拿掉" onCancel={cancel}
+        <SheetHead title="校對旁白" badge={version ? verLabel(version.version) : undefined} sub="聽一聽：改字、唸給 AI 聽，或拿掉" onCancel={cancel}
           right={<button className="btn primary small" disabled={changed === 0 || applying} onClick={apply}>{applying ? '輸出中…' : '套用'}</button>} />
         <div className="pf-body">
           <div className="pf-video">
@@ -99,10 +103,8 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, hasOwnVoic
               : <div className="pf-novideo muted small">這一版還沒有影片檔。</div>}
           </div>
           <ol className="pf-lines ez">
-            {hasOwnVoice && onOwnVoice && !loading && rows.length > 0 && (
-              <li className="pf-own"><div><b><span className="pill rec">推薦</span> 整支換成你的聲音</b><span>用你錄好的聲音重配整支旁白，約 1–2 分鐘</span></div><button type="button" className="btn primary" onClick={onOwnVoice}>🎙 換成我的聲音</button></li>)}
-            {!hasOwnVoice && onClone && !loading && rows.length > 0 && (
-              <li className="pf-own"><div><b><span className="pill rec">推薦</span> 用你自己的聲音</b><span>錄 30 秒，整支影片的旁白就是你的聲音，客人最有感</span></div><button type="button" className="btn primary" onClick={onClone}>🎙 錄我的聲音</button></li>)}
+            {onOwnVoice && !loading && rows.length > 0 && (
+              <li className="pf-own"><div><b><span className="pill rec">推薦</span> 換成你自己的聲音</b><span>親自一句一句配音，或讓 AI 生成你的聲音</span></div><button type="button" className="btn primary" onClick={onOwnVoice}>🎙 換成我的聲音</button></li>)}
             {loading && <li className="muted small pf-empty">載入旁白稿…</li>}
             {!loading && rows.length === 0 && <li className="muted small pf-empty">找不到這支的旁白稿，之後再來校對。</li>}
             {rows.map((r, i) => {
@@ -113,15 +115,25 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, hasOwnVoic
                   <div className="pf-row" onClick={() => play(r)}>
                     {r.shot ? <img className="pf-thumb" src={api.frameUrl(projectId, r.shot.clip, r.shot.start)} alt="" /> : <span className="pf-thumb" />}
                     <a className="pf-tc"><b>{drop ? '✕' : n}</b><span>{tc(r.line.start)}</span></a>
-                    <div className="pf-txt"><div className="pf-ez-text">{r.line.text}</div>
-                      {e.take && !drop && <em className="pf-badge take">✓ 已換成你唸的</em>}{drop && <em className="pf-badge drop">會拿掉</em>}
+                    <div className="pf-txt"><div className="pf-ez-text">{e.text ?? r.line.text}</div>
+                      {e.text !== undefined && !drop && <em className="pf-badge ed">已改字</em>}{e.take && !drop && <em className="pf-badge take">✓ AI 照你唸的</em>}{drop && <em className="pf-badge drop">會拿掉</em>}
                     </div>
                   </div>
+                  {editing === r.line.key && (
+                    <div className="pf-editbox" onClick={ev => ev.stopPropagation()}>
+                      <textarea rows={2} value={draft} autoFocus onChange={ev => setDraft(ev.target.value)} />
+                      <div className="pf-editacts">
+                        <button type="button" className="btn" onClick={() => setEditing(null)}>取消</button>
+                        {e.text !== undefined && <button type="button" className="btn" onClick={() => { setText(r, r.line.text); setEditing(null) }}>還原原句</button>}
+                        <button type="button" className="btn primary" onClick={() => { setText(r, draft); setEditing(null) }}>改好了</button>
+                      </div>
+                    </div>)}
                   {recHere ? <RecBar r={recorder} hint="照這句唸一次" /> : (
                     <div className="pf-tools" onClick={ev => ev.stopPropagation()}>
                       {!drop && <>
                         <button type="button" className="pf-tb" onClick={() => play(r)}><i>▶</i>聽這句</button>
-                        <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={recorder.rec || takeBusy} onClick={() => startTake(r)}><i>🎙</i>{takeBusy && takeFor === null && e.take === undefined ? '轉換中…' : e.take ? '再唸一次' : '唸錯了，我自己唸'}</button>
+                        <button type="button" className={`pf-tb ${e.text !== undefined ? 'on' : ''}`} onClick={() => { setDraft(e.text ?? r.line.text); setEditing(editing === r.line.key ? null : (r.line.key ?? null)) }}><i>✎</i>改字</button>
+                        <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={recorder.rec || takeBusy} onClick={() => startTake(r)} title="AI 會用影片的聲音照你的唸法再唸一次"><i>🎙</i>{takeBusy && takeFor === null && e.take === undefined ? '轉換中…' : e.take ? '再唸給 AI 聽' : '唸錯了，唸給 AI 聽'}</button>
                       </>}
                       <button type="button" className={`pf-tb ${drop ? 'on' : ''}`} disabled={!drop && keptRows.length <= 1} onClick={() => toggleDrop(r)}><i>✕</i>{drop ? '還是要' : '拿掉'}</button>
                     </div>)}
@@ -133,7 +145,7 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, hasOwnVoic
         {(err || recorder.err) && <div className="error small pf-err">{err || recorder.err}</div>}
         <div className="pf-foot">
           {past.current.length > 0 && !applying && <button type="button" className="btn small" onClick={undo}>↶ 復原</button>}
-          <span className="muted small">{changed > 0 ? [nTakes && `重唸 ${nTakes} 句`, nDrops && `拿掉 ${nDrops} 句`, moved && '換了順序'].filter(Boolean).join(' · ') : '唸得都對就不用改'}</span>
+          <span className="muted small">{changed > 0 ? [nTexts && `改字 ${nTexts} 句`, nTakes && `重唸 ${nTakes} 句`, nDrops && `拿掉 ${nDrops} 句`, moved && '換了順序'].filter(Boolean).join(' · ') : '唸得都對就不用改'}</span>
           <span className="spacer" />
           <button className="btn primary" disabled={changed === 0 || applying} onClick={apply}>{applying ? '重新輸出中…（約 1–2 分鐘）' : '套用修改 →'}</button>
         </div>

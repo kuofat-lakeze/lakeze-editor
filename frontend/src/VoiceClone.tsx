@@ -36,9 +36,9 @@ export function VoiceCloneDialog({ current, onClose, onDone }: { current?: Voice
   return (
     <div className="modal-bg" onClick={() => !rec && onClose()}>
       <div className="modal card vc" onClick={e => e.stopPropagation()}>
-        <SheetHead title={current ? '重新錄我的聲音' : '用自己的聲音'} onCancel={() => { r.stop(); onClose() }}
+        <SheetHead title={current ? '重新讓 AI 學我的聲音' : 'AI 生成我的聲音'} onCancel={() => { r.stop(); onClose() }}
           right={<button className="btn primary small" disabled={!blob || busy || rec} onClick={submit}>{busy ? '建立中…' : '建立'}</button>} />
-        <p className="muted small">錄 30 到 60 秒，找安靜的地方、用平常講話的語氣念下面這段。之後旁白就會是你的聲音，風格可以在對話裡調整。</p>
+        <p className="muted small">錄 30 到 60 秒，找安靜的地方、用平常講話的語氣念下面這段。AI 會學你的聲音，之後的旁白由 AI 用這個聲音配；想要影片裡是你本人唸的，做好後選「我親自一句一句配音」。</p>
         <div className="tabs vc-tabs">
           <a className={mode === 'rec' ? 'active' : ''} onClick={() => setMode('rec')}>直接錄</a>
           <a className={mode === 'file' ? 'active' : ''} onClick={() => setMode('file')}>上傳檔案</a>
@@ -61,7 +61,7 @@ export function VoiceCloneDialog({ current, onClose, onDone }: { current?: Voice
         {blob && <audio className="vc-preview" src={url} controls />}
         <label className="field">聲音名稱（選填）<input placeholder="例如：老闆娘、阿明" value={name} onChange={e => setName(e.target.value)} maxLength={40} /></label>
         {err && <div className="error">{err}</div>}
-        <button className="btn primary block" disabled={!blob || busy || rec} onClick={submit}>{busy ? '建立中，約 20 秒…' : '建立我的聲音'}</button>
+        <button className="btn primary block" disabled={!blob || busy || rec} onClick={submit}>{busy ? '建立中，約 20 秒…' : '讓 AI 學這個聲音'}</button>
         <div className="muted small">只會用在你自己專案的旁白，隨時可以在聲音選單裡重錄或刪除。</div>
       </div>
     </div>

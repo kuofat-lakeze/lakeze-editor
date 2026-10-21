@@ -3,6 +3,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { api, verLabel, type Analysis, type Asset, type DeliverableVersion, type DriveCheck, type LineEdit, type Me, type Msg, type ProjectDetail, type Voice } from './api'
 import { Proof } from './Proof'
+import { OwnRead } from './OwnRead'
 import { Timeline } from './Timeline'
 import { Deliverables } from './Deliverables'
 import { CAPTION_STYLES, CapPicker, FONTS, FontPicker, SUPER_STYLES, SuperPicker, StyleHint } from './captionStyles'
@@ -287,6 +288,8 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [fills, setFills] = useState<Record<string, string>>({})      // 輕鬆模式: what the analysis said is still missing (價格、店名…)
   const [skipFill, setSkipFill] = useState(false)                     // 輕鬆模式: 先不補，之後再補
   const [timeline, setTimeline] = useState<{ version: DeliverableVersion | null; tab: 'tracks' | 'style' } | null>(null)   // 時間軸 (導演模式)
+  const [voicePick, setVoicePick] = useState(false)                  // 換成我的聲音: 我親自一句一句配音 or AI 生成我的聲音
+  const [ownRead, setOwnRead] = useState<DeliverableVersion | null | false>(false)   // 我親自配音 flow
   const carry = useRef<Record<string, LineEdit>>({})                  // line edits (incl. the owner's takes) kept across 輕鬆 ⇄ 導演
   const [ideas, setIdeas] = useState(false)                            // 導演模式: 更多改法 sheet
   const [ownBusy, setOwnBusy] = useState(false)                        // re-voicing the video with the owner's voice
@@ -387,7 +390,11 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const usedOwn = !!ownVoice && vidVoice === ownVoice.voice_id
   const exportsN = proj?.credits.exports ?? 0
   useEffect(() => { if (exportsN > 0) api.script(projectId).then(r => setVidVoice(r.voice_id || null)).catch(() => {}) }, [exportsN, projectId])
-  const switchToOwnVoice = async () => {
+  const switchToOwnVoice = () => setVoicePick(true)
+  const openOwnRead = async () => { setVoicePick(false); let v: DeliverableVersion | null = null; try { v = (await api.deliverables(projectId)).versions[0] ?? null } catch { v = null } setOwnRead(v) }
+  // AI 生成我的聲音: re-voice the finished video with the cloned voice (record the 30-second sample first if needed)
+  const useAiVoice = async () => {
+    setVoicePick(false)
     if (!ownVoice) { recloneQuick.current = true; setCloning(true); return }
     setOwnBusy(true)
     try { await api.quick(projectId, { voice_id: ownVoice.voice_id }); setVidVoice(ownVoice.voice_id); afterQuick() }
@@ -652,14 +659,14 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                     <div className="muted small ob-sub">旁白聲音</div>
                     <div className="voice-row">
                       {/* 推薦用自己的聲音：還沒錄的人這張卡排第一；錄過的人自己的聲音本來就排第一、預設選中 */}
-                      {me && !easy && !voices.some(v => v.custom) && (
+                      {me && !voices.some(v => v.custom) && (
                         <div className="voice add rec" onClick={() => setCloning(true)}>
-                          <div className="voice-name"><span className="pill rec">推薦</span>＋ 用自己的聲音{me.voice_trial && <span className="lock-tag">試用 {me.voice_trial.limit} 秒</span>}</div>
-                          <div className="muted small">{me.voice_trial ? `錄 30 秒就能試，客人聽到的是老闆本人；儲值後不限` : '錄 30 秒，旁白就是你的聲音，客人更有感'}</div>
+                          <div className="voice-name">{!easy && <span className="pill rec">推薦</span>}＋ AI 生成我的聲音{me.voice_trial && <span className="lock-tag">試用 {me.voice_trial.limit} 秒</span>}</div>
+                          <div className="muted small">錄 30 秒讓 AI 學你的聲音，旁白就用它配；做好後也可以改成親自一句一句唸</div>
                         </div>)}
-                      {voices.filter(v => !(easy && v.custom)).map(v => (
+                      {voices.map(v => (
                         <div key={v.voice_id} className={`voice ${voice === v.voice_id ? 'sel' : ''} ${v.custom ? 'mine' : ''}`} onClick={() => setVoice(v.voice_id)}>
-                          <div className="voice-name">{v.custom && <><span className="pill rec">推薦</span><span className="mine-tag">我的聲音</span></>}{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
+                          <div className="voice-name">{v.custom && <>{!easy && <span className="pill rec">推薦</span>}<span className="mine-tag">AI · 我的聲音</span></>}{v.name}<span className="muted small"> {v.gender === 'female' ? '女' : v.gender === 'male' ? '男' : ''}</span></div>
                           {v.description && <div className="muted small">{v.description}</div>}
                           {v.preview_url && <a className="small" onClick={e => { e.stopPropagation(); preview(v) }}>{playing === v.voice_id ? '■ 停止' : v.custom ? '▶ 試聽 AI 配出來的樣子' : '▶ 試聽'}</a>}
                           {v.sample_url && <a className="small muted" onClick={e => { e.stopPropagation(); preview(v, 'sample') }}>{playing === `${v.voice_id}:sample` ? '■ 停止' : '▶ 聽我的原始錄音'}</a>}
@@ -731,8 +738,20 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
         </>
       )}
       {tab === 'files' && <Deliverables key={`${projectId}:${proj.assets.length}:${proj.exports ?? 0}`} projectId={projectId} onStorage={onStorage} onChanged={() => { reload(); onProjectsChanged?.() }} onProof={running ? undefined : v => (easy ? openProof(v) : openTimeline('tracks', v))} onTweak={running || easy ? undefined : () => openTimeline('style')} />}
-      {proof && easy && <Proof projectId={projectId} version={proof.version} hasOwnVoice={voices.some(v => v.custom)} onClone={() => { setProof(null); recloneQuick.current = true; setCloning(true) }} onOwnVoice={ownVoice && !usedOwn ? () => { setProof(null); switchToOwnVoice() } : undefined}
+      {proof && easy && <Proof projectId={projectId} version={proof.version} onOwnVoice={() => { setProof(null); setVoicePick(true) }}
         onPro={onMode ? () => onMode('pro') : undefined} initialLines={carry.current} onLines={l => { carry.current = l }} onClose={() => { carry.current = {}; setProof(null) }} onUsage={onUsage} onDone={() => { carry.current = {}; afterQuick() }} />}
+      {ownRead !== false && <OwnRead projectId={projectId} version={ownRead} onClose={() => setOwnRead(false)} onDone={afterQuick} onUsage={onUsage} />}
+      {voicePick && (
+        <div className="sh-scrim" onClick={e => { if (e.target === e.currentTarget) setVoicePick(false) }}>
+          <div className="sh vpick" role="dialog" aria-label="換成我的聲音">
+            <div className="ideas-h"><b>換成我的聲音</b><span className="muted small">兩種做法，選一個</span></div>
+            <button type="button" className="sh-act big" onClick={openOwnRead}>
+              <i>🎙</i><span><b>我親自一句一句配音<em className="qr-rec">推薦</em></b><small>照著旁白稿一句一句唸，影片裡就是你本人的聲音。約 3 分鐘，不扣點。</small></span></button>
+            <button type="button" className="sh-act big" onClick={useAiVoice}>
+              <i>✨</i><span><b>AI 生成我的聲音</b><small>{ownVoice ? `用 AI 學好的「${ownVoice.name}」重配整支，以後每一版自動用它。` : '錄 30 秒讓 AI 學你的聲音，之後每一版都自動用它配。'}</small></span></button>
+            <a className="sh-cancel" onClick={() => setVoicePick(false)}>關閉</a>
+          </div>
+        </div>)}
       {timeline && !easy && <Timeline projectId={projectId} version={timeline.version} tab={timeline.tab} initialLines={carry.current} onLines={l => { carry.current = l }} onClose={() => { carry.current = {}; setTimeline(null) }} onDone={() => { carry.current = {}; afterQuick() }} onUsage={onUsage} />}
       {tab === 'chat' && <>
       <VoiceSwapCtx.Provider value={voiceSwap}>
@@ -929,7 +948,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                 {obStep === 2 && (
                   <>
                     <h3>{easy ? '選你的聲音和風格' : '最後：賣點、風格、字幕、長度、聲音'}</h3>
-                    <p className="muted">{easy ? '先選一個聲音做第一版；做好後一鍵就能換成你自己的聲音。'  : analysis ? '賣點已經幫你填好，想改就改；加上價格、店名、語氣更好。' : '地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。'}</p>
+                    <p className="muted">{easy ? '選一個聲音，或錄 30 秒讓 AI 學你的聲音。做好後也能改成親自一句一句配音。'  : analysis ? '賣點已經幫你填好，想改就改；加上價格、店名、語氣更好。' : '地點、特色、價格、語氣，想到什麼寫什麼。不會寫就按「給我範例」。'}</p>
                     {easy && voiceBlock}
                     {easy && <>
                       <div className="muted small ob-sub">風格</div>
@@ -1169,7 +1188,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
             <h3>{cheer === 1 ? '第一支影片做好了！' : `${verLabel(cheer)}做好了！`}</h3>
             <p>比外包剪一支，大約省了 <b>NT${Math.round(EASY_SAVING_TWD).toLocaleString()}</b></p>
             <button className="btn primary block lg" onClick={() => { setCheer(null); setTab('files') }}>看成品、分享給朋友</button>
-            {!usedOwn && <button className="btn block cheer-own" onClick={() => { setCheer(null); switchToOwnVoice() }}>🎙 {ownVoice ? '換成我的聲音再出一版' : '錄 30 秒，換成我的聲音'}</button>}
+            <button className="btn block cheer-own" onClick={() => { setCheer(null); setVoicePick(true) }}>🎙 換成我的聲音</button>
             <a className="cheer-later" onClick={() => setCheer(null)}>等一下再看</a>
           </div>
         </div>

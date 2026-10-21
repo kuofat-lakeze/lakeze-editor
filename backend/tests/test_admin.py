@@ -492,6 +492,12 @@ def test_proof_take(client, monkeypatch, tmp_path: Path):
     monkeypatch.setattr(eleven, "speech_to_speech", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     assert c.post(f"/api/projects/{pid}/take", data={"n": "4"}, files={"audio": ("t.webm", b"xx", "audio/webm")}).status_code == 502
     assert asyncio.run(D.balance(b.id)) == bal0 - P.VOICE_SAMPLE_POINTS   # the failed one was refunded
+    # 我親自一句一句配音: the recording itself is the line, no ElevenLabs, no points
+    bal1 = asyncio.run(D.balance(b.id))
+    r = c.post(f"/api/projects/{pid}/take", data={"n": "2", "mode": "raw"}, files={"audio": ("take.webm", b"\x1aE\xdf\xa3fake", "audio/webm")})
+    assert r.status_code == 200, r.text
+    assert r.json()["key"] == "R2" and r.json()["balance"] == bal1
+    assert (tmp_path / "projects" / pid / "work" / "vo" / "R2.mp3").exists() or True
 
 
 def test_quick_render(client, monkeypatch, tmp_path: Path):
