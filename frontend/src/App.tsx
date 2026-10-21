@@ -31,13 +31,15 @@ const PROJECT_EXAMPLES: string[][] = [
   ['烘焙工作室新品', '美甲工作室春季款', '寵物美容沙龍', '手作陶藝體驗課', '二手書店巡禮'],
 ]
 const pickExamples = (n: number) => {
-  const kinds = [...PROJECT_EXAMPLES]
-  for (let i = kinds.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [kinds[i], kinds[j]] = [kinds[j], kinds[i]] }
-  return kinds.slice(0, n).map(k => k[Math.floor(Math.random() * k.length)])
+  const idx = PROJECT_EXAMPLES.map((_, i) => i)
+  for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]] }
+  return idx.slice(0, n).map(i => { const k = PROJECT_EXAMPLES[i]; return { label: k[Math.floor(Math.random() * k.length)], kind: KIND_NAMES[i] } })
 }
-const FIRST_EXAMPLES = ['民宿介紹', '餐廳食記', '景點一日遊', '新品開箱', '活動花絮']
+const KIND_NAMES = ['住宿', '食記', '景點', '開箱', '活動', '店家']
+const FIRST_KINDS: { name: string; kind: number }[] = [{ name: '民宿介紹', kind: 0 }, { name: '餐廳食記', kind: 1 }, { name: '景點一日遊', kind: 2 }, { name: '新品開箱', kind: 3 }, { name: '活動花絮', kind: 4 }, { name: '店家介紹', kind: 5 }]
 
 import { VersionBar } from './Version'
+import { IcPlay } from './icons'
 
 export default function App() {
   return <>
@@ -115,7 +117,7 @@ function Workspace() {
 
   const newProject = async (prefill = '') => {
     const ex = pickExamples(4)
-    const name = (await ask.prompt('幫這個新專案取個名字', { placeholder: `例如：${ex[0]}`, examples: ex, value: prefill, ok: '建立專案' }))?.trim()
+    const name = (await ask.prompt('幫這個新專案取個名字', { placeholder: `例如：${ex[0].label}`, examples: ex, value: prefill, ok: '建立專案' }))?.trim()
     if (!name) return
     const p = await api.createProject(name)
     setProjects([p, ...projects]); setCurrent(p.id); setView('chat'); setMenu(false)
@@ -187,13 +189,13 @@ function Workspace() {
           : current ? <Chat key={current} easy={easy} onMode={setMode} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits(me.subscription ? 'buy' : 'plans', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
               onProjectsChanged={() => api.projects().then(setProjects)} feedbackUnread={notes?.by_project[current] ?? 0} onFeedbackRead={pollNotes} />
             : <div className="first">
-                <div className="first-card">
-                  <div className="first-emoji" aria-hidden="true">🎬</div>
-                  <h2>先建一個專案</h2>
-                  <p className="muted">一個專案＝一支影片。取個名字就好，素材下一步再給。</p>
-                  <button className="btn primary lg block" onClick={() => newProject()}>＋ 建立第一個專案</button>
-                  <div className="first-ex"><span className="muted small">或直接用這些名字開始</span>
-                    <div className="first-chips">{FIRST_EXAMPLES.map(n => <a key={n} className="chipbtn" onClick={() => newProject(n)}>{n}</a>)}</div></div>
+                <div className="first-card v3">
+                  <span className="first-mark" aria-hidden="true"><IcPlay size={22} /></span>
+                  <h2>做第一支影片</h2>
+                  <p className="muted">丟素材，15 分鐘拿到成品。先取個名字就好。</p>
+                  <button className="btn primary lg block first-go" onClick={() => newProject()}>建立第一個專案<i aria-hidden="true">→</i></button>
+                  <div className="muted small first-hint">註冊送的點數夠做第一支，含封面和 2 輪修改</div>
+                  <div className="first-row">{FIRST_KINDS.slice(0, 4).map(k => <a key={k.name} className="chipbtn" onClick={() => newProject(k.name)}>{k.name}</a>)}</div>
                 </div>
               </div>}
       </main>

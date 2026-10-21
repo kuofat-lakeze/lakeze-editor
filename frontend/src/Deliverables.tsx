@@ -3,6 +3,7 @@ import { api, verLabel, type Asset, type DeliverableVersion, type DeliverablesDa
 import { StorageMeter, fmtBytes } from './Storage'
 import { ask } from './Dialog'
 import { FbIcon, LineIcon, MessengerIcon, promoText, shareToFacebook, shareToLine, shareToMessenger } from './share'
+import { IcCheck, IcCopy, IcPlay, IcRefresh, IcShare } from './icons'
 import { SheetHead } from './Recorder'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
@@ -162,14 +163,15 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak
 
       {sharing !== null && (
         <ShareDialog projectId={projectId} version={sharing === 'final' ? null : sharing} hasFinal={project.final_version != null} projectName={project.name}
+          cover={(() => { const sv = versions.find(x => x.version === (sharing === 'final' ? project.final_version : sharing)) ?? versions[0]; return sv?.poster ?? sv?.covers?.[sv.covers.length - 1]?.url ?? null })()}
           onClose={() => setSharing(null)} onCreated={() => { setSharing(null); load() }} />
       )}
     </div>
   )
 }
 
-export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, projectName }:
-  { projectId: string; version: number | null; hasFinal: boolean; onClose: () => void; onCreated: () => void; projectName: string }) {
+export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, projectName, cover }:
+  { projectId: string; version: number | null; hasFinal: boolean; onClose: () => void; onCreated: () => void; projectName: string; cover?: string | null }) {
   const [promo, setPromo] = useState('')
   const [copied, setCopied] = useState<'link' | 'promo' | null>(null)
   const [follow, setFollow] = useState(true)   // default on: one link that always shows the latest final cut
@@ -182,6 +184,7 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
   const noteToSend = edited ? note.trim() : NOTE_PRESETS[preset]
   const changed = edited && note.trim() !== NOTE_PRESETS[preset]
   const [made, setMade] = useState<ShareLink | null>(null)
+  const [coverOk, setCoverOk] = useState(true)
   const [tip, setTip] = useState('')
   const [busy, setBusy] = useState(false)
   const create = async () => {
@@ -199,24 +202,26 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
         <SheetHead title="分享給朋友" onCancel={onClose} cancelLabel={made ? '關閉' : '取消'} />
         {!made ? (
           <>
-            <p className="muted small share-lead">朋友不用登入，點開就能看。<b className="share-ref">朋友從這裡註冊並做出第一支影片，你拿推薦點數。</b></p>
-            <div className="note-box">
-              <div className="note-h">
-                <b>給朋友的一句話</b>
-                {!changed ? <span className="note-tag">預設訊息 · {edited ? '直接改就好' : '點文字就能改'}</span> : <span className="note-tag mine">已改成你的話</span>}
-                <span className="spacer" />
-                {!changed
-                  ? <a className="small" onClick={() => { const n = (preset + 1) % NOTE_PRESETS.length; setPreset(n); if (edited) setNote(NOTE_PRESETS[n]) }}>↻ 換一句 {preset + 1}/{NOTE_PRESETS.length}</a>
-                  : <a className="small" onClick={() => { setEdited(false); setNote('') }}>還原預設</a>}
+            {/* what the friend will see: cover, name, your line — edit the line in place */}
+            <div className="shp">
+              <div className="shp-top">
+                {cover && coverOk ? <img className="shp-cover" src={cover} alt="" onError={() => setCoverOk(false)} /> : <span className="shp-cover ph" aria-hidden="true"><IcPlay size={18} /></span>}
+                <div className="shp-meta"><small>朋友會看到</small><b>{projectName}</b><span className="muted small">不用登入，點開就能看</span></div>
               </div>
-              <div className={`note-field ${edited ? 'edited' : 'preset'}`}>
+              <div className={`shp-note ${edited ? 'edited' : 'preset'}`}>
                 <textarea rows={2} value={edited ? note : ''} placeholder={NOTE_PRESETS[preset]}
                   onFocus={() => { if (!edited) { setNote(NOTE_PRESETS[preset]); setEdited(true) } }}
                   onChange={e => { setNote(e.target.value); setEdited(true) }} />
-                {!edited && <span className="note-pen" aria-hidden="true">✎</span>}
+                <div className="shp-note-acts">
+                  {!changed ? <span className="note-tag">預設的一句話 · 點文字就能改</span> : <span className="note-tag mine">你的話</span>}
+                  <span className="spacer" />
+                  {!changed
+                    ? <button type="button" className="shp-swap" onClick={() => { const n = (preset + 1) % NOTE_PRESETS.length; setPreset(n); if (edited) setNote(NOTE_PRESETS[n]) }}><IcRefresh size={14} />換一句</button>
+                    : <a className="small" onClick={() => { setEdited(false); setNote('') }}>還原預設</a>}
+                </div>
               </div>
-              <div className="note-dots" aria-hidden="true">{NOTE_PRESETS.map((_, i) => <i key={i} className={!changed && i === preset ? 'on' : ''} onClick={() => { setPreset(i); if (edited) setNote(NOTE_PRESETS[i]) }} />)}</div>
             </div>
+
             <div className={`share-opts ${tweak ? 'open' : ''}`}>
               <button type="button" className="so-sum" onClick={() => setTweak(t => !t)} aria-expanded={tweak}>
                 <span className="so-chips">
@@ -245,29 +250,26 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
                 </div>
               )}
             </div>
-            <button className="btn primary block lg share-go" disabled={busy} onClick={create}>{busy ? '產生中…' : '產生連結，分享出去 →'}</button>
-            <div className="muted small" style={{ textAlign: 'center' }}>下一步可以發到 Facebook、Messenger、LINE。</div>
+            <button className="btn primary block lg share-go" disabled={busy} onClick={create}>{busy ? '產生中…' : '產生連結'}<i aria-hidden="true">→</i></button>
+            <div className="muted small" style={{ textAlign: 'center' }}>朋友從這裡註冊並做出影片，你拿推薦點數。</div>
           </>
         ) : (
           <>
-            <div className="made">
-              <div className="link-url big-url">{url}</div>
-              <div className="row">
-                <button className="btn primary" onClick={() => { navigator.clipboard?.writeText(url); flash('link') }}>{copied === 'link' ? '已複製' : '複製連結'}</button>
-                <a className="btn" href={made.url} target="_blank" rel="noreferrer">預覽</a>
-                {typeof navigator.share === 'function' && <button className="btn" onClick={() => navigator.share({ title: projectName, text: promo, url })}>傳送…</button>}
+            <div className="made v2">
+              <div className="shp-done"><span className="shp-done-ic"><IcCheck size={18} /></span><div><b>連結好了</b><small>朋友點開就能看，不用登入</small></div></div>
+              <div className="refc-urlrow"><span className="refc-url" onClick={() => { navigator.clipboard?.writeText(url); flash('link') }}>{url.replace(/^https?:\/\//, '')}</span><button type="button" className="refc-copy" onClick={() => { navigator.clipboard?.writeText(url); flash('link') }} aria-label="複製連結">{copied === 'link' ? <IcCheck size={16} /> : <IcCopy size={16} />}</button></div>
+              {typeof navigator.share === 'function' && <button className="btn primary lg block refc-share" onClick={() => navigator.share({ title: projectName, text: promo, url })}><IcShare size={18} />傳給朋友</button>}
+              <div className="shp-row">
+                <button type="button" className="shp-ic fb" onClick={() => { setTip(shareToFacebook(url, promo, made.fb_app_id) === 'sheet' ? '在跳出的選單選「Facebook」，文案已複製，貼上就好' : '文案已複製，在 FB 視窗貼上就好') }}><i><FbIcon /></i>Facebook</button>
+                <button type="button" className="shp-ic msg" onClick={() => setTip(shareToMessenger(url, made.fb_app_id) === 'copied' ? '連結已複製，貼到 Messenger 對話' : '')}><i><MessengerIcon /></i>Messenger</button>
+                <button type="button" className="shp-ic line" onClick={() => shareToLine(promo)}><i><LineIcon /></i>LINE</button>
+                <a className="shp-ic" href={made.url} target="_blank" rel="noreferrer"><i><IcPlay size={16} /></i>預覽</a>
               </div>
-            </div>
-            <div className="post-box">
-              <div className="post-h"><b>發貼文、傳給朋友</b></div>
-              <textarea rows={4} value={promo} onChange={e => setPromo(e.target.value)} />
-              <div className="row">
-                <button className="btn fb" onClick={() => { setTip(shareToFacebook(url, promo, made.fb_app_id) === 'sheet' ? '在跳出的選單選「Facebook」，文案已複製，貼上就好' : '文案已複製，在 FB 視窗貼上就好') }}><FbIcon /> Facebook</button>
-                <button className="btn msg" onClick={() => setTip(shareToMessenger(url, made.fb_app_id) === 'copied' ? '連結已複製，貼到 Messenger 對話' : '')}><MessengerIcon /> Messenger</button>
-                <button className="btn line" onClick={() => shareToLine(promo)}><LineIcon /> LINE</button>
-                <button className="btn" onClick={() => { navigator.clipboard?.writeText(promo); flash('promo') }}>{copied === 'promo' ? '已複製' : '複製文案'}</button>
-              </div>
-              <div className="muted small">{tip || 'FB 不能預填文字，按下去會先幫你複製文案。'}</div>
+              {tip && <div className="shp-tip">{tip}</div>}
+              <details className="shp-post"><summary>貼文文案<small>FB 不能預填，按 Facebook 時會先幫你複製</small></summary>
+                <textarea rows={4} value={promo} onChange={e => setPromo(e.target.value)} />
+                <button className="btn small" onClick={() => { navigator.clipboard?.writeText(promo); flash('promo') }}>{copied === 'promo' ? '已複製' : '複製文案'}</button>
+              </details>
             </div>
             <button className="btn block" onClick={onCreated}>完成</button>
           </>
