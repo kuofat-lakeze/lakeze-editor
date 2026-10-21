@@ -1071,7 +1071,7 @@ async def project_script(project_id: str, user: User = CurrentUser):
                 lines = _script_lines(blocks[-1])
         if lines and voice_id:
             break
-    # the owner's own line recordings (R<n>) so the editors can replay them right away (改完馬上聽), even after a reload
+    # the owner's own line recordings (R<n>) so the editors can replay them right away (改完馬上聽), also after a reload
     takes: dict[str, str] = {}
     async with Session() as s:
         for a in (await s.execute(select(Asset).where(Asset.project_id == project_id, Asset.kind == "audio").order_by(Asset.created_at))).scalars().all():
