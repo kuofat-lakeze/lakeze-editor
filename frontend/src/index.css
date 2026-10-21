@@ -2370,3 +2370,4 @@ body.easy .recbar-lab em { font-size: 22px; } body.easy .recbar-stop { font-size
 .pv-bar.on { color: #1B5E8F; background: #E6F1FA; font-weight: 700; } .pv-bar.on a { color: #1B5E8F; }
 .pf-tb.new { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); } .pf-tb.new i { color: var(--brand); } .pf-tb.new.on { background: var(--brand); color: #fff; } .pf-tb.new.on i { color: #fff; }
 .pf-tb.quiet { border-color: transparent; background: transparent; color: var(--muted); font-weight: 600; }
+.pf-foot .btn { white-space: nowrap; flex: none; } .pf-foot > .muted.small { flex: 1; min-width: 0; line-height: 1.35; }
