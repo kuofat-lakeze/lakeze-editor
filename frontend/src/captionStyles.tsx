@@ -45,7 +45,7 @@ export const CapSample = ({ id, short = false, font }: { id: string; short?: boo
   <span className={`cap-s cap-${id}`} style={fontCss(font)}><span>{short ? <><b>客廳</b>是你的</> : <>整棟包下來 <b>客廳</b> 是你的</>}</span></span>
 )
 export const SuperSample = ({ id, font }: { id: string; font?: string }) => (
-  <span className={`cap-s sup-${id}`} style={fontCss(font)}><span>{id === 'none' ? '—' : '雲岫海景會館 · 包棟'}</span></span>
+  <span className={`cap-s sup-${id}`} style={fontCss(font)}><span>{id === 'none' ? '—' : '雲岫會館 · 包棟'}</span></span>
 )
 
 function Grid<T extends { id: string; name: string; desc?: string }>({ items, value, onChange, render, cols = 4, label }:

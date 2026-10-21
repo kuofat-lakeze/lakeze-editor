@@ -62,6 +62,9 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
   const video = useRef<HTMLVideoElement>(null)
   const audio = useRef<HTMLAudioElement | null>(null)
   const scroll = useRef<HTMLDivElement>(null)
+  const wrap = useRef<HTMLDivElement>(null)
+  // on a short phone screen the panel pushes the tracks up: keep them in view when something is picked
+  useEffect(() => { if (sel && window.innerHeight < 760) wrap.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }) }, [sel])
   const stopAt = useRef<number | null>(null)   // 播放這段: pause when the segment ends
   const src = version?.videos.find(v => v.role === 'preview')?.url ?? version?.main?.url ?? null
 
@@ -229,7 +232,7 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
             </div>
 
             {tab === 'tracks' && (
-              <div className="tl2-wrap">
+              <div className="tl2-wrap" ref={wrap}>
                 <div className="tl2-labels" aria-hidden="true">
                   <span style={{ height: 18 }} />
                   <span style={{ height: H.shot }}>畫面</span><span style={{ height: H.line }}>旁白</span>

@@ -284,6 +284,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [capStyle, setCapStyle] = useState<string>('gold')            // 導演模式: 字幕樣式 for the first cut
   const [font, setFont] = useState<string>('black')                   // 導演模式: 字型
   const [superStyle, setSuperStyle] = useState<string>('chip')        // 導演模式: 標題樣式
+  const [moreStyle, setMoreStyle] = useState(false)                   // 字型與標題樣式 unfolded on step 3
   const [timeline, setTimeline] = useState<{ version: DeliverableVersion | null; tab: 'tracks' | 'style' } | null>(null)   // 時間軸 (導演模式)
   const carry = useRef<Record<string, LineEdit>>({})                  // line edits (incl. the owner's takes) kept across 輕鬆 ⇄ 導演
   const [ideas, setIdeas] = useState(false)                            // 導演模式: 更多改法 sheet
@@ -955,11 +956,14 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                     </div>
                     <div className="muted small ob-sub">字幕樣式<span className="ob-sub-note">做好後也能在「時間軸」換，不用重剪</span></div>
                     <CapPicker value={capStyle} onChange={setCapStyle} font={font} />
-                    <div className="muted small ob-sub">字型</div>
-                    <FontPicker value={font} onChange={setFont} style={capStyle} />
-                    <div className="muted small ob-sub">標題樣式<span className="ob-sub-note">上方的店名、房型等補充資訊</span></div>
-                    <SuperPicker value={superStyle} onChange={setSuperStyle} font={font} />
-                    <StyleHint what="字幕或標題風格" />
+                    <a className="ob-more-s" onClick={() => setMoreStyle(m => !m)}>{moreStyle ? '收起字型與標題樣式 ▴' : <>字型與標題樣式 ▾<small>目前：{FONTS.find(f => f.id === font)?.name} · {SUPER_STYLES.find(x => x.id === superStyle)?.name}</small></>}</a>
+                    {moreStyle && <>
+                      <div className="muted small ob-sub">字型</div>
+                      <FontPicker value={font} onChange={setFont} style={capStyle} />
+                      <div className="muted small ob-sub">標題樣式<span className="ob-sub-note">上方的店名、房型等補充資訊</span></div>
+                      <SuperPicker value={superStyle} onChange={setSuperStyle} font={font} />
+                      <StyleHint what="字幕或標題風格" />
+                    </>}
                     </>}
                     <div className="muted small ob-sub">影片長度</div>
                     {(() => {
