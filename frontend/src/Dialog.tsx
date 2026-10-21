@@ -45,9 +45,7 @@ export function DialogHost() {
             onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); ok() } }} />
         )}
         {cur.kind === 'prompt' && cur.examples && cur.examples.length > 0 && (
-          <div className="dlg-ex v2"><span className="muted small">例如，點一下帶入</span>
-            <div className="dlg-ex-grid">{cur.examples.map(x => { const e = typeof x === 'string' ? { label: x } : x; return <a key={e.label} className={`dlg-exi ${val === e.label ? 'on' : ''}`} onClick={() => { setVal(e.label); input.current?.focus() }}>{e.kind && <small>{e.kind}</small>}<b>{e.label}</b></a> })}</div>
-          </div>
+          <div className="dlg-ex"><span className="muted small">例如</span>{cur.examples.map(x => { const e = typeof x === 'string' ? { label: x } : x; return <a key={e.label} className={`chipbtn ${val === e.label ? 'on' : ''}`} onClick={() => { setVal(e.label); input.current?.focus() }}>{e.label}</a> })}</div>
         )}
         <div className="dlg-act">
           {cur.kind !== 'alert' && <button className="btn" onClick={cancel}>取消</button>}

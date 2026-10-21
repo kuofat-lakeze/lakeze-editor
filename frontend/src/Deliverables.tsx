@@ -3,7 +3,7 @@ import { api, verLabel, type Asset, type DeliverableVersion, type DeliverablesDa
 import { StorageMeter, fmtBytes } from './Storage'
 import { ask } from './Dialog'
 import { FbIcon, LineIcon, MessengerIcon, promoText, shareToFacebook, shareToLine, shareToMessenger } from './share'
-import { IcCheck, IcCopy, IcGift, IcPlay, IcRefresh, IcShare } from './icons'
+import { IcCheck, IcCopy, IcPlay, IcRefresh, IcShare } from './icons'
 import { SheetHead } from './Recorder'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
@@ -221,7 +221,7 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
                 </div>
               </div>
             </div>
-            <div className="shp-reward"><IcGift size={15} />朋友從這裡註冊並做出第一支影片，你拿推薦點數</div>
+
             <div className={`share-opts ${tweak ? 'open' : ''}`}>
               <button type="button" className="so-sum" onClick={() => setTweak(t => !t)} aria-expanded={tweak}>
                 <span className="so-chips">
@@ -251,7 +251,7 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
               )}
             </div>
             <button className="btn primary block lg share-go" disabled={busy} onClick={create}>{busy ? '產生中…' : '產生連結'}<i aria-hidden="true">→</i></button>
-            <div className="muted small" style={{ textAlign: 'center' }}>下一步再選 Facebook、Messenger 或 LINE。</div>
+            <div className="muted small" style={{ textAlign: 'center' }}>朋友從這裡註冊並做出影片，你拿推薦點數。</div>
           </>
         ) : (
           <>
@@ -259,11 +259,11 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
               <div className="shp-done"><span className="shp-done-ic"><IcCheck size={18} /></span><div><b>連結好了</b><small>朋友點開就能看，不用登入</small></div></div>
               <div className="refc-urlrow"><span className="refc-url" onClick={() => { navigator.clipboard?.writeText(url); flash('link') }}>{url.replace(/^https?:\/\//, '')}</span><button type="button" className="refc-copy" onClick={() => { navigator.clipboard?.writeText(url); flash('link') }} aria-label="複製連結">{copied === 'link' ? <IcCheck size={16} /> : <IcCopy size={16} />}</button></div>
               {typeof navigator.share === 'function' && <button className="btn primary lg block refc-share" onClick={() => navigator.share({ title: projectName, text: promo, url })}><IcShare size={18} />傳給朋友</button>}
-              <div className="shp-grid">
-                <button className="btn fb" onClick={() => { setTip(shareToFacebook(url, promo, made.fb_app_id) === 'sheet' ? '在跳出的選單選「Facebook」，文案已複製，貼上就好' : '文案已複製，在 FB 視窗貼上就好') }}><FbIcon /> Facebook</button>
-                <button className="btn msg" onClick={() => setTip(shareToMessenger(url, made.fb_app_id) === 'copied' ? '連結已複製，貼到 Messenger 對話' : '')}><MessengerIcon /> Messenger</button>
-                <button className="btn line" onClick={() => shareToLine(promo)}><LineIcon /> LINE</button>
-                <a className="btn" href={made.url} target="_blank" rel="noreferrer">預覽</a>
+              <div className="shp-row">
+                <button type="button" className="shp-ic fb" onClick={() => { setTip(shareToFacebook(url, promo, made.fb_app_id) === 'sheet' ? '在跳出的選單選「Facebook」，文案已複製，貼上就好' : '文案已複製，在 FB 視窗貼上就好') }}><i><FbIcon /></i>Facebook</button>
+                <button type="button" className="shp-ic msg" onClick={() => setTip(shareToMessenger(url, made.fb_app_id) === 'copied' ? '連結已複製，貼到 Messenger 對話' : '')}><i><MessengerIcon /></i>Messenger</button>
+                <button type="button" className="shp-ic line" onClick={() => shareToLine(promo)}><i><LineIcon /></i>LINE</button>
+                <a className="shp-ic" href={made.url} target="_blank" rel="noreferrer"><i><IcPlay size={16} /></i>預覽</a>
               </div>
               {tip && <div className="shp-tip">{tip}</div>}
               <details className="shp-post"><summary>貼文文案<small>FB 不能預填，按 Facebook 時會先幫你複製</small></summary>

@@ -39,8 +39,7 @@ const KIND_NAMES = ['住宿', '食記', '景點', '開箱', '活動', '店家']
 const FIRST_KINDS: { name: string; kind: number }[] = [{ name: '民宿介紹', kind: 0 }, { name: '餐廳食記', kind: 1 }, { name: '景點一日遊', kind: 2 }, { name: '新品開箱', kind: 3 }, { name: '活動花絮', kind: 4 }, { name: '店家介紹', kind: 5 }]
 
 import { VersionBar } from './Version'
-import { IcCheck, IcClip, IcPlay, IcSparkle, IcHome, IcFork, IcMountain, IcBox, IcParty, IcStore } from './icons'
-const KIND_ICON = [<IcHome size={20} />, <IcFork size={20} />, <IcMountain size={20} />, <IcBox size={20} />, <IcParty size={20} />, <IcStore size={20} />]
+import { IcPlay } from './icons'
 
 export default function App() {
   return <>
@@ -190,18 +189,13 @@ function Workspace() {
           : current ? <Chat key={current} easy={easy} onMode={setMode} projectId={current} name={currentName} onUsage={refreshMe} onTopUp={need => showCredits(me.subscription ? 'buy' : 'plans', need)} onCredits={() => showCredits()} onStorage={() => showCredits('storage')}
               onProjectsChanged={() => api.projects().then(setProjects)} feedbackUnread={notes?.by_project[current] ?? 0} onFeedbackRead={pollNotes} />
             : <div className="first">
-                <div className="first-card v2">
-                  <div className="first-steps" aria-hidden="true">
-                    <span><i><IcClip size={18} /></i><b>丟素材</b></span><em />
-                    <span><i><IcSparkle size={18} /></i><b>剪輯師剪</b></span><em />
-                    <span className="hl"><i><IcPlay size={18} /></i><b>15 分鐘拿成品</b></span>
-                  </div>
+                <div className="first-card v3">
+                  <span className="first-mark" aria-hidden="true"><IcPlay size={22} /></span>
                   <h2>做第一支影片</h2>
-                  <p className="muted">先取個專案名字，一個專案就是一支影片；素材下一步再給。</p>
+                  <p className="muted">丟素材，15 分鐘拿到成品。先取個名字就好。</p>
                   <button className="btn primary lg block first-go" onClick={() => newProject()}>建立第一個專案<i aria-hidden="true">→</i></button>
-                  <div className="first-free"><IcCheck size={14} />註冊送的 {me.balance} 點夠做第一支，含封面和 2 輪修改</div>
-                  <div className="first-ex"><span className="muted small">或從類型開始，名字之後可以改</span>
-                    <div className="first-grid">{FIRST_KINDS.map(k => <a key={k.name} className="first-kind" onClick={() => newProject(k.name)}><i>{KIND_ICON[k.kind]}</i><b>{k.name}</b><small>{KIND_NAMES[k.kind]}</small></a>)}</div></div>
+                  <div className="muted small first-hint">註冊送的點數夠做第一支，含封面和 2 輪修改</div>
+                  <div className="first-row">{FIRST_KINDS.slice(0, 4).map(k => <a key={k.name} className="chipbtn" onClick={() => newProject(k.name)}>{k.name}</a>)}</div>
                 </div>
               </div>}
       </main>

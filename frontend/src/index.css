@@ -2456,3 +2456,18 @@ body.easy .recbar-lab em { font-size: 22px; } body.easy .recbar-stop { font-size
 .shp-post textarea { width: 100%; margin: 8px 0; font-size: 13.5px; }
 .made.v2 { gap: 12px; }
 .shp-cover.ph { display: inline-flex; align-items: center; justify-content: center; color: rgba(255,255,255,.7); background: linear-gradient(160deg, #3a3a3a, #1f1f1f); }
+/* --- minimal direction --- */
+.first-card.v3 { padding: 30px 22px 24px; gap: 10px; border-radius: 24px; align-items: center; }
+.first-mark { width: 52px; height: 52px; border-radius: 18px; background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 8px 18px rgba(236,90,30,.25); margin-bottom: 4px; }
+.first-card.v3 h2 { font-size: 26px; letter-spacing: -.3px; } .first-card.v3 p { font-size: 15px; }
+.first-card.v3 .first-go { width: 100%; margin-top: 6px; }
+.first-hint { margin-top: -2px; }
+.first-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+.refc-one { margin: 0; font-size: 14px; line-height: 1.6; }
+.refc-alt { text-align: center; } .refc-alt a { color: var(--text); font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; } .refc-alt svg { width: 14px; height: 14px; }
+.refc-up.v3 { padding: 10px 14px; gap: 8px; border-radius: 12px; background: var(--panel2); color: var(--text); flex-wrap: nowrap; } .refc-up.v3 span { flex: 1; font-weight: 700; font-size: 14px; } .refc-up.v3 i { color: var(--muted); font-size: 20px; } .refc-up.v3 svg { color: var(--brand); flex: none; }
+.refc-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; color: var(--muted); padding-top: 4px; border-top: 1px dashed var(--line); } .refc-line b { color: #1E7A4C; }
+.shp-row { display: flex; justify-content: space-between; gap: 6px; padding: 2px 6px; }
+.shp-ic { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; font: inherit; font-size: 12px; font-weight: 700; color: var(--muted); background: transparent; border: 0; cursor: pointer; text-decoration: none; padding: 4px 0; }
+.shp-ic i { width: 46px; height: 46px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+.shp-ic i svg { width: 20px; height: 20px; } .shp-ic.fb i { background: #1877F2; color: #fff; border-color: transparent; } .shp-ic.msg i { background: linear-gradient(135deg, #0A7CFF, #A033FF 70%, #FF5280); color: #fff; border-color: transparent; } .shp-ic.line i { background: #06C755; color: #fff; border-color: transparent; }
