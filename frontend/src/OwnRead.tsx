@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, verLabel, type DeliverableVersion, type ScriptInfo } from './api'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
+import { IcPlay, IcStop } from './icons'
 
 /* 我親自一句一句配音: the owner reads the narration one line at a time and the recordings themselves become
    the narration — no AI voice in between (that's the other path, AI 生成我的聲音). One big line at a time,
@@ -89,15 +90,16 @@ export function OwnRead({ projectId, version, onClose, onDone, onUsage, initialT
                 <button type="button" className={`own-rec ${mine ? 'again' : ''}`} onClick={start} disabled={busy}>
                   <i aria-hidden="true" />{busy ? '處理中…' : mine ? '重唸這句' : '開始唸這句'}
                 </button>
+                {/* hierarchy: the red record button is the one action; listening is quiet text; moving between lines sits at the bottom */}
                 <div className="own-row">
-                  {src && <button type="button" className={`pf-tb ${playing === 'orig' ? 'on' : ''}`} onClick={playing === 'orig' ? stopAll : playOrig}><i>▶</i>{playing === 'orig' ? '停' : '聽原本的'}</button>}
-                  {mine && <button type="button" className={`pf-tb ${playing === 'mine' ? 'on' : ''}`} onClick={playing === 'mine' ? stopAll : () => playMine(mine.url)}><i>▶</i>{playing === 'mine' ? '停' : '聽我唸的'}</button>}
+                  {src && <button type="button" className={`own-link ${playing === 'orig' ? 'on' : ''}`} onClick={playing === 'orig' ? stopAll : playOrig}>{playing === 'orig' ? <IcStop size={13} /> : <IcPlay size={13} />}{playing === 'orig' ? '停' : '聽原本的'}</button>}
+                  {mine && <button type="button" className={`own-link ${playing === 'mine' ? 'on' : ''}`} onClick={playing === 'mine' ? stopAll : () => playMine(mine.url)}>{playing === 'mine' ? <IcStop size={13} /> : <IcPlay size={13} />}{playing === 'mine' ? '停' : '聽我唸的'}</button>}
                 </div>
                 <div className="own-nav">
-                  <button type="button" className="pf-tb" disabled={i === 0} onClick={prev}><i>←</i>上一句</button>
+                  <button type="button" className="own-navb" disabled={i === 0} onClick={prev}>‹ 上一句</button>
                   <span className="muted small">{i + 1} / {lines.length}</span>
                   {i < lines.length - 1
-                    ? <button type="button" className={`pf-tb ${mine ? 'next' : ''}`} onClick={next}>{mine ? '下一句' : '先跳過'}<i>→</i></button>
+                    ? <button type="button" className={`own-navb ${mine ? 'next' : ''}`} onClick={next}>下一句 ›</button>
                     : <span className="muted small own-last">{left ? `還有 ${left} 句沒唸` : '全部唸好了'}</span>}
                 </div>
               </div>)}
@@ -106,7 +108,7 @@ export function OwnRead({ projectId, version, onClose, onDone, onUsage, initialT
         )}
         <div className="pf-foot">
           <span className="muted small">{n ? `唸好 ${n} 句${left ? `，還有 ${left} 句` : ''}` : '一句一句唸，影片裡就是你本人的聲音'}</span><span className="spacer" />
-          <button className="btn primary" disabled={n === 0 || applying || rec.rec} onClick={apply}>{applying ? '重新輸出中…（約 1–2 分鐘）' : '唸好了，套用 →'}</button>
+          <button className="btn primary" disabled={n === 0 || applying || rec.rec} onClick={apply}>{applying ? '重新輸出中…' : '套用 →'}</button>
         </div>
       </div>
     </div>
