@@ -7,6 +7,7 @@ import { OwnRead, type Take } from './OwnRead'
 import { Timeline } from './Timeline'
 import { Deliverables } from './Deliverables'
 import { RecBar, useRecorder } from './Recorder'
+import { IcClip, IcKeyboard, IcPencil } from './icons'
 import { CAPTION_STYLES, CapPicker, FONTS, FontPicker, SUPER_STYLES, SuperPicker, StyleHint } from './captionStyles'
 import { VoiceCloneDialog } from './VoiceClone'
 import { CLOUD_SECS_PER_VIDEO, CloudDl, DropZone, PickGuide, needsPickGuide, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
@@ -642,9 +643,9 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
               )}
               {it.state === 'open' && missBusy !== it.m && (
                 <div className="miss-acts">
-                  {it.kind === 'info' && it.line && <button type="button" className="pf-tb" onClick={() => (brief ? (goStep(1), setTimeout(() => jumpMissing(it), 80)) : jumpMissing(it))}><i>✎</i>改那句旁白</button>}
-                  {it.kind === 'info' && !brief && !boxOpen && <button type="button" className="pf-tb" onClick={() => setMissOpen(it.m)}><i>⌨</i>直接填</button>}
-                  {it.kind === 'footage' && <button type="button" className="pf-tb" onClick={() => addFootage(it.m)}><i>📎</i>補上傳素材</button>}
+                  {it.kind === 'info' && it.line && <button type="button" className="pf-tb" onClick={() => (brief ? (goStep(1), setTimeout(() => jumpMissing(it), 80)) : jumpMissing(it))}><i><IcPencil /></i>改那句旁白</button>}
+                  {it.kind === 'info' && !brief && !boxOpen && <button type="button" className="pf-tb" onClick={() => setMissOpen(it.m)}><i><IcKeyboard /></i>直接填</button>}
+                  {it.kind === 'footage' && <button type="button" className="pf-tb" onClick={() => addFootage(it.m)}><i><IcClip /></i>補上傳素材</button>}
                   <button type="button" className="pf-tb quiet" onClick={() => skipMiss(it.m, true)}>先不補</button>
                 </div>
               )}

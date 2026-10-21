@@ -1,3 +1,4 @@
+import { IcTimer, IcWifi } from './icons'
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 
 /* Upload UI: a drop zone that is also the file picker, and a queue with a real thumbnail per clip,
@@ -62,8 +63,8 @@ export function PickGuide({ onGo, onClose }: { onGo: () => void; onClose: () => 
         </div>
         <p className="pg1-line">按 <span className="pg1-chip">✓</span> 後，<span className="pg1-chip dim">✓</span> 變淡＝正在下載，等它跑完</p>
         <div className="pg-facts">
-          <span><i>📶</i>網路要穩</span>
-          <span><i>⏱</i>1 分鐘影片 ≈ 等 15 秒</span>
+          <span><i className="pg-ic"><IcWifi size={15} /></i>網路要穩</span>
+          <span><i className="pg-ic"><IcTimer size={15} /></i>1 分鐘影片 ≈ 等 15 秒</span>
         </div>
         <button type="button" className="btn primary block pg-go" onClick={() => { if (hide) guideHide(); onClose(); onGo() }}>知道了，選影片</button>
         <label className="pg-hide"><input type="checkbox" checked={hide} onChange={e => setHide(e.target.checked)} />之後不再顯示</label>

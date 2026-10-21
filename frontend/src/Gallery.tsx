@@ -6,20 +6,31 @@ export function Gallery({ onOpen }: { onOpen: (projectId: string) => void }) {
   const [items, setItems] = useState<GalleryItem[] | null>(null)
   const [play, setPlay] = useState<GalleryItem | null>(null)
   const [sharing, setSharing] = useState<GalleryItem | null>(null)
+  const [tab, setTab] = useState<'all' | 'final' | 'wip'>('all')
   useEffect(() => { api.gallery().then(setItems) }, [])
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && setPlay(null); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [])
   if (!items) return <div className="center muted">載入中…</div>
+  const nFinal = items.filter(i => i.final).length, nWip = items.length - nFinal
+  const shown = items.filter(i => tab === 'all' || (tab === 'final' ? i.final : !i.final))
   return (
     <div className="gallery">
-      <header><h2>作品庫</h2><span className="muted small">{items.length} 支影片</span></header>
+      <header><h2>作品庫</h2>
+        <div className="seg mini gal-tabs">
+          <a className={tab === 'all' ? 'on' : ''} onClick={() => setTab('all')}>全部 {items.length}</a>
+          <a className={tab === 'final' ? 'on' : ''} onClick={() => setTab('final')}>已完成 {nFinal}</a>
+          <a className={tab === 'wip' ? 'on' : ''} onClick={() => setTab('wip')}>進行中 {nWip}</a>
+        </div>
+      </header>
       <div className="gallery-body">
         {items.length === 0 && <div className="muted">還沒有輸出過的影片。</div>}
+        {items.length > 0 && shown.length === 0 && <div className="muted">{tab === 'final' ? '還沒有標成「完成」的影片。在成品頁按「完成」就會出現在這裡。' : '沒有進行中的影片。'}</div>}
+        {tab === 'wip' && shown.length > 0 && <div className="muted small gal-hint">這些影片已經有輸出版本，但還沒按「完成」。開啟專案繼續改，或在成品頁按「完成」。</div>}
         <div className="gal-grid">
-          {items.map(it => (
+          {shown.map(it => (
             <div key={it.project_id} className="gal-item">
               <a className="gal-thumb" onClick={() => (it.video ? setPlay(it) : onOpen(it.project_id))} title={it.video ? '播放' : '開啟專案'}>
                 {it.cover ? <img src={it.cover.url} alt={it.name} loading="lazy" /> : it.video ? <video src={it.video.url} preload="metadata" muted playsInline /> : <div className="gal-empty" />}
-                <span className={`pill ${it.final ? 'final' : ''}`}>{it.final ? '最終版' : verLabel(it.version)}</span>
+                <span className={`pill ${it.final ? 'final' : 'wip'}`}>{it.final ? '✓ 完成' : `進行中 · ${verLabel(it.version)}`}</span>
                 {it.video && <span className="gal-play" aria-hidden="true" />}
               </a>
               <div className="gal-name">{it.name}</div>

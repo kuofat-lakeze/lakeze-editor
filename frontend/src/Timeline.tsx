@@ -4,6 +4,7 @@ import { CapPicker, FontPicker, SuperPicker, StyleHint } from './captionStyles'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
 import { FixSay } from './Pronounce'
 import { sayCached, useLinePreview } from './preview'
+import { IcMic, IcMinus, IcPlay, IcSpeech, IcStar, IcStop, IcUndo } from './icons'
 
 /* 時間軸 (導演模式): the whole finished video laid out like a cutting room — one track per kind of thing,
    the playhead running through all of them:
@@ -346,12 +347,12 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
                     <div className="pf-tools">
                       {!e.drop && <>
                         {(() => { const edited = e.text !== undefined || e.say !== undefined || !!e.take; const on = pv.on === l.key
-                          return <button type="button" className={`pf-tb ${edited ? 'new' : ''} ${on ? 'on' : ''}`} disabled={saying || !txt.trim()} onClick={() => (on ? pv.stop() : say())}><i>{saying ? '…' : '▶'}</i>{saying ? '生成中' : on ? '停' : edited ? '聽改好的' : '試聽'}</button> })()}
-                        {!e.take && <button type="button" className={`pf-tb ${e.say !== undefined ? 'on' : ''}`} onClick={() => setFixing(true)}><i>ㄅ</i>唸錯了</button>}
-                        <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={takeBusy} onClick={() => recorder.start()} title="這句直接用你本人的聲音，會自動對上時間"><i>🗣</i>{takeBusy ? '處理中…' : e.take ? '再親自唸' : '我親自唸'}</button>
-                        <button type="button" className={`pf-tb ${e.star ? 'on' : ''}`} disabled={!e.star && stars >= 3} onClick={() => edLine(l.key!, { star: !e.star })}><i>⭐</i>重點</button>
+                          return <button type="button" className={`pf-tb ${edited ? 'new' : ''} ${on ? 'on' : ''}`} disabled={saying || !txt.trim()} onClick={() => (on ? pv.stop() : say())}><i>{saying ? <span className="spinner" /> : on ? <IcStop /> : <IcPlay />}</i>{saying ? '生成中' : on ? '停' : edited ? '聽改好的' : '試聽'}</button> })()}
+                        {!e.take && <button type="button" className={`pf-tb ${e.say !== undefined ? 'on' : ''}`} onClick={() => setFixing(true)}><i><IcSpeech /></i>唸錯了</button>}
+                        <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={takeBusy} onClick={() => recorder.start()} title="這句直接用你本人的聲音，會自動對上時間"><i><IcMic /></i>{takeBusy ? '處理中…' : e.take ? '再親自唸' : '我親自唸'}</button>
+                        <button type="button" className={`pf-tb ${e.star ? 'on' : ''}`} disabled={!e.star && stars >= 3} onClick={() => edLine(l.key!, { star: !e.star })}><i><IcStar /></i>重點</button>
                       </>}
-                      <button type="button" className={`pf-tb ${e.drop ? 'on' : ''}`} onClick={() => edLine(l.key!, { drop: !e.drop })}><i>✕</i>{e.drop ? '還是要' : '刪掉'}</button>
+                      <button type="button" className={`pf-tb ${e.drop ? 'on' : ''}`} onClick={() => edLine(l.key!, { drop: !e.drop })}><i>{e.drop ? <IcUndo /> : <IcMinus />}</i>{e.drop ? '還是要' : '刪掉'}</button>
                     </div>)}
                   {recorder.err && <div className="error small">{recorder.err}</div>}
                   {(e.text !== undefined || e.say !== undefined || e.take) && !e.drop && <div className="muted small">這句改好了可以先聽；影片本身要按「套用」重新輸出後才會更新。</div>}

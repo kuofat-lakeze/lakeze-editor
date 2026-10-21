@@ -151,7 +151,7 @@ function Workspace() {
         </a>
         {/* 作品庫 is one place (finished videos); the list below is the working projects. */}
         <a className={`gal-link ${view === 'gallery' ? 'active' : ''}`} onClick={() => { setView('gallery'); setMenu(false) }}>
-          <span className="gal-ic" aria-hidden="true">▣</span><b>作品庫</b><span className="muted small">已完成 {projects.filter(p => p.final_version != null).length} 支</span><span className="gal-arr">›</span>
+          <span className="gal-ic" aria-hidden="true">▣</span><b>作品庫</b><span className="muted small">{(() => { const f = projects.filter(p => p.final_version != null).length; const w = projects.filter(p => p.final_version == null && (p.exports ?? 0) > 0).length; return w ? `${f} 支完成 · ${w} 支進行中` : `已完成 ${f} 支` })()}</span><span className="gal-arr">›</span>
         </a>
         <div className="proj-sec">
           <span className="proj-sec-t">專案<small>{projects.length}</small></span>

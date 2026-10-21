@@ -2371,3 +2371,30 @@ body.easy .recbar-lab em { font-size: 22px; } body.easy .recbar-stop { font-size
 .pf-tb.new { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); } .pf-tb.new i { color: var(--brand); } .pf-tb.new.on { background: var(--brand); color: #fff; } .pf-tb.new.on i { color: #fff; }
 .pf-tb.quiet { border-color: transparent; background: transparent; color: var(--muted); font-weight: 600; }
 .pf-foot .btn { white-space: nowrap; flex: none; } .pf-foot > .muted.small { flex: 1; min-width: 0; line-height: 1.35; }
+/* ---- action buttons: one family (icons from icons.tsx), top-tier mobile feel ---- */
+.pf-tb { height: 40px; padding: 0 13px; border-radius: 12px; gap: 7px; font-size: 14px; border-color: #E6E0D6; box-shadow: 0 1px 1px rgba(30,20,10,.04); transition: background .12s, border-color .12s, transform .08s; }
+.pf-tb i { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; font-size: 13px; color: #8B8378; }
+.pf-tb i svg { display: block; } .pf-tb i .spinner { width: 14px; height: 14px; }
+.pf-tb:active:not(:disabled) { transform: scale(.97); background: var(--panel2); }
+.pf-tb.on, .pf-tb.new { border-color: #F3C9B4; background: #FFF3EC; color: var(--brand); } .pf-tb.on i, .pf-tb.new i { color: var(--brand); }
+.pf-tb.new.on { background: var(--brand); border-color: var(--brand); color: #fff; } .pf-tb.new.on i { color: #fff; }
+.pf-tb.quiet { height: 40px; }
+.pf-tools { gap: 8px; } .pf-line.ez .pf-tools { padding-left: 10px; padding-bottom: 12px; }
+.pf-foot .btn.small svg { width: 15px; height: 15px; margin-right: 2px; vertical-align: -3px; }
+.btn.primary { box-shadow: 0 4px 12px rgba(236,90,30,.22); } .btn.primary:active { transform: translateY(1px); box-shadow: 0 2px 6px rgba(236,90,30,.2); }
+/* picker guide facts: icon in a tinted disc */
+.pg-facts span { background: var(--panel); border: 1px solid var(--line); padding: 5px 12px 5px 6px; gap: 8px; font-size: 13.5px; }
+.pg-ic { width: 26px; height: 26px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); display: inline-flex; align-items: center; justify-content: center; }
+/* gallery tabs + 進行中 pill */
+.gallery header { gap: 14px; } .gal-tabs { margin-left: auto; } .gal-hint { margin: 0 0 12px; }
+.gal-thumb .pill.wip { background: rgba(255,255,255,.92); color: #8a5a00; }
+/* phone drawer: the whole sidebar scrolls, the project list shows every project, the fixed blocks get compact */
+@media (max-width: 760px) {
+  .sidebar { overflow-y: auto; -webkit-overflow-scrolling: touch; gap: 10px; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .sidebar nav { flex: none; overflow: visible; min-height: 0; max-height: none; }
+  .sidebar nav a { padding: 11px 10px; }
+  .sidebar .balance { padding: 10px 12px; } .sidebar .balance .big { font-size: 24px; }
+  .side-storage .storage-meter, .side-storage { font-size: 12px; }
+  .gal-link, .side-ref { padding: 9px 12px; }
+  .me { margin-top: 6px; }
+}

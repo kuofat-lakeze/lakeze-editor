@@ -3,6 +3,7 @@ import { api, verLabel, type DeliverableVersion, type LineEdit, type QuickEdits,
 import { RecBar, SheetHead, useRecorder } from './Recorder'
 import { FixSay } from './Pronounce'
 import { sayCached, useLinePreview } from './preview'
+import { IcMic, IcMinus, IcPencil, IcPlay, IcSpeech, IcStop, IcUndo } from './icons'
 
 /* 校對旁白 (輕鬆模式): the finished video and its narration, one big row per line. Each row can be
    listened to, re-read by the owner (speech-to-speech in the video's voice) or dropped — the picture
@@ -157,15 +158,15 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
                   {recHere ? <RecBar r={recorder} hint="用你本人的聲音唸這一句" /> : (
                     <div className="pf-tools" onClick={ev => ev.stopPropagation()}>
                       {!drop && (e.text !== undefined || e.say !== undefined || e.take) ? <>
-                        <button type="button" className={`pf-tb new ${pv.on === r.line.key ? 'on' : ''}`} disabled={hearing === r.line.key} onClick={() => (pv.on === r.line.key ? pv.stop() : hearNew(r))}><i>{hearing === r.line.key ? '…' : '▶'}</i>{hearing === r.line.key ? '生成中' : pv.on === r.line.key ? '停' : '聽改好的'}</button>
+                        <button type="button" className={`pf-tb new ${pv.on === r.line.key ? 'on' : ''}`} disabled={hearing === r.line.key} onClick={() => (pv.on === r.line.key ? pv.stop() : hearNew(r))}><i>{hearing === r.line.key ? <span className="spinner" /> : pv.on === r.line.key ? <IcStop /> : <IcPlay />}</i>{hearing === r.line.key ? '生成中' : pv.on === r.line.key ? '停' : '聽改好的'}</button>
                         <button type="button" className="pf-tb quiet" onClick={() => play(r)}>聽原本的</button>
-                      </> : !drop && <button type="button" className="pf-tb" onClick={() => play(r)}><i>▶</i>聽這句</button>}
+                      </> : !drop && <button type="button" className="pf-tb" onClick={() => play(r)}><i><IcPlay /></i>聽這句</button>}
                       {!drop && <>
-                        <button type="button" className={`pf-tb ${e.text !== undefined ? 'on' : ''}`} onClick={() => { setDraft(e.text ?? r.line.text); setEditing(editing === r.line.key ? null : (r.line.key ?? null)) }}><i>✎</i>改字</button>
-                        {!e.take && <button type="button" className={`pf-tb ${e.say !== undefined ? 'on' : ''}`} onClick={() => setFixing(r)}><i>ㄅ</i>唸錯了</button>}
-                        {e.take && <button type="button" className="pf-tb on" disabled={recorder.rec || takeBusy} onClick={() => startTake(r)}><i>🗣</i>{takeBusy ? '處理中…' : '再唸一次'}</button>}
+                        <button type="button" className={`pf-tb ${e.text !== undefined ? 'on' : ''}`} onClick={() => { setDraft(e.text ?? r.line.text); setEditing(editing === r.line.key ? null : (r.line.key ?? null)) }}><i><IcPencil /></i>改字</button>
+                        {!e.take && <button type="button" className={`pf-tb ${e.say !== undefined ? 'on' : ''}`} onClick={() => setFixing(r)}><i><IcSpeech /></i>唸錯了</button>}
+                        {e.take && <button type="button" className="pf-tb on" disabled={recorder.rec || takeBusy} onClick={() => startTake(r)}><i><IcMic /></i>{takeBusy ? '處理中…' : '再唸一次'}</button>}
                       </>}
-                      <button type="button" className={`pf-tb ${drop ? 'on' : ''}`} disabled={!drop && keptRows.length <= 1} onClick={() => toggleDrop(r)}><i>✕</i>{drop ? '還是要' : '拿掉'}</button>
+                      <button type="button" className={`pf-tb ${drop ? 'on' : ''}`} disabled={!drop && keptRows.length <= 1} onClick={() => toggleDrop(r)}><i>{drop ? <IcUndo /> : <IcMinus />}</i>{drop ? '還是要' : '拿掉'}</button>
                     </div>)}
                 </li>)
             })}
@@ -176,7 +177,7 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
           onSay={s => { setSay(fixing, s); if (s) hearNew(fixing, { say: s }) }} onOwn={() => startTake(fixing)} onClose={() => setFixing(null)} />}
         {(err || recorder.err) && <div className="error small pf-err">{err || recorder.err}</div>}
         <div className="pf-foot">
-          {past.current.length > 0 && !applying && <button type="button" className="btn small" onClick={undo}>↶ 復原</button>}
+          {past.current.length > 0 && !applying && <button type="button" className="btn small" onClick={undo}><IcUndo /> 復原</button>}
           <span className="muted small">{changed > 0 ? [nTexts && `改字 ${nTexts} 句`, nSays && `改唸法 ${nSays} 句`, nTakes && `親自唸 ${nTakes} 句`, nDrops && `拿掉 ${nDrops} 句`, moved && '換了順序'].filter(Boolean).join(' · ') + ' · 套用後重新輸出約 1–2 分鐘' : '唸得都對就不用改'}</span>
           <span className="spacer" />
           <button className="btn primary" disabled={changed === 0 || applying} onClick={apply}>{applying ? '重新輸出中…（約 1–2 分鐘）' : '套用修改 →'}</button>

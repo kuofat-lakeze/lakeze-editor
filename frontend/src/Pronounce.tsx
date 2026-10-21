@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { sayCached } from './preview'
+import { IcPlay, IcStop } from './icons'
 
 /* 唸錯了: the simple way to fix an AI mispronunciation. Tap the wrong character(s), write how they should
    sound (a homophone: 重→蟲, 行→形), listen, confirm. The caption keeps the real words; only what the AI reads
@@ -46,7 +47,7 @@ export function FixSay({ text, say, projectId, voiceId, onSay, onOwn, onClose, o
         {say && !sel.length && <div className="muted small">目前的唸法：{say}</div>}
         {changed && <div className="fix-prev">AI 會唸成：<b>{preview}</b></div>}
         <div className="fix-acts">
-          <button type="button" className="pf-tb" disabled={!changed} onClick={listen}><i>▶</i>{playing ? '停' : '試聽新唸法'}</button>
+          <button type="button" className="pf-tb" disabled={!changed} onClick={listen}><i>{playing ? <IcStop /> : <IcPlay />}</i>{playing ? '停' : '試聽新唸法'}</button>
           <span className="spacer" />
           {say && <button type="button" className="btn" onClick={() => { onSay(undefined); onClose() }}>還原</button>}
           <button type="button" className="btn primary" disabled={!changed} onClick={() => { onSay(preview); onClose() }}>就這樣唸</button>
