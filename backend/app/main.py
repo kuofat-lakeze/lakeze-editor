@@ -1623,14 +1623,30 @@ def _sse(ev: dict) -> str:
 
 
 # ---- deliverables & client share links ------------------------------------------------------
-def _versions(assets: list[Asset], owner: User | None = None) -> list[dict]:
+VERSION_WORDS = ["初版", "第二版", "第三版", "第四版", "第五版", "第六版", "第七版", "第八版", "第九版", "第十版"]
+
+
+def version_label(n: int) -> str:
+    return VERSION_WORDS[n - 1] if 1 <= n <= len(VERSION_WORDS) else f"第 {n} 版"
+
+
+def _version_names(p: Project) -> dict[int, str]:
+    try:
+        return {int(k): v for k, v in json.loads(p.version_names or "{}").items()}
+    except Exception:
+        return {}
+
+
+def _versions(assets: list[Asset], owner: User | None = None, names: dict[int, str] | None = None, project_name: str = "") -> list[dict]:
     """Group deliverable assets (exports + covers) by version, newest first. On the free plan each
-    version carries `expires_at`: when its first file is removed by the free retention."""
+    version carries `expires_at`: when its first file is removed by the free retention. `name` is the
+    version's display name (the owner's, or 專案名_初版), also used as the download filename."""
     by: dict[int, dict] = {}
     for a in assets:
         if a.version is None:
             continue
-        v = by.setdefault(a.version, {"version": a.version, "created_at": a.created_at.isoformat(), "videos": [], "covers": [], "expires_at": None})
+        v = by.setdefault(a.version, {"version": a.version, "label": version_label(a.version), "created_at": a.created_at.isoformat(), "videos": [], "covers": [], "expires_at": None,
+                                      "name": (names or {}).get(a.version) or f"{project_name}_{version_label(a.version)}".strip("_")})
         exp = deliverable_expiry(owner, a.created_at)
         if exp is not None and (v["expires_at"] is None or exp.isoformat() < v["expires_at"]):
             v["expires_at"] = exp.isoformat()
@@ -1654,6 +1670,27 @@ def _share_dict(sh: Share) -> dict:
 
 class PosterBody(BaseModel):
     asset_id: str
+
+
+class VersionNameBody(BaseModel):
+    name: str
+
+
+@app.patch("/api/projects/{project_id}/versions/{version}")
+async def rename_version(project_id: str, version: int, body: VersionNameBody, user: User = CurrentUser):
+    """Give a version its own name (shown on the 成品 page and used as the download filename)."""
+    await _own(project_id, user)
+    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', " ", body.name).strip()[:80]
+    async with Session() as s:
+        p = await s.get(Project, project_id)
+        names = _version_names(p)
+        if name:
+            names[version] = name
+        else:
+            names.pop(version, None)
+        p.version_names = json.dumps({str(k): v for k, v in names.items()}, ensure_ascii=False)
+        await s.commit()
+    return {"ok": True, "name": name or f"{p.name}_{version_label(version)}"}
 
 
 @app.post("/api/projects/{project_id}/versions/{version}/poster")
@@ -1680,7 +1717,7 @@ async def deliverables(project_id: str, user: User = CurrentUser):
         assets = (await s.execute(select(Asset).where(Asset.project_id == p.id).order_by(Asset.created_at))).scalars().all()
         shares = (await s.execute(select(Share).where(Share.project_id == p.id).order_by(Share.created_at.desc()))).scalars().all()
     return {"project": {"id": p.id, "name": p.name, "final_version": p.final_version, "exports": p.exports},
-            "versions": _versions(assets, user), "shares": [_share_dict(x) for x in shares]}
+            "versions": _versions(assets, user, _version_names(p), p.name), "shares": [_share_dict(x) for x in shares]}
 
 
 class FinalBody(BaseModel):
@@ -1743,7 +1780,7 @@ async def _share_by_token(token: str) -> tuple[Share, Project]:
 
 
 def _share_versions(sh: Share, p: Project, assets: list[Asset]) -> list[dict]:
-    vs = _versions(assets)
+    vs = _versions(assets, None, _version_names(p), p.name)
     want = sh.version if sh.version is not None else p.final_version
     if want is not None:
         vs = [v for v in vs if v["version"] == want]
@@ -1844,7 +1881,7 @@ async def share_file(token: str, asset_id: str, download: int = 0):
     if download and not sh.allow_download:
         raise HTTPException(403, "此連結不允許下載")
     path = safe_join(project_dir(p.id), a.rel_path)
-    nice = f"{p.name}_v{a.version}_{a.name}{path.suffix}".replace("/", "-")
+    nice = _download_name(p, a, path.suffix)
     return FileResponse(path, filename=nice if download else None, content_disposition_type="attachment" if download else "inline")
 
 
@@ -1891,15 +1928,28 @@ async def gallery(user: User = CurrentUser):
 
 
 # ---- assets -----------------------------------------------------------------------------
+def _download_name(p: Project, a: Asset, suffix: str) -> str:
+    """版本名稱 as the filename: the main video is just the name; other files add their own label."""
+    if a.version is None:
+        return a.name + suffix if not a.name.endswith(suffix) else a.name
+    base = _version_names(p).get(a.version) or f"{p.name}_{version_label(a.version)}"
+    meta = json.loads(a.meta or "{}")
+    if a.kind == "video" and meta.get("role") == "upload":
+        tail = ""
+    else:
+        tail = "_" + a.name
+    return f"{base}{tail}{suffix}".replace("/", "-")
+
+
 @app.get("/api/projects/{project_id}/assets/{asset_id}")
 async def asset_file(project_id: str, asset_id: str, user: User = CurrentUser):
-    await _own(project_id, user)
+    p0 = await _own(project_id, user)
     async with Session() as s:
         a = await s.get(Asset, asset_id)
     if not a or a.project_id != project_id:
         raise HTTPException(404)
     p = safe_join(project_dir(project_id), a.rel_path)
-    return FileResponse(p, filename=p.name)
+    return FileResponse(p, filename=_download_name(p0, a, p.suffix))
 
 
 _voices_cache: dict = {"at": 0.0, "data": []}

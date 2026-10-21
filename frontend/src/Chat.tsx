@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { api, type Analysis, type Asset, type DeliverableVersion, type DriveCheck, type LineEdit, type Me, type Msg, type ProjectDetail, type Voice } from './api'
+import { api, verLabel, type Analysis, type Asset, type DeliverableVersion, type DriveCheck, type LineEdit, type Me, type Msg, type ProjectDetail, type Voice } from './api'
 import { Proof } from './Proof'
 import { Timeline } from './Timeline'
 import { Deliverables } from './Deliverables'
@@ -278,13 +278,14 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const [editText, setEditText] = useState('')
   const [pins, setPins] = useState<number[]>([])                    // 📌 clips that must be used
   const [sheet, setSheet] = useState<number | null>(null)           // shot open in the bottom sheet
-  const [adv, setAdv] = useState(false)                             // 輕鬆模式: 風格／長度／聲音 are behind 更多選項
   const [cheer, setCheer] = useState<number | null>(null)           // 輕鬆模式: 影片完成 celebration (export count)
   const [proof, setProof] = useState<{ version: DeliverableVersion | null } | null>(null)   // 輕鬆模式: 校對旁白
   const [capStyle, setCapStyle] = useState<string>('gold')            // 導演模式: 字幕樣式 for the first cut
   const [font, setFont] = useState<string>('black')                   // 導演模式: 字型
   const [superStyle, setSuperStyle] = useState<string>('chip')        // 導演模式: 標題樣式
   const [moreStyle, setMoreStyle] = useState(false)                   // 字型與標題樣式 unfolded on step 3
+  const [fills, setFills] = useState<Record<string, string>>({})      // 輕鬆模式: what the analysis said is still missing (價格、店名…)
+  const [skipFill, setSkipFill] = useState(false)                     // 輕鬆模式: 先不補，之後再補
   const [timeline, setTimeline] = useState<{ version: DeliverableVersion | null; tab: 'tracks' | 'style' } | null>(null)   // 時間軸 (導演模式)
   const carry = useRef<Record<string, LineEdit>>({})                  // line edits (incl. the owner's takes) kept across 輕鬆 ⇄ 導演
   const [ideas, setIdeas] = useState(false)                            // 導演模式: 更多改法 sheet
@@ -471,8 +472,14 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   const linkOk = drive.state === 'ok' && (drive.info?.media ?? 0) > 0
   const analysis = proj?.analysis ?? null
   const hasFootage = linkOk || okUploads > 0 || !!analysis
-  const canStart = hasFootage && text.trim().length > 0 && !uploading && voice !== null
-  const obDone = [hasFootage, !!analysis || skipAn, text.trim().length > 0 && voice !== null]
+  const ezBrief = easy && !!analysis   // 輕鬆模式 with an analysis: no text box, the brief is the kept selling points + the fills
+  const briefText = () => {
+    if (!ezBrief) return text.trim()
+    const extra = Object.entries(fills).filter(([, v]) => v.trim()).map(([k, v]) => `${k}：${v.trim()}`)
+    return [`賣點：${pickedPoints.join('、')}`, ...extra].join('\n')
+  }
+  const canStart = hasFootage && (ezBrief || text.trim().length > 0) && !uploading && voice !== null
+  const obDone = [hasFootage, !!analysis || skipAn, (ezBrief || text.trim().length > 0) && voice !== null]
   const start = async () => {
     if (!canStart || running) return
     const st = STYLES.find(x => x.id === style) ?? STYLES[0]
@@ -481,7 +488,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     const parts = [
       themeLine(),
       analysis ? `素材已上傳並解析過（${analysis.n_clips} 個）。` : linkOk ? `素材在這個雲端分享連結（${drive.info?.label}）：${link.trim()} 。請用 list_drive_folder 讀取再下載。` : `我上傳了 ${okUploads} 支素材。`,
-      text.trim(),
+      briefText(),
       st.brief,
       len.brief,
       !easy ? `字幕樣式：${capStyle}（${CAPTION_STYLES.find(c => c.id === capStyle)?.name ?? ''}）` : '',
@@ -530,6 +537,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
   }
   // Step 2 → 3: the kept selling points become the brief (the user can still edit it).
   const useAnalysis = () => {
+    if (easy) { goStep(2); return }
     if (analysis && !text.trim()) {
       const miss = analysis.missing.filter(m => /價格|店名|名稱/.test(m)).map(m => `${m.replace(/^補充?/, '')}：`)
       setText([`賣點：${pickedPoints.join('、')}`, ...miss].join('\n'))
@@ -706,7 +714,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
             <div className="fb-list">
               {(proj.client_comments ?? []).map(c => (
                 <div key={c.id} className={`fb-item ${c.read ? '' : 'new'} ${c.owner ? 'mine' : ''}`}>
-                  <div className="fb-item-head"><b>{c.owner ? '我' : (c.name || '朋友')}</b>{!c.read && <em>新</em>}<span className="muted small">{new Date(c.created_at.endsWith('Z') || c.created_at.includes('+') ? c.created_at : c.created_at + 'Z').toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}{c.version ? ` · 看的是 v${c.version}` : ''}</span></div>
+                  <div className="fb-item-head"><b>{c.owner ? '我' : (c.name || '朋友')}</b>{!c.read && <em>新</em>}<span className="muted small">{new Date(c.created_at.endsWith('Z') || c.created_at.includes('+') ? c.created_at : c.created_at + 'Z').toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}{c.version ? ` · 看的是${verLabel(c.version)}` : ''}</span></div>
                   <div className="fb-text">{c.text}</div>
                   {!c.owner && <div className="fb-act">
                     <a className="small" onClick={() => { setText(t => (t ? t + '\n' : '') + `朋友說：${c.text}。請照這個改。`); setFbOpen(false); setTab('chat') }}>照這個改</a>
@@ -928,22 +936,41 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                       <div className="ez-styles" role="radiogroup" aria-label="風格">
                         {STYLES.map(st => <button type="button" key={st.id} role="radio" aria-checked={style === st.id} className={`ez-st ${style === st.id ? 'on' : ''}`} onClick={() => setStyle(st.id)}><b>{st.name}</b><small>{EZ_STYLE_DESC[st.id]}</small></button>)}
                       </div>
-                      <div className="muted small ob-sub">{analysis ? '賣點（已經幫你填好，補個價格更好）' : '一句話說這支要賣什麼'}</div>
+                      <div className="muted small ob-sub">影片長度</div>
+                      <div className="ez-styles" role="radiogroup" aria-label="影片長度">
+                        {LENGTHS.map(l => <button type="button" key={l.id} role="radio" aria-checked={length === l.id} className={`ez-st ${length === l.id ? 'on' : ''}`} onClick={() => setLength(l.id)}><b>{l.icon} {l.name}</b><small>{l.secs}</small></button>)}
+                      </div>
+                      {!ezBrief && <div className="muted small ob-sub">一句話說這支要賣什麼</div>}
                     </>}
-                    <div className={`spot ${!text.trim() ? 'on' : ''}`}>
+                    {ezBrief && analysis && (() => {
+                      const miss = analysis.missing.map(m => m.replace(/^補充?/, '').replace(/[。，]$/, '')).filter(Boolean)
+                      const hint = (m: string) => /價格|價錢|費用/.test(m) ? '例：平日每人 1,500' : /店名|名稱/.test(m) ? '例：雲岫海景會館' : /地點|地址/.test(m) ? '例：宜蘭頭城' : ''
+                      return (
+                        <div className="ez-miss">
+                          {miss.length === 0 ? <div className="ez-miss-ok">✓ 賣點都齊了，剪輯師會照上一步留的賣點做。</div> : <>
+                            <div className="ez-miss-h"><b>還要補的</b><span className="muted small">補了影片更完整；也可以先不補，做好後再加</span></div>
+                            {miss.map(m => (
+                              <label key={m} className={`ez-miss-row ${skipFill && !fills[m]?.trim() ? 'skip' : ''}`}><span>{m}</span>
+                                <input value={fills[m] ?? ''} placeholder={skipFill ? '之後再補' : hint(m)} onChange={e => { setFills(f => ({ ...f, [m]: e.target.value })); if (e.target.value.trim()) setSkipFill(false) }} />
+                              </label>))}
+                            {!skipFill && miss.some(m => !fills[m]?.trim()) && <a className="ez-miss-skip" onClick={() => setSkipFill(true)}>先不補，之後再補 →</a>}
+                            {skipFill && <div className="muted small">好，先不補。做好後跟剪輯師說一聲就能加上。</div>}
+                          </>}
+                        </div>)
+                    })()}
+                    {!ezBrief && <div className={`spot ${!text.trim() ? 'on' : ''}`}>
                       {!text.trim() && <span className="coach">在這裡打字</span>}
                       <textarea rows={4} value={text} onChange={e => setText(e.target.value)} autoFocus={!text}
                         placeholder={'例：宜蘭海邊的包棟民宿，25 米戲水池、龜山島海景、KTV、電動麻將、寵物友善。價格「平日每人 NT$1,500」。語氣輕鬆活潑。'} />
                       {mic.available && <button type="button" className={`attach mic ob-mic ${mic.on ? 'on' : ''} ${mic.busy ? 'busy' : ''}`} title="用說的" aria-label="語音輸入" onClick={mic.toggle} disabled={mic.busy}>{mic.busy ? <span className="spinner" /> : <MicIcon />}</button>}
-                    </div>
-                    {(mic.on || mic.busy) && <div className="small mic-hint">{mic.on ? `錄音中 ${mic.seconds}s · 說完再按一次麥克風` : '辨識中，文字馬上出現…'}</div>}
-                    <div className="chips inline">
+                    </div>}
+                    {!ezBrief && (mic.on || mic.busy) && <div className="small mic-hint">{mic.on ? `錄音中 ${mic.seconds}s · 說完再按一次麥克風` : '辨識中，文字馬上出現…'}</div>}
+                    {!ezBrief && <div className="chips inline">
                       {!analysis && <a className="chipbtn on" onClick={() => setText(EXAMPLE_BRIEF)}>給我範例</a>}
                       {['地點：', '價格：平日每人 NT$', '店名：', '語氣：輕鬆活潑'].map(c => (
                         <a key={c} className="chipbtn" onClick={() => setText(t => (t ? t.replace(/\s*$/, '\n') : '') + c)}>{c}</a>))}
-                    </div>
-                    {easy && <a className="ob-more-t" onClick={() => setAdv(a => !a)}>{adv ? '收起影片長度 ▴' : <>影片長度 ▾<small>目前：{(LENGTHS.find(l => l.id === length) ?? LENGTHS[1]).name} {(LENGTHS.find(l => l.id === length) ?? LENGTHS[1]).secs}</small></>}</a>}
-                    <div className={`ob-opts ${easy && !adv ? 'hide' : ''}`}>
+                    </div>}
+                    <div className={`ob-opts ${easy ? 'hide' : ''}`}>
                     {!easy && <>
                     <div className="muted small ob-sub">風格</div>
                     <div className="styles">
@@ -991,7 +1018,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                       <div className={`spot inline ${canStart ? 'on' : ''}`}>
                         {canStart && <span className="coach">按下去就開始</span>}
                         <button className={`btn primary start ${canStart ? 'glow' : ''}`} disabled={!canStart} onClick={start}>
-                          {!hasFootage ? '先回第 1 步給素材' : !text.trim() ? '寫一點賣點就能開始' : voice === null ? '載入聲音中…' : '開始剪輯'}
+                          {!hasFootage ? '先回第 1 步給素材' : !ezBrief && !text.trim() ? '寫一點賣點就能開始' : voice === null ? '載入聲音中…' : '開始剪輯'}
                         </button>
                       </div>
                     </div>
@@ -1001,7 +1028,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                   </>
                 )}
               </section>
-              <ObPreview step={obStep} style={style} length={length} voiceName={voice === NO_VOICE ? null : voices.find(v => v.voice_id === voice)?.name ?? null} uploads={uploads.filter(u => u.status === 'ok').length} linkOk={linkOk} text={text} analysis={analysis} analyzing={analyzing} />
+              <ObPreview projectId={projectId} step={obStep} style={style} length={length} voiceName={voice === NO_VOICE ? null : voices.find(v => v.voice_id === voice)?.name ?? null} uploads={uploads.filter(u => u.status === 'ok').length} linkOk={linkOk} text={text} analysis={analysis} analyzing={analyzing} />
             </div>
           </div>
         )}
@@ -1139,7 +1166,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
         <div className="cheer-scrim" onClick={e => { if (e.target === e.currentTarget) setCheer(null) }}>
           <div className="cheer" role="dialog" aria-label="影片完成">
             <div className="cheer-emoji" aria-hidden="true">🎉</div>
-            <h3>{cheer === 1 ? '第一支影片做好了！' : `第 ${cheer} 版做好了！`}</h3>
+            <h3>{cheer === 1 ? '第一支影片做好了！' : `${verLabel(cheer)}做好了！`}</h3>
             <p>比外包剪一支，大約省了 <b>NT${Math.round(EASY_SAVING_TWD).toLocaleString()}</b></p>
             <button className="btn primary block lg" onClick={() => { setCheer(null); setTab('files') }}>看成品、分享給朋友</button>
             {!usedOwn && <button className="btn block cheer-own" onClick={() => { setCheer(null); switchToOwnVoice() }}>🎙 {ownVoice ? '換成我的聲音再出一版' : '錄 30 秒，換成我的聲音'}</button>}
@@ -1313,7 +1340,7 @@ export function AssetCard({ a, onOpenFiles }: { a: Asset; onOpenFiles?: () => vo
     if (a.role && a.role !== 'upload' && a.kind === 'video') return null
     return (
       <div className="deliv-note">
-        <span className="pill final">v{a.version}</span>
+        <span className="pill final">{verLabel(a.version)}</span>
         <span>{a.kind === 'image' ? a.name : `影片已輸出${mb}`}</span>
         <a onClick={onOpenFiles}>看成品</a>
       </div>
@@ -1331,16 +1358,22 @@ export function AssetCard({ a, onOpenFiles }: { a: Asset; onOpenFiles?: () => vo
 
 
 /* Right-hand "this is what you'll get" panel of the onboarding wizard: changes with the step and the choices. */
-function ObPreview({ step, style, length, voiceName, uploads, linkOk, text, analysis, analyzing }:
-  { step: number; style: string; length: string; voiceName: string | null; uploads: number; linkOk: boolean; text: string; analysis: Analysis | null; analyzing: boolean }) {
+function ObPreview({ projectId, step, style, length, voiceName, uploads, linkOk, text, analysis, analyzing }:
+  { projectId: string; step: number; style: string; length: string; voiceName: string | null; uploads: number; linkOk: boolean; text: string; analysis: Analysis | null; analyzing: boolean }) {
   const st = STYLES.find(x => x.id === style) ?? STYLES[0]
   const textPlace = (text.match(/^(.{2,12}?)(的|，|、|。)/) || [])[1]
   const sumPlace = (analysis?.summary.match(/^(.{2,12}?)(的|，|、|。|$)/) || [])[1]
   const place = (analysis ? sumPlace : textPlace) || textPlace || '宜蘭海邊包棟'
   const hook = analysis?.script[0]?.text
+  const price = (text.match(/NT\$\s?[\d,]{3,}|[\d,]{3,}\s?元/) || [])[0]
+  // real frames for the cover mock-ups: the hook shot, and the next different clip
+  const sb = analysis?.storyboard ?? []
+  const frameA = sb[0] ? api.frameUrl(projectId, sb[0].clip, sb[0].t) : null
+  const altB = sb.find(x => x.clip !== sb[0]?.clip) ?? sb[1]
+  const frameB = altB ? api.frameUrl(projectId, altB.clip, altB.t) : null
   return (
     <aside className="ob-prev">
-      <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? (analysis ? '開頭 3 秒會是這樣' : analyzing ? '解析完你會看到' : '解析完你會看到') : '選好或貼好，剪輯師會自己把素材抓下來'}</span></div>
+      <div className="ob-prev-head"><span className="eyebrow">{step === 2 ? '15 分鐘後你會拿到' : step === 1 ? (analysis ? '封面會像這樣' : analyzing ? '解析完你會看到' : '解析完你會看到') : '選好或貼好，剪輯師會自己把素材抓下來'}</span></div>
       {step === 1 && !analysis && (
         <div className="ob-prev-an">
           <div className="pa-chips">{['無邊際泳池看海', '包棟', '龜山島日出', '寵物友善'].map((c, i) => <span key={c} className={i === 0 ? 'top' : ''}>{c}</span>)}</div>
@@ -1353,13 +1386,13 @@ function ObPreview({ step, style, length, voiceName, uploads, linkOk, text, anal
         </div>
       )}
       {step === 1 && analysis && (
-        <div className={`ps-video ob-style ${style}`}>
-          <div className="ps-super">{analysis.selling_points.slice(1, 3).map(x => shortPt(x, 10)).join(' · ') || '賣點'}</div>
-          <div className="ps-headline">{place}<br /><em>{shortPt(analysis.selling_points[0])}</em></div>
-          {hook && <div className="ps-narr"><i className="ps-mic" /><span className="ps-wave"><b /><b /><b /><b /><b /><b /></span><small>{hook}</small></div>}
-          <div className="ps-sub">{analysis.script[1]?.text || ''}</div>
-          <div className="ps-play" />
-          <div className="ob-style-note">Hook 用最強賣點 · {analysis.storyboard.length} 個鏡頭約 {Math.round(analysis.total_seconds)} 秒</div>
+        <div className={`pc pc-${style}`}>
+          {frameA && <img src={frameA} alt="" />}
+          <div className="pc-grad" />
+          <div className="pc-top">{analysis.selling_points.slice(1, 3).map(x => shortPt(x, 8)).join(' · ')}</div>
+          <div className="pc-title">{place}<em>{shortPt(analysis.selling_points[0])}</em></div>
+          <div className="pc-price">{price ?? '價格補上後會放這裡'}</div>
+          <div className="pc-note">封面 · 用開頭那一幕 · 做好會給兩款挑</div>
         </div>
       )}
       {step === 0 && (
@@ -1374,7 +1407,7 @@ function ObPreview({ step, style, length, voiceName, uploads, linkOk, text, anal
       )}
       {step === 2 && (
         <div className="ob-prev-done">
-          <div className="ps-vhead"><b>v1</b><span className="ps-pill">成品</span><small>影片＋封面 · {st.name} · {(LENGTHS.find(l => l.id === length) ?? LENGTHS[1]).secs}</small></div>
+          <div className="ps-vhead"><b>初版</b><span className="ps-pill">成品</span><small>影片＋封面 · {st.name} · {(LENGTHS.find(l => l.id === length) ?? LENGTHS[1]).secs}</small></div>
           <div className="ps-result">
             <div className={`ps-video ob-style ${style}`}>
               <div className="ps-super">{st.id === 'promo' ? '限時優惠 · 只到月底' : st.id === 'premium' ? place : analysis?.selling_points.slice(1, 3).map(x => shortPt(x, 10)).join(' · ') || 'KTV · 電動麻將 · 寵物友善'}</div>
@@ -1385,8 +1418,8 @@ function ObPreview({ step, style, length, voiceName, uploads, linkOk, text, anal
               <div className="ob-style-note">{st.id === 'promo' ? '價格開頭、節奏強' : st.id === 'premium' ? '慢節奏、長鏡頭、少字' : '前 3 秒放最強賣點、快剪'}{voiceName ? '' : ' · 只有配樂與字幕'}</div>
             </div>
             <div className="ps-covers">
-              <div className="ps-cover a"><span>封面 A</span><b>{place}</b><em>NT$1,500</em></div>
-              <div className="ps-cover b"><span>封面 B</span><b>{shortPt(analysis?.selling_points[0], 10) || '25 米戲水池'}</b><em>平日每人 1,500</em></div>
+              <div className={`ps-cover a ${frameA ? 'real' : ''}`} style={frameA ? { backgroundImage: `url(${frameA})` } : undefined}><span>封面 A</span><b>{place}</b><em>{price ?? 'NT$1,500'}</em></div>
+              <div className={`ps-cover b ${frameB ? 'real' : ''}`} style={frameB ? { backgroundImage: `url(${frameB})` } : undefined}><span>封面 B</span><b>{shortPt(analysis?.selling_points[0], 10) || '25 米戲水池'}</b><em>{price ? `平日每人 ${price}` : '平日每人 1,500'}</em></div>
             </div>
           </div>
           <div className="muted small">做好會自動歸檔到「成品」頁，可以一鍵分享給朋友。</div>

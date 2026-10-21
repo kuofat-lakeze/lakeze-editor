@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type StorageInfo, type StorageState } from './api'
+import { verLabel } from './api'
 import { ask } from './Dialog'
 
 export const fmtBytes = (b: number) => {
@@ -75,7 +76,7 @@ export function StorageInline({ subscribed, onChanged, onOpenProject }: { subscr
           <div className="tool-rows">
             {s.projects.map(p => (
               <div key={p.id} className="tool-row sproj" onClick={() => onOpenProject?.(p.id)}>
-                <span><b style={{ fontWeight: 600 }}>{p.name}</b><span className="muted small"> · {p.versions} 版{p.final_version ? ` · 最終版 v${p.final_version}` : ''}</span></span>
+                <span><b style={{ fontWeight: 600 }}>{p.name}</b><span className="muted small"> · {p.versions} 版{p.final_version ? ` · 最終版：${verLabel(p.final_version)}` : ''}</span></span>
                 <div className="sproj-bar"><div style={{ width: `${s.used_bytes ? (p.bytes / s.used_bytes) * 100 : 0}%` }} /></div>
                 <b>{fmtBytes(p.bytes)}</b>
               </div>

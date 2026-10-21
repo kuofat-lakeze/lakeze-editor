@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type DeliverableVersion, type LineEdit, type QuickEdits, type ScriptInfo, type Voice } from './api'
+import { api, verLabel, type DeliverableVersion, type LineEdit, type QuickEdits, type ScriptInfo, type Voice } from './api'
 import { CapPicker, FontPicker, SuperPicker, StyleHint } from './captionStyles'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
 import { ask } from './Dialog'
@@ -208,7 +208,7 @@ export function Timeline({ projectId, version, onClose, onDone, onUsage, initial
   return (
     <div className="pf-scrim" onClick={e => { if (e.target === e.currentTarget) cancel() }}>
       <div className="pf tl2" role="dialog" aria-label="時間軸">
-        <SheetHead title="時間軸" badge={version ? `v${version.version}` : undefined} onCancel={cancel}
+        <SheetHead title="時間軸" badge={version ? verLabel(version.version) : undefined} onCancel={cancel}
           right={<button className="btn primary small" disabled={!ok || nChanges === 0 || busy} onClick={apply}>{busy ? '輸出中…' : nChanges ? `套用 ${nChanges}` : '套用'}</button>} />
         {ok === null && <div className="muted small tl-msg">載入中…</div>}
         {ok === false && <div className="muted small tl-msg">這支還沒有可以細調的版本，請先讓剪輯師輸出一次。</div>}

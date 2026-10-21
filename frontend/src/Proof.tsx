@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type DeliverableVersion, type LineEdit, type QuickEdits, type ScriptInfo } from './api'
+import { api, verLabel, type DeliverableVersion, type LineEdit, type QuickEdits, type ScriptInfo } from './api'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
 import { ask } from './Dialog'
 
 /* 校對旁白 (輕鬆模式): the finished video and its narration, one big row per line. Each row can be
-   listened to, re-read by the owner (speech-to-speech in the video's voice), moved up or down, or
-   dropped — the picture segment moves and goes with it. A thumbnail on every row shows the new order
-   at a glance; ▶ plays that segment of the current version. 導演模式 has the 時間軸 for anything finer. */
+   listened to, re-read by the owner (speech-to-speech in the video's voice) or dropped — the picture
+   segment goes with it. ▶ plays that segment of the current version. 導演模式 has the 時間軸 for anything finer. */
 type Row = { line: ScriptInfo['lines'][number]; shot: ScriptInfo['shots'][number] | undefined }
 type State = { order: number[]; drops: Set<number>; lines: Record<string, LineEdit> }
 const tc = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -45,7 +44,6 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, hasOwnVoic
   }, [st.order, shots, lines]) // eslint-disable-line react-hooks/exhaustive-deps
   const commit = (f: (s: State) => State) => { setSt(s => { past.current = [...past.current.slice(-40), s]; return f(s) }); bump(x => x + 1) }
   const undo = () => { const p = past.current.pop(); if (p) { setSt(p); bump(x => x + 1) } }
-  const move = (r: Row, d: -1 | 1) => { if (!r.shot) return; commit(s => { const o = [...s.order]; const k = o.indexOf(r.shot!.i); const j = k + d; if (j < 0 || j >= o.length) return s; [o[k], o[j]] = [o[j], o[k]]; return { ...s, order: o } }) }
   const isDropped = (r: Row) => !!st.lines[r.line.key ?? '']?.drop
   const toggleDrop = (r: Row) => commit(s => {
     const key = r.line.key ?? ''; const drop = !s.lines[key]?.drop
@@ -93,13 +91,12 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, hasOwnVoic
   return (
     <div className="pf-scrim" onClick={e => { if (e.target === e.currentTarget) cancel() }}>
       <div className="pf" role="dialog" aria-label="校對旁白">
-        <SheetHead title="校對旁白" badge={version ? `v${version.version}` : undefined} sub="聽一聽，唸錯的自己唸；也可以調順序或拿掉" onCancel={cancel}
+        <SheetHead title="校對旁白" badge={version ? verLabel(version.version) : undefined} sub="聽一聽，唸錯的自己唸；不要的拿掉" onCancel={cancel}
           right={<button className="btn primary small" disabled={changed === 0 || applying} onClick={apply}>{applying ? '輸出中…' : '套用'}</button>} />
         <div className="pf-body">
           <div className="pf-video">
             {src ? <video ref={video} src={src} controls playsInline preload="metadata" poster={version?.poster ?? undefined} onTimeUpdate={onTime} onLoadedMetadata={onTime} />
               : <div className="pf-novideo muted small">這一版還沒有影片檔。</div>}
-            {moved && <div className="pf-neworder"><span className="muted small">新的順序</span>{keptRows.map((r, k) => r.shot && <img key={r.line.n} src={api.frameUrl(projectId, r.shot.clip, r.shot.start)} alt="" title={`${k + 1}. ${r.line.text}`} />)}</div>}
           </div>
           <ol className="pf-lines ez">
             {hasOwnVoice && onOwnVoice && !loading && rows.length > 0 && (
@@ -125,8 +122,6 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, hasOwnVoic
                       {!drop && <>
                         <button type="button" className="pf-tb" onClick={() => play(r)}><i>▶</i>聽這句</button>
                         <button type="button" className={`pf-tb ${e.take ? 'on' : ''}`} disabled={recorder.rec || takeBusy} onClick={() => startTake(r)}><i>🎙</i>{takeBusy && takeFor === null && e.take === undefined ? '轉換中…' : e.take ? '再唸一次' : '唸錯了，我自己唸'}</button>
-                        {r.shot && <button type="button" className="pf-tb" disabled={!recut || n <= 1} onClick={() => move(r, -1)} aria-label="往前移"><i>▲</i>往前</button>}
-                        {r.shot && <button type="button" className="pf-tb" disabled={!recut || n >= keptRows.length} onClick={() => move(r, 1)} aria-label="往後移"><i>▼</i>往後</button>}
                       </>}
                       <button type="button" className={`pf-tb ${drop ? 'on' : ''}`} disabled={!drop && keptRows.length <= 1} onClick={() => toggleDrop(r)}><i>✕</i>{drop ? '還是要' : '拿掉'}</button>
                     </div>)}

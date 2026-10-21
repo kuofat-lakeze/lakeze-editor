@@ -80,6 +80,7 @@ class Project(Base):
     exports: Mapped[int] = mapped_column(Integer, default=0)          # export_video calls so far
     revision_turns: Mapped[int] = mapped_column(Integer, default=0)   # revision turns (with tool work) after the first export
     final_version: Mapped[int | None] = mapped_column(Integer, nullable=True)  # the export marked as the delivered one
+    version_names: Mapped[str | None] = mapped_column(Text, nullable=True)     # JSON {version: display name}; also the download filename
 
 
 class CreditTx(Base):
@@ -194,6 +195,7 @@ _MIGRATIONS = [
     ("users", "tags", "VARCHAR(200) DEFAULT ''"), ("users", "last_seen_at", "DATETIME"),
     ("share_comments", "read_at", "DATETIME"), ("users", "referrer_id", "VARCHAR(12)"), ("share_comments", "owner", "BOOLEAN DEFAULT 0"),
     ("users", "storage_free_since", "DATETIME"), ("users", "ui_mode", "VARCHAR(10) DEFAULT 'pro'"),
+    ("projects", "version_names", "TEXT"),
 ]
 
 

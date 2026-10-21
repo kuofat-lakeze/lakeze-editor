@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type GalleryItem } from './api'
+import { api, verLabel, type GalleryItem } from './api'
 import { ShareDialog } from './Deliverables'
 
 export function Gallery({ onOpen }: { onOpen: (projectId: string) => void }) {
@@ -19,7 +19,7 @@ export function Gallery({ onOpen }: { onOpen: (projectId: string) => void }) {
             <div key={it.project_id} className="gal-item">
               <a className="gal-thumb" onClick={() => (it.video ? setPlay(it) : onOpen(it.project_id))} title={it.video ? '播放' : '開啟專案'}>
                 {it.cover ? <img src={it.cover.url} alt={it.name} loading="lazy" /> : it.video ? <video src={it.video.url} preload="metadata" muted playsInline /> : <div className="gal-empty" />}
-                <span className={`pill ${it.final ? 'final' : ''}`}>{it.final ? '最終版' : `v${it.version}`}</span>
+                <span className={`pill ${it.final ? 'final' : ''}`}>{it.final ? '最終版' : verLabel(it.version)}</span>
                 {it.video && <span className="gal-play" aria-hidden="true" />}
               </a>
               <div className="gal-name">{it.name}</div>
@@ -35,7 +35,7 @@ export function Gallery({ onOpen }: { onOpen: (projectId: string) => void }) {
           <div className="gal-player" onClick={e => e.stopPropagation()}>
             <video key={play.video.id} src={play.video.url} controls autoPlay playsInline poster={play.cover?.url} />
             <div className="gal-player-bar">
-              <div><b>{play.name}</b><span className="muted small"> · {play.final ? '最終版' : `v${play.version}`}</span></div>
+              <div><b>{play.name}</b><span className="muted small"> · {play.final ? '最終版' : verLabel(play.version)}</span></div>
               <div className="row">
                 <button className="btn small primary" onClick={() => setSharing(play)}>分享</button>
                 <a className="btn small" href={`${play.video.url}?download=1`} download>下載</a>

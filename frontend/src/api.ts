@@ -9,7 +9,7 @@ export type ScriptInfo = { lines: { n: number; key?: string; start: number; end:
   shots: { i: number; clip: number; start: number; dur: number; at: number; src_dur?: number }[]; quick: boolean; recut?: boolean
   caption_style?: string; font?: string; super_style?: string; caption_scale?: number; supers?: { i: number; start: number; end: number; text: string }[]
   counter?: { start: number; end: number; amount: number; color?: string } | null; music?: boolean; music_gain?: number; speed?: number; sfx?: { name: string; at: number }[]; duration?: number | null }
-export type DeliverableVersion = { version: number; created_at: string; videos: Asset[]; covers: Asset[]; main: Asset | null; expires_at?: string | null; poster?: string | null }
+export type DeliverableVersion = { version: number; label?: string; name?: string; created_at: string; videos: Asset[]; covers: Asset[]; main: Asset | null; expires_at?: string | null; poster?: string | null }
 export type ShareLink = { id: string; token: string; url: string; version: number | null; allow_download: boolean; note: string; expires_at: string | null; revoked: boolean; views: number; created_at: string; fb_app_id?: string | null }
 export type DeliverablesData = { project: { id: string; name: string; final_version: number | null; exports: number }; versions: DeliverableVersion[]; shares: ShareLink[] }
 export type ThreadMsg = { id: number; name: string; text: string; created_at: string; owner: boolean }
@@ -144,6 +144,7 @@ export const api = {
   createShare: (id: string, body: { version: number | null; allow_download: boolean; expires_days: number | null; note: string }) =>
     post(`/api/projects/${id}/share`, body).then(j<ShareLink>),
   revokeShare: (id: string, shareId: string) => post(`/api/projects/${id}/share/${shareId}/revoke`, {}).then(j<{ ok: boolean }>),
+  renameVersion: (id: string, version: number, name: string) => fetch(`/api/projects/${id}/versions/${version}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).then(j<{ ok: boolean; name: string }>),
   setPoster: (id: string, version: number, asset_id: string) => post(`/api/projects/${id}/versions/${version}/poster`, { asset_id }).then(j<{ ok: boolean }>),
   deleteVersion: (id: string, version: number) => fetch(`/api/projects/${id}/versions/${version}`, { method: 'DELETE' }).then(j<{ ok: boolean; freed_bytes: number; storage: StorageState }>),
   storage: () => fetch('/api/storage').then(j<StorageInfo>),
@@ -229,3 +230,7 @@ export const api = {
     catch { fetch('/api/client-log', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {}) }
   },
 }
+
+/** 版本的叫法: 初版、第二版、第三版… (backend version_label). */
+const VERSION_WORDS = ['初版', '第二版', '第三版', '第四版', '第五版', '第六版', '第七版', '第八版', '第九版', '第十版']
+export const verLabel = (n: number | null | undefined) => (n == null ? '' : VERSION_WORDS[n - 1] ?? `第 ${n} 版`)

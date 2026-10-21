@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type Asset, type DeliverableVersion, type DeliverablesData, type ShareLink, type StorageState } from './api'
+import { api, verLabel, type Asset, type DeliverableVersion, type DeliverablesData, type ShareLink, type StorageState } from './api'
 import { StorageMeter, fmtBytes } from './Storage'
 import { ask } from './Dialog'
 import { FbIcon, LineIcon, MessengerIcon, promoText, shareToFacebook, shareToLine, shareToMessenger } from './share'
@@ -53,9 +53,15 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak
   const setFinal = async (v: number | null) => { await api.setFinal(projectId, v); await load(); onChanged?.() }
   const del = async (v: number) => {
     const mb = sizeOf(versions.find(x => x.version === v)!)
-    if (!await ask.confirm(`刪除 v${v}（影片與封面，約 ${fmtBytes(mb)}）？刪了就拿不回來，指向這一版的朋友連結也會失效。`, { ok: '刪除', danger: true })) return
+    if (!await ask.confirm(`刪除${verLabel(v)}（影片與封面，約 ${fmtBytes(mb)}）？刪了就拿不回來，指向這一版的朋友連結也會失效。`, { ok: '刪除', danger: true })) return
     setBusy(v)
     try { await api.deleteVersion(projectId, v); await load(); onChanged?.() } catch (e) { ask.alert((e as Error).message) } finally { setBusy(null) }
+  }
+  const rename = async (v: DeliverableVersion) => {
+    const name = await ask.prompt('這一版叫什麼？也會是下載的檔名。', { value: v.name ?? '', ok: '改好了' })
+    if (name === null) return
+    try { const r = await api.renameVersion(projectId, v.version, name); setData(d => d && { ...d, versions: d.versions.map(x => x.version === v.version ? { ...x, name: r.name } : x) }) }
+    catch (e) { ask.alert((e as Error).message) }
   }
   const copy = async (s: ShareLink) => {
     const url = `${location.origin}${s.url}`
@@ -80,11 +86,12 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak
           <section key={v.version} className={`card ver ${isFinal ? 'final' : ''}`}>
             <div className="ver-head">
               <div className="ver-title">
-                <b>v{v.version}</b>
+                <b>{verLabel(v.version)}</b>
                 {isFinal && <span className="pill final">最終版</span>}
                 {!isFinal && project.final_version == null && v === versions[0] && <span className="pill">最新</span>}
                 <span className="muted small">{fmtDate(v.created_at)}{sizeOf(v) > 0 && ` · ${fmtBytes(sizeOf(v))}`}</span>
                 {v.expires_at && <ExpiryPill at={v.expires_at} onKeep={onStorage} />}
+                <button type="button" className="ver-name" onClick={() => rename(v)} title="改這一版的名字，下載時就是這個檔名">{v.name || `${project.name}_${verLabel(v.version)}`}<i>✎</i></button>
               </div>
               <div className="ver-actions">
                 {isFinal
@@ -141,7 +148,7 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak
               <div className="link-main">
                 <div className="link-url">{location.host}{s.url}</div>
                 <div className="muted small">
-                  {s.version ? `v${s.version}` : '跟著最終版'} · {s.allow_download ? '可下載' : '只能看'} · {s.expires_at ? `到 ${s.expires_at.slice(0, 10)}` : '永久'} · 看過 {s.views} 次
+                  {s.version ? verLabel(s.version) : '跟著最終版'} · {s.allow_download ? '可下載' : '只能看'} · {s.expires_at ? `到 ${s.expires_at.slice(0, 10)}` : '永久'} · 看過 {s.views} 次
                   {s.note ? ` · ${s.note}` : ''}
                 </div>
               </div>
@@ -213,7 +220,7 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
             <div className={`share-opts ${tweak ? 'open' : ''}`}>
               <button type="button" className="so-sum" onClick={() => setTweak(t => !t)} aria-expanded={tweak}>
                 <span className="so-chips">
-                  <em className="on">✓ {follow ? '永遠最新版' : `只給 v${version ?? '最新'}`}</em>
+                  <em className="on">✓ {follow ? '永遠最新版' : `只給${version ? verLabel(version) : '最新版'}`}</em>
                   <em className={download ? 'on' : ''}>{download ? '✓ 可下載' : '只能看'}</em>
                   <em className="on">{days === '0' ? '✓ 永久有效' : `${days} 天後失效`}</em>
                 </span>
@@ -225,7 +232,7 @@ export function ShareDialog({ projectId, version, hasFinal, onClose, onCreated, 
                     <input type="checkbox" checked={follow} onChange={e => setFollow(e.target.checked)} />
                     <span><b>跟著最終版</b><small>{follow
                       ? (hasFinal ? '之後你改了最終版，朋友點同一條連結就會看到新的，不用重傳。' : '還沒標最終版前會顯示最新一版；之後標了最終版，同一條連結會自動換過去。')
-                      : `朋友只會看到 v${version ?? '最新'} 這一版，之後修改不會影響這條連結。`}</small></span>
+                      : `朋友只會看到${version ? verLabel(version) : '最新版'}，之後修改不會影響這條連結。`}</small></span>
                   </label>
                   <label className="so-row">
                     <input type="checkbox" checked={download} onChange={e => setDownload(e.target.checked)} />
