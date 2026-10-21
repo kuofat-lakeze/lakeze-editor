@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { api } from './api'
 
-/* 改完馬上聽: a narration change can be heard right away, before 套用, by playing the new audio (a freshly
+/* 改完馬上聽 (instant preview): a narration change can be heard right away, before 套用, by playing the new audio (a freshly
    generated line, or the owner's own take) over the current video with its sound muted — the picture is
    the old cut, the voice is the new one. The same text is generated once and reused (試聽 in 唸錯了, then
    the preview over the picture, costs one sample, not two). Anything that changes the cut itself — order,
