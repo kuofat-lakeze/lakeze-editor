@@ -115,8 +115,8 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
 
   return (
     <div className="pf-scrim" onClick={e => { if (e.target === e.currentTarget) cancel() }}>
-      <div className="pf" role="dialog" aria-label="校對旁白">
-        <SheetHead title="校對旁白" badge={version ? verLabel(version.version) : undefined} sub={changed ? '改了還沒套用 · 可先逐句聽，影片套用後才更新' : '聽一聽：改字、唸錯了，或拿掉'} onCancel={cancel} cancelLabel="← 返回"
+      <div className="pf" role="dialog" aria-label="改配音">
+        <SheetHead title="改配音" badge={version ? verLabel(version.version) : undefined} sub={changed ? '改了還沒套用 · 可先逐句聽，影片套用後才更新' : '一句一句聽，不對就改'} onCancel={cancel} cancelLabel="← 返回"
           right={<button className="btn primary small" disabled={changed === 0 || applying} onClick={apply}>{applying ? '輸出中…' : '套用'}</button>} />
         <div className="pf-body">
           <div className="pf-video">
@@ -133,7 +133,7 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
             {onOwnVoice && !loading && rows.length > 0 && (
               <li className="pf-own"><div><b><span className="pill rec">推薦</span> 換成你自己的聲音</b><span>親自一句一句配音，或讓 AI 生成你的聲音</span></div><button type="button" className="btn primary" onClick={onOwnVoice}>🎙 換成我的聲音</button></li>)}
             {loading && <li className="muted small pf-empty">載入旁白稿…</li>}
-            {!loading && rows.length === 0 && <li className="muted small pf-empty">找不到這支的旁白稿，之後再來校對。</li>}
+            {!loading && rows.length === 0 && <li className="muted small pf-empty">找不到這支的配音稿，之後再來改。</li>}
             {rows.map((r, i) => {
               const e = st.lines[r.line.key ?? ''] ?? {}; const drop = !!e.drop; const n = keptRows.indexOf(r) + 1
               const recHere = recorder.rec && takeFor === r.line.key

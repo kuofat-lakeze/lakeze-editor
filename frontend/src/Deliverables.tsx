@@ -97,7 +97,7 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak
               {/* one primary (分享), the editing tools as quiet secondaries, 完成 as a state toggle, delete as an icon at the end */}
               <div className="ver-actions v2">
                 <button className="btn primary small" onClick={() => setSharing(v.version)}><IcShare size={15} />分享給朋友</button>
-                {onProof && v.main && <button className="btn small" onClick={() => onProof(v)}>{onTweak ? '時間軸' : '校對旁白'}</button>}
+                {onProof && v.main && <button className="btn small" onClick={() => onProof(v)}>{onTweak ? '時間軸' : '改配音'}</button>}
                 {onTweak && v.main && v === versions[0] && <button className="btn small" onClick={onTweak}>樣式</button>}
                 {isFinal
                   ? <button className="btn small done on" onClick={() => setFinal(null)} title="取消完成"><IcCheck size={14} />已完成</button>
