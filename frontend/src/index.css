@@ -1,6 +1,6 @@
 /* Lakeze 人客多 brand: orange (primary), light orange, blue, teal — on a warm light surface. */
 :root {
-  --brand: #E8571C; --brand-2: #F08A2A; --brand-soft: #FFF1E9; --blue: #1B7AC3; --blue-soft: #E6F1FA;
+  --brand: #E95B17; --brand-2: #F08D34; --brand-soft: #FFF1E9; --blue: #1B7AC3; --blue-soft: #E6F1FA;
   --teal: #46B9BD; --teal-soft: #E3F5F5;
   --bg: #F7F5F1; --panel: #FFFFFF; --panel2: #F2EFEA; --line: #E6E1D9; --text: #22262E; --muted: #6E7480;
   --accent: var(--brand); --accent2: var(--blue); --err: #D93A3A; --ok: #2E9E6B;

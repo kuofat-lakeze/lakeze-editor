@@ -3,13 +3,13 @@ import { useId } from 'react'
 /* 旅剪 TravelCut identity (CI "T3c"). One shape: a location pin (旅遊) with a play triangle inside (影片)
    and a dark clapper head cut across its top (剪接, 開拍) — three tiny white slate marks on the head.
    The playful rule: the pin and the "Cut" of the wordmark both lean 6° the same way; everything else
-   (buttons, forms, body text, numbers) stays upright. Palette: orange #E8571C, ink #1F1B17, white. */
+   (buttons, forms, body text, numbers) stays upright. Palette: orange #E95B17, ink #1F1B17, white. */
 
 export const TILT = -6
 const PIN = 'M32 5C19.3 5 9 14.9 9 27.2 9 44.6 32 61 32 61s23-16.4 23-33.8C55 14.9 44.7 5 32 5z'
 const SCHEMES = {
-  orange: { pin: '#E8571C', inner: '#FFFFFF', cap: '#1F1B17' },   // the default: on light and dark surfaces
-  inv: { pin: '#FFFFFF', inner: '#E8571C', cap: '#1F1B17' },      // on an orange tile (app icon, primary buttons)
+  orange: { pin: '#E95B17', inner: '#FFFFFF', cap: '#1F1B17' },   // the default: on light and dark surfaces
+  inv: { pin: '#FFFFFF', inner: '#E95B17', cap: '#1F1B17' },      // on an orange tile (app icon, primary buttons)
   mono: { pin: '#1F1B17', inner: '#FFFFFF', cap: '#6E675F' },     // one-colour print, favicons on dark
 }
 export type MarkScheme = keyof typeof SCHEMES
