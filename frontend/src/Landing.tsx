@@ -4,7 +4,7 @@ import { HowItWorks } from './HowItWorks'
 import { useEffect, useState } from 'react'
 import { api } from './api'
 
-export const PRODUCT = { name: '旅剪', en: 'TravelCut', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
+export const PRODUCT = { name: '旅剪 TravelCut', en: 'TravelCut', brand: '人客多 Lakeze', tagline: '旅遊短影音自動剪片軟體' }
 const MARKET = { days: 3, low: 2000, high: 3000 }      // what a studio charges today
 // One video with cover and 2 revision rounds (the usual path to a final cut). The NT$ numbers follow the
 // point price set on the dashboard (/api/pricing); these are only the first paint before it loads.
@@ -98,7 +98,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
         <b>第一支免費，試了就知道。</b>
         <a className="btn primary lg" onClick={onStart}>免費試做第一支</a>
       </section>
-      <footer className="ld-footer muted small">© {PRODUCT.brand} · {PRODUCT.tagline} · <a href="/privacy">隱私權政策</a> · <a href="/terms">服務條款</a></footer>
+      <footer className="ld-footer muted small">{PRODUCT.name} · © {PRODUCT.brand} · {PRODUCT.tagline} · <a href="/privacy">隱私權政策</a> · <a href="/terms">服務條款</a></footer>
     </div>
   )
 }

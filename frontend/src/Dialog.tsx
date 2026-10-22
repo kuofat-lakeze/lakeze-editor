@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Mark } from './Logo'
 
 /* Our own prompt / confirm / alert. The browser's built-in ones are headed with the bare domain
-   ("editor.lakeze.com 顯示"), which looks like a scam; these carry the 人客多 旅剪 name instead.
+   ("editor.lakeze.com 顯示"), which looks like a scam; these carry the 旅剪 TravelCut name instead.
    Usage: `const name = await ask.prompt('專案名稱')`, `if (!await ask.confirm('刪除？')) return`. */
 type Req = {
   kind: 'prompt' | 'confirm' | 'alert'; message: string; placeholder?: string; value?: string
@@ -38,7 +38,7 @@ export function DialogHost() {
     <div className="dlg-scrim" onMouseDown={e => { if (e.target === e.currentTarget) cancel() }}
       onKeyDown={e => { if (e.key === 'Escape') cancel() }}>
       <div className="dlg" role="dialog" aria-modal="true">
-        <div className="dlg-brand"><Mark size={24} /><span>人客多 旅剪</span></div>
+        <div className="dlg-brand"><Mark size={24} /><span>旅剪 TravelCut</span></div>
         <div className="dlg-msg">{cur.message}</div>
         {cur.kind === 'prompt' && (
           <input ref={input} className="dlg-in" value={val} placeholder={cur.placeholder} onChange={e => setVal(e.target.value)}

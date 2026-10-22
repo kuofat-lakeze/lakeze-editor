@@ -57,7 +57,7 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
             {STEPS.map(s => <li key={s.n}><span className="n">{s.n}</span><div><b>{s.t}</b><div className="muted small">{s.d}</div></div></li>)}
           </ol>
         </div>
-        <div className="auth-foot muted small">人客多 Lakeze · 旅遊短影音自動剪片軟體</div>
+        <div className="auth-foot muted small">旅剪 TravelCut · 人客多 Lakeze · 旅遊短影音自動剪片軟體</div>
       </aside>
 
       <main className="auth-panel">

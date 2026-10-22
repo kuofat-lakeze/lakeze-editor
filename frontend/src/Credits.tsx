@@ -176,7 +176,7 @@ export function Credits({ initialTab = 'plans', needPoints = 0, onClose, onOpenP
             <ReferralCard onPlans={() => setTab('plans')} />
 
             <section className="card wins">
-              <div className="wins-head"><b>你的成果</b><span className="muted small">用旅剪到現在</span></div>
+              <div className="wins-head"><b>你的成果</b><span className="muted small">用旅剪 TravelCut 到現在</span></div>
               <div className="wins-grid">
                 <div><span>完成影片</span><b>{doneVideos}<small> 支</small></b></div>
                 <div><span>修改</span><b>{revRounds}<small> 輪</small></b></div>

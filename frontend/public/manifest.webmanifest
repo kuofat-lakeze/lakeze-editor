@@ -1,6 +1,6 @@
 {
   "name": "旅剪 TravelCut · 旅遊短影音自動剪片",
-  "short_name": "旅剪",
+  "short_name": "旅剪 TravelCut",
   "description": "丟影片或照片、說賣點，15 分鐘自動剪出有旁白、配樂、字幕的旅遊短影音和封面。",
   "start_url": "/",
   "display": "standalone",

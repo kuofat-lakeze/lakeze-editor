@@ -170,7 +170,7 @@ function Phone({ step }: { step: number }) {
     <div className="phone" data-step={step}>
       <div className="phone-notch" />
       <div className="phone-screen">
-        <div className="ps-bar"><Mark size={18} /><span>旅剪</span><i /></div>
+        <div className="ps-bar"><Mark size={18} /><span>旅剪 TravelCut</span><i /></div>
 
         {/* screen 1: upload queue with videos and photos mixed, exactly like the app */}
         <div className={`ps ps-upload ${step === 0 ? 'on' : ''}`} style={{ ['--i' as string]: 0 }}>

@@ -400,7 +400,7 @@ async def clone_voice(file: UploadFile, name: str = Form("我的聲音"), user: 
         except Exception:
             pass
     try:
-        vid = await asyncio.to_thread(eleven.add_voice, f"{label} · {user.email}", mp3, "旅剪 用戶自訂聲音")
+        vid = await asyncio.to_thread(eleven.add_voice, f"{label} · {user.email}", mp3, "旅剪 TravelCut 用戶自訂聲音")
     except Exception as e:
         raise HTTPException(502, f"聲音建立失敗：{str(e)[:200]}")
     async with Session() as s:

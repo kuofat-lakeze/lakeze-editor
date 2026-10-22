@@ -7,7 +7,7 @@ import { LineIcon, MessengerIcon, shareToLine, shareToMessenger } from './share'
    The reward lands when the friend finishes their first video, so the list shows that step explicitly.
    Non-subscribers see the 60-點 version as the reason to subscribe. */
 const inviteText = (url: string, signup: number) =>
-  `我用「旅剪」丟影片 15 分鐘就剪好一支短影音，推薦你試試 🎬\n用我的連結註冊送 ${signup} 點，第一支免費 👉 ${url}`
+  `我用「旅剪 TravelCut」丟影片 15 分鐘就剪好一支短影音，推薦你試試 🎬\n用我的連結註冊送 ${signup} 點，第一支免費 👉 ${url}`
 
 export function ReferralCard({ onPlans, compact }: { onPlans?: () => void; compact?: boolean }) {
   const [r, setR] = useState<Referral | null>(null)

@@ -33,7 +33,7 @@ export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void })
     <div className="dash">
       <header className="dash-top">
         <Mark size={26} />
-        <span className="dash-title">旅剪 管理後台 <small>CRM</small></span>
+        <span className="dash-title">旅剪 TravelCut 管理後台 <small>CRM</small></span>
         <img className="logo dash-by" src={logo} alt="Lakeze" />
         <nav className="dnav">
           <a className={tab === 'overview' ? 'on' : ''} onClick={() => setTab('overview')}>總覽</a>

@@ -4,7 +4,7 @@
    On phones a facebook.com share URL lands in a browser that isn't logged in (or the FB app's home), so
    the post never gets composed; the system share sheet hands the link to the FB app's own composer. */
 export const promoText = (name: string, url: string, points = 110) =>
-  `${name} 的短影音出爐 🎬 用「旅剪」15 分鐘剪好。\n註冊送 ${points} 點，第一支免費 👉 ${url}`
+  `${name} 的短影音出爐 🎬 用「旅剪 TravelCut」15 分鐘剪好。\n註冊送 ${points} 點，第一支免費 👉 ${url}`
 
 const enc = encodeURIComponent
 export const isMobile = () =>
@@ -19,7 +19,7 @@ export function shareToFacebook(url: string, text: string, appId?: string | null
     navigator.share({ url }).catch(() => {})
     return 'sheet'
   }
-  const tag = enc('#旅剪')
+  const tag = enc('#旅剪TravelCut')
   const u = appId
     ? `https://www.facebook.com/dialog/share?app_id=${enc(appId)}&href=${enc(url)}&hashtag=${tag}&display=popup`
     : `https://www.facebook.com/sharer/sharer.php?u=${enc(url)}&hashtag=${tag}`

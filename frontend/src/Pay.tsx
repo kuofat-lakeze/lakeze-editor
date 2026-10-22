@@ -145,7 +145,7 @@ export function PayResult({ orderId, onDone }: { orderId: string; onDone: () => 
     <div className="pay-page">
       <div className="card pay">
         <Progress at={status === 'paid' ? 3 : status === 'failed' || status === 'cancelled' ? 1 : 2} />
-        {err && <div className="pay-done fail"><div className="pd-ic">⚠️</div><b>找不到這筆訂單</b><span className="muted small">{err}</span><button className="btn block" onClick={onDone}>回到旅剪</button></div>}
+        {err && <div className="pay-done fail"><div className="pd-ic">⚠️</div><b>找不到這筆訂單</b><span className="muted small">{err}</span><button className="btn block" onClick={onDone}>回到旅剪 TravelCut</button></div>}
         {!err && !order && <div className="pay-done"><span className="spinner" /><b>確認付款中…</b></div>}
         {status === 'pending' && order?.atm && (
           <div className="pay-done wait">

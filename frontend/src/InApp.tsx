@@ -38,7 +38,7 @@ export function InAppGuide({ compact = false }: { compact?: boolean }) {
     <div className="iab">
       <div className="iab-arrow" aria-hidden="true"><span>點這裡</span><i>↗</i></div>
       <div className="iab-card">
-        <b className="iab-title">請用 {browser} 開啟旅剪</b>
+        <b className="iab-title">請用 {browser} 開啟旅剪 TravelCut</b>
         <p className="iab-sub">你現在是在 {app} 裡面打開的。{app} 的內建視窗常常選不到影片、也會登出，換到 {browser} 就順了。</p>
         <ol className="iab-steps">
           <li><i>1</i><span>點右上角的 <em className="iab-dots">⋯</em>{IN_LINE ? '（或右下角的分享圖示）' : ''}</span></li>
