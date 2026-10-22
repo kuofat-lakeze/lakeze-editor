@@ -42,20 +42,22 @@ export function Mark({ size = 40, scheme = 'orange', tilt = TILT, clapper = true
   )
 }
 
-/* The wordmark. `en` is TravelCut (Manrope: Travel 600 ink, Cut 800 orange, Cut leans 6°); `zh` is
-   旅剪 with the same rule (旅 ink, 剪 orange and leaning). */
-export function Wordmark({ lang = 'en', className = '' }: { lang?: 'en' | 'zh'; className?: string }) {
-  return lang === 'en'
-    ? <span className={`tc-word en ${className}`} aria-label="TravelCut"><span>Travel</span><span className="tc-cut" aria-hidden="true">Cut</span><span className="sr-only">Cut</span></span>
-    : <span className={`tc-word zh ${className}`} aria-label="旅剪"><span>旅</span><span className="tc-cut" aria-hidden="true">剪</span><span className="sr-only">剪</span></span>
+/* The wordmark. `both` (the default) is 旅剪 TravelCut: the Chinese name first in Noto Sans TC 900 ink,
+   then Travel 600 ink and Cut 800 orange in Manrope, only the Cut leaning 6°. `en` and `zh` are the
+   single-language cuts for tight spots. */
+export function Wordmark({ lang = 'both', className = '' }: { lang?: 'both' | 'en' | 'zh'; className?: string }) {
+  const en = <span className="tc-en"><span>Travel</span><span className="tc-cut" aria-hidden="true">Cut</span><span className="sr-only">Cut</span></span>
+  if (lang === 'en') return <span className={`tc-word en ${className}`} aria-label="TravelCut">{en}</span>
+  if (lang === 'zh') return <span className={`tc-word zh ${className}`} aria-label="旅剪"><span>旅</span><span className="tc-cut" aria-hidden="true">剪</span><span className="sr-only">剪</span></span>
+  return <span className={`tc-word both ${className}`} aria-label="旅剪 TravelCut"><span className="tc-zh">旅剪</span>{en}</span>
 }
 
 /* Lockup: mark + wordmark, optionally a tagline line under it. `--mj` is the mark size; every other
    measure in the lockup is a ratio of it, so one number scales the whole thing. `light` is for dark
    surfaces (white text, soft-orange Cut). */
-export function Logo({ size = 40, lang = 'en', tagline = false, className = '', light = false }:
-  { size?: number; lang?: 'en' | 'zh'; tagline?: boolean | string; className?: string; light?: boolean }) {
-  const tag = tagline === true ? (lang === 'en' ? '旅剪 · 旅遊短影音自動剪片軟體' : 'TravelCut · 旅遊短影音自動剪片軟體') : tagline
+export function Logo({ size = 40, lang = 'both', tagline = false, className = '', light = false }:
+  { size?: number; lang?: 'both' | 'en' | 'zh'; tagline?: boolean | string; className?: string; light?: boolean }) {
+  const tag = tagline === true ? (lang === 'en' ? '旅剪 · 旅遊短影音自動剪片軟體' : lang === 'zh' ? 'TravelCut · 旅遊短影音自動剪片軟體' : '旅遊短影音自動剪片軟體') : tagline
   return (
     <span className={`tc-logo ${light ? 'light' : ''} ${className}`} style={{ ['--mj' as string]: `${size}px` }}>
       <Mark size={size} />

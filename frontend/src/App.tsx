@@ -140,7 +140,7 @@ function Workspace() {
       {menu && <div className="scrim" onClick={() => setMenu(false)} />}
 
       <aside className={`sidebar ${menu ? 'open' : ''}`}>
-        <div className="brand"><Logo size={30} lang="zh" /><img className="logo brand-by" src={logo} alt="人客多 Lakeze" title="人客多 Lakeze" /></div>
+        <div className="brand"><Logo size={30} /><img className="logo brand-by" src={logo} alt="人客多 Lakeze" title="人客多 Lakeze" /></div>
         <div className={`balance card ${view === 'credits' ? 'active' : ''}`} onClick={() => showCredits()}>
           <div className="muted small">點數餘額</div>
           <div className="big">{me.balance}</div>

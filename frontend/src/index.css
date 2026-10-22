@@ -73,7 +73,10 @@ textarea { resize: none; flex: 1; min-height: 44px; max-height: 160px; }
 .tc-mark { flex: none; display: block; }
 .tc-text { display: flex; flex-direction: column; gap: calc(var(--mj, 40px) * .14); }
 .tc-word { display: inline-flex; align-items: baseline; line-height: 1; white-space: nowrap; color: var(--text); }
-.tc-word.en { font-family: "Manrope", "Inter", "Helvetica Neue", Arial, sans-serif; font-weight: 600; font-size: calc(var(--mj, 40px) * .6); letter-spacing: -.03em; }
+.tc-word.en, .tc-en { font-family: "Manrope", "Inter", "Helvetica Neue", Arial, sans-serif; font-weight: 600; font-size: calc(var(--mj, 40px) * .6); letter-spacing: -.03em; }
+.tc-word.both { gap: calc(var(--mj, 40px) * .2); }
+.tc-word.both .tc-zh { font-family: "Noto Sans TC", "PingFang TC", "Heiti TC", sans-serif; font-weight: 900; font-size: calc(var(--mj, 40px) * .6); letter-spacing: .04em; }
+.tc-word.both .tc-en { font-size: calc(var(--mj, 40px) * .5); }
 .tc-word.zh { font-family: "Noto Sans TC", "PingFang TC", "Heiti TC", sans-serif; font-weight: 900; font-size: calc(var(--mj, 40px) * .72); letter-spacing: .04em; }
 .tc-cut { display: inline-block; color: var(--brand); font-weight: 800; transform: rotate(-6deg) translateY(-.06em); transform-origin: 40% 80%; margin-left: .04em; }
 .tc-word.zh .tc-cut { margin-left: .06em; }
