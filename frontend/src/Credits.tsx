@@ -5,7 +5,7 @@ import { StorageInline } from './Storage'
 import { ReferralCard } from './Referral'
 
 // Fixed categorical order, validated for colour-vision separation on the light surface.
-const CAT_COLOR: Record<string, string> = { cut: '#E8571C', audio: '#1B7AC3', subs: '#2E9E8F', export: '#7B61C4', cover: '#B8860B', storage: '#5B6B7A' }
+const CAT_COLOR: Record<string, string> = { cut: '#E95B17', audio: '#1B7AC3', subs: '#2E9E8F', export: '#7B61C4', cover: '#B8860B', storage: '#5B6B7A' }
 export type CreditsTab = 'overview' | 'projects' | 'ledger' | 'plans' | 'buy' | 'storage' | 'referral'
 const TABS: { id: CreditsTab; label: string }[] = [
   { id: 'plans', label: '選方案' }, { id: 'overview', label: '我的方案' }, { id: 'projects', label: '專案明細' }]

@@ -230,7 +230,7 @@ function Phone({ step }: { step: number }) {
             </div>
           </div>
           <div className="ps-actions"><span>下載</span><span className="pri glow">分享給朋友</span></div>
-          <div className="ps-confetti" aria-hidden="true">{Array.from({ length: 14 }).map((_, i) => <i key={i} style={{ left: `${(i * 7.3) % 100}%`, animationDelay: `${(i % 7) * .12}s`, background: ['#EC5A1E', '#F5921E', '#46B9BD', '#1B7AC3', '#FFD23F'][i % 5] }} />)}</div>
+          <div className="ps-confetti" aria-hidden="true">{Array.from({ length: 14 }).map((_, i) => <i key={i} style={{ left: `${(i * 7.3) % 100}%`, animationDelay: `${(i % 7) * .12}s`, background: ['#E95B17', '#F08D34', '#46B9BD', '#1B7AC3', '#FFD23F'][i % 5] }} />)}</div>
         </div>
       </div>
     </div>
