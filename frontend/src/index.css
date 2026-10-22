@@ -2489,3 +2489,10 @@ body.easy .recbar-lab em { font-size: 22px; } body.easy .recbar-stop { font-size
 .pv-steps { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border-radius: 10px; background: var(--panel2); font-size: 13px; font-weight: 700; color: var(--text); }
 .pv-steps span { display: inline-flex; align-items: center; gap: 5px; } .pv-steps span i { width: 22px; height: 22px; border-radius: 7px; background: #fff; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; color: var(--brand); } .pv-steps span i svg { width: 13px; height: 13px; }
 .pv-steps b { color: var(--muted); font-weight: 600; } .pv-steps small { margin-left: auto; font-weight: 500; color: var(--muted); font-size: 12px; }
+
+/* 我親自配音: three recording tips instead of a sentence; the live strip warns when the signal is off */
+.own-tips { display: flex; gap: 8px; flex-wrap: wrap; }
+.own-tips span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--text); padding: 7px 10px 7px 7px; border-radius: 999px; background: var(--panel2); }
+.own-tips span i { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; color: var(--brand); } .own-tips span i svg { width: 12px; height: 12px; }
+.recbar.warn { background: #5A2A14; } .recbar-hint.live { display: block; color: #FFD23F; font-weight: 700; }
+@media (max-width: 639px) { .recbar-hint.live { display: block; } .recbar.warn .recbar-meter { display: none; } }

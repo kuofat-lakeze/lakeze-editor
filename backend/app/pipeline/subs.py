@@ -118,9 +118,13 @@ def build_ass(vo: list[dict], supers: list[dict], counter: dict | None, dest: Pa
     return dest
 
 
-def burn(base: Path, ass: Path, dest: Path, dark_window: tuple[float, float] | None = None) -> Path:
+def burn(base: Path, ass: Path, dest: Path, dark_window: tuple[float, float] | None = None, pad: float = 0.0) -> Path:
+    """Captions onto the picture. `pad` holds the last frame that many extra seconds, for narration
+    (an owner's own takes, usually) that runs past the cut."""
     fonts = ensure_fonts()
     vf = ""
+    if pad > 0.05:
+        vf += f"tpad=stop_mode=clone:stop_duration={pad:.2f},"
     if dark_window:
         vf += f"eq=brightness=-0.12:saturation=0.8:enable='between(t,{dark_window[0]},{dark_window[1]})',"
     vf += f"ass={ass}:fontsdir={fonts}"

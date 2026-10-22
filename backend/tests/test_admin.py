@@ -552,7 +552,7 @@ def test_quick_render(client, monkeypatch, tmp_path: Path):
     monkeypatch.setattr(mix, "compose", lambda root, placements, music, dur, **kw: {"words": [], "transcript": "", "lines": []})
     built = {}
     monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, vo_scale=1.0, style="gold", **kw: built.update(vo=vo, scale=vo_scale, style=style, **kw) or dest)
-    monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None: dest.write_bytes(b"v") or dest)
+    monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None, pad=0.0: dest.write_bytes(b"v") or dest)
     def fake_export(video, mixw, out_dir, stem="final"):
         out_dir.mkdir(exist_ok=True)
         files = {k: out_dir / f"{stem}_{k}.mp4" for k in ("master", "upload", "preview")}
@@ -617,7 +617,7 @@ def test_quick_recut(monkeypatch, tmp_path: Path):
     got = {}
     monkeypatch.setattr(mix, "compose", lambda r, placements, music, dur, **kw: got.update(at=[p["at"] for p in placements], dur=dur))
     monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, **kw: got.update(supers=supers, counter=counter, **kw) or dest)
-    monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None: dest)
+    monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None, pad=0.0: dest)
     monkeypatch.setattr(mix, "mux_and_export", lambda v, m, out, stem: {})
     assert Q.shot_sources(root)[0]["src_dur"] == 20.0
     Q.render(root, {"shots": [{"i": 0, "dur": 2}]})
@@ -633,7 +633,7 @@ def test_quick_recut(monkeypatch, tmp_path: Path):
         pass
     assert (root / "work" / "cut.json").read_text() == before
     # reorder + drop: segment 2 dropped, segment 1 moved first; narration follows its segment
-    monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None: dest)
+    monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None, pad=0.0: dest)
     (root / "work" / "cut.json").write_text(J.dumps([{"i": 0, "clip": 1, "start": 1, "dur": 4, "at": 0}, {"i": 1, "clip": 2, "start": 0, "dur": 4, "at": 4},
                                                      {"i": 2, "clip": 1, "start": 6, "dur": 4, "at": 8}]))
     T.plan_update(root, "compose", {"placements": [{"key": "A", "at": 0}, {"key": "B", "at": 4.5}, {"key": "C", "at": 8.2}], "music": None, "sfx": [], "duration": 12})
@@ -644,3 +644,47 @@ def test_quick_recut(monkeypatch, tmp_path: Path):
     assert got["font"] == "kai" and got["super_style"] == "bar" and T.plan_load(root)["captions"]["font"] == "kai"
     (root / "raw" / "c2.mp4").unlink()     # originals expired: no 時間軸
     assert Q.shot_sources(root) is None
+
+
+def test_quick_take_holds_last_frame(client, monkeypatch, tmp_path: Path):
+    """我親自配音: an owner's take that runs past the picture is sped up to the cap, then the last frame is held
+    under what is left, instead of the narration being cut off at the old duration."""
+    from app import config as C, quick as Q
+    from app.agent import tools as T
+    from app.pipeline import ff, mix, subs
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = b
+    monkeypatch.setattr(C, "DATA_DIR", tmp_path)
+    pid = c.post("/api/projects", json={"name": "親自"}).json()["id"]
+    root = M.project_dir(pid)
+    vo = root / "work" / "vo"
+    vo.mkdir(parents=True, exist_ok=True)
+    for k in "ABC":
+        (vo / f"{k}.wav").write_bytes(b"RIFF")
+    (vo / "R3.mp3").write_bytes(b"mp3")
+    (root / "work" / "base.mp4").write_bytes(b"mp4")
+    T.plan_update(root, "voice", {"voice_id": "v1", "lines": {"A": "一", "B": "二", "C": "三"}})
+    T.plan_update(root, "compose", {"placements": [{"key": "A", "at": 0}, {"key": "B", "at": 3.5}, {"key": "C", "at": 7}], "music": None, "music_gain": .55, "duck_ratio": 6, "sfx": [], "duration": 12})
+    T.plan_update(root, "captions", {"vo": [{"start": 0, "end": 3, "text": "一"}, {"start": 3.5, "end": 6.5, "text": "二"}, {"start": 7, "end": 10, "text": "三"}], "supers": [], "counter": None})
+    monkeypatch.setattr(ff, "duration", lambda p: 8.0 if Path(p).name == "C.wav" else 3.0)   # the take is 8 s in a 5 s slot
+    monkeypatch.setattr(ff, "ffmpeg", lambda *args: Path(args[-1]).write_bytes(b"x"))
+    seen = {}
+    monkeypatch.setattr(mix, "compose", lambda root, placements, music, dur, **kw: seen.update(dur=dur, placements=placements) or {"words": [], "transcript": "", "lines": []})
+    monkeypatch.setattr(subs, "build_ass", lambda vo, supers, counter, dest, **kw: seen.update(vo=vo) or dest)
+    monkeypatch.setattr(subs, "burn", lambda base, ass, dest, dark=None, pad=0.0: seen.update(pad=pad) or dest.write_bytes(b"v") or dest)
+    def fake_export(video, mixw, out_dir, stem="final"):
+        out_dir.mkdir(exist_ok=True)
+        files = {k: out_dir / f"{stem}_{k}.mp4" for k in ("master", "upload", "preview")}
+        for f in files.values():
+            f.write_bytes(b"mp4")
+        return files
+    monkeypatch.setattr(mix, "mux_and_export", fake_export)
+    r = c.post(f"/api/projects/{pid}/quick", json={"lines": [{"key": "C", "take": "R3"}]})
+    assert r.status_code == 200, r.text
+    q = next(p for p in seen["placements"] if p["key"] == "C")
+    assert q["tempo"] == Q.MAX_TEMPO                       # sped up as far as allowed…
+    end = 7 + 8.0 / Q.MAX_TEMPO
+    assert abs(seen["pad"] - (end + Q.TAIL - 12)) < 0.02   # …and the picture is held for the rest
+    assert abs(seen["dur"] - (end + Q.TAIL)) < 0.02 and seen["vo"][-1]["end"] <= seen["dur"]
+    assert T.plan_load(root)["compose"]["duration"] == seen["dur"]

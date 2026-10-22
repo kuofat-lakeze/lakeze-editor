@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, verLabel, type DeliverableVersion, type ScriptInfo } from './api'
 import { RecBar, SheetHead, useRecorder } from './Recorder'
-import { IcPlay, IcStop } from './icons'
+import { IcHome, IcMic, IcPlay, IcStop, IcTimer } from './icons'
 
 /* 我親自一句一句配音: the owner reads the narration one line at a time and the recordings themselves become
    the narration — no AI voice in between (that's the other path, AI 生成我的聲音). One big line at a time,
@@ -32,14 +32,19 @@ export function OwnRead({ projectId, version, onClose, onDone, onUsage, initialT
   const rec = useRecorder(async blob => {
     if (!cur) return
     setBusy(true); setErr('')
+    const ext = blob.type.includes('wav') ? 'wav' : blob.type.includes('mp4') ? 'm4a' : 'webm'
     try {
-      const fd = new FormData(); fd.append('audio', blob, blob.type.includes('mp4') ? 'take.m4a' : 'take.webm'); fd.append('n', String(cur.n)); fd.append('mode', 'raw')
+      const fd = new FormData(); fd.append('audio', blob, `take.${ext}`); fd.append('n', String(cur.n)); fd.append('mode', 'raw')
       const res = await fetch(`/api/projects/${projectId}/take`, { method: 'POST', body: fd }); const d = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(d.detail ?? '處理錄音失敗')
       setTakes(t => ({ ...t, [cur.key!]: { take: d.key, url: d.url, secs: d.seconds } }))
+      api.clientLog('take_ok', { n: cur.n, bytes: blob.size, type: blob.type, secs: d.seconds })
       onUsage?.(); playMine(d.url)
-    } catch (x) { setErr((x as Error).message) } finally { setBusy(false) }
-  })
+    } catch (x) {
+      api.clientLog('take_err', { n: cur.n, bytes: blob.size, type: blob.type, error: (x as Error).message })
+      setErr((x as Error).message)
+    } finally { setBusy(false) }
+  }, { onEvent: (name, data) => api.clientLog(`own_${name}`, { n: cur?.n, ...data }) })
   const stopAll = () => { audio.current?.pause(); video.current?.pause(); stopAt.current = null; setPlaying(null) }
   const playOrig = () => { const v = video.current; if (!v || !cur) return; stopAll(); stopAt.current = cur.end + 0.05; v.currentTime = cur.start; v.play().then(() => setPlaying('orig')).catch(() => {}) }
   const onTime = () => { const v = video.current; if (v && stopAt.current !== null && v.currentTime >= stopAt.current) { v.pause(); stopAt.current = null; setPlaying(null) } }
@@ -58,8 +63,9 @@ export function OwnRead({ projectId, version, onClose, onDone, onUsage, initialT
   }, [i, ok]) // eslint-disable-line react-hooks/exhaustive-deps
   const apply = async () => {
     setApplying(true); setErr('')
+    api.clientLog('own_apply', { takes: Object.keys(takes).length })
     try { await api.quick(projectId, { lines: Object.entries(takes).map(([key, t]) => ({ key, take: t.take })) }); onUsage?.(); onDone?.(); onClose() }
-    catch (x) { const ex = x as Error & { needed?: number }; setErr(ex.needed ? '點數不足，先儲值再套用' : ex.message); setApplying(false) }
+    catch (x) { const ex = x as Error & { needed?: number }; api.clientLog('own_apply_err', { error: ex.message }); setErr(ex.needed ? '點數不足，先儲值再套用' : ex.message); setApplying(false) }
   }
   const cancel = () => { if (!applying && !rec.rec) onClose() }   // ← 返回 keeps the takes (Chat holds them)
   const mine = cur ? takes[cur.key!] : undefined
@@ -79,7 +85,9 @@ export function OwnRead({ projectId, version, onClose, onDone, onUsage, initialT
             <div className={`own-now ${playing ? 'on' : ''}`} aria-live="polite">
               {playing === 'orig' ? <><i className="own-eq"><b /><b /><b /></i>正在播：原本的配音</> : playing === 'mine' ? <><i className="own-eq"><b /><b /><b /></i>正在播：我唸的</> : mine ? '這句已經換成你唸的，可以再聽或重唸' : '到每一句都會先播現在的配音給你聽'}
             </div>
-            <div className="own-tip">{i === 0 && n === 0 ? '手機拿近一點，用平常講話的語氣，照著唸這一句就好。' : mine ? '聽聽看；可以重唸，或往下一句。' : '按下麥克風開始唸，唸完按右邊。'}</div>
+            {n === 0 && !rec.rec
+              ? <div className="own-tips" aria-label="收音小技巧"><span><i><IcMic /></i>手機離嘴 20 公分</span><span><i><IcHome /></i>找安靜的地方</span><span><i><IcTimer /></i>唸完停一秒再按</span></div>
+              : <div className="own-tip">{mine ? '聽聽看；可以重唸，或往下一句。' : '按下麥克風開始唸，唸完按右邊。'}</div>}
             <div className={`own-line ${rec.rec ? 'live' : ''}`}>
               <span className="own-n">{i + 1}</span>
               <p>{cur.text}</p>

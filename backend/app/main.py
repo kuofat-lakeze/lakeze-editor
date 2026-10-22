@@ -1180,7 +1180,7 @@ async def line_take(project_id: str, audio: UploadFile, n: int = Form(...), voic
                 src.write_bytes(data)
                 wav = Path(td) / "take.wav"
                 await asyncio.to_thread(ff.ffmpeg, "-i", str(src), "-vn", "-ac", "1", "-ar", "44100",
-                                        "-af", "highpass=f=80,afftdn=nf=-25,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.15,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.25,areverse,loudnorm=I=-16:TP=-1.5", str(wav))
+                                        "-af", "highpass=f=80,afftdn=nf=-25,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.15,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.25,areverse,acompressor=threshold=-18dB:ratio=2.5:attack=8:release=120:makeup=2,loudnorm=I=-16:TP=-1.5", str(wav))
                 seconds = await asyncio.to_thread(ff.duration, wav)
                 if seconds < 0.5:
                     raise HTTPException(400, "錄音太短，再唸一次")

@@ -17,6 +17,8 @@ from .pipeline.footage import load_index
 log = logging.getLogger("quick")
 
 GAP = 0.15          # seconds kept between consecutive lines when a re-voiced one grew
+TAIL = 0.4          # seconds of picture kept after the last word
+MAX_PAD = 12.0      # the most the picture is stretched to fit narration that outgrew it
 MIN_TEMPO, MAX_TEMPO = 0.9, 1.35
 MIN_SHOT = 0.6      # shortest segment the 時間軸 allows
 
@@ -270,9 +272,15 @@ def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
             timing[q["key"]] = (s, e)
         prev_end = e
 
-    # 3. mix
+    # 3. mix. Narration that now ends after the picture (slower own takes, pushed-back lines) gets the
+    #    last frame held under it instead of being cut off.
     base = root / "work" / "base.mp4"
     dur = new_dur if tmap else float(comp.get("duration") or (ff.duration(base) if base.exists() else 37.0))
+    last_end = max((e for _, e in timing.values()), default=0.0)
+    pad = 0.0
+    if last_end + TAIL > dur:
+        pad = round(min(MAX_PAD, last_end + TAIL - dur), 2)
+        dur = round(dur + pad, 2)
     music = root / "work" / f"{comp['music']}.mp3" if comp.get("music") else None
     if music and not music.exists():
         music = None
@@ -310,7 +318,7 @@ def _render(root: Path, edits: dict, *, record_usage=None) -> dict:
     super_style = edits.get("super_style") if edits.get("super_style") in subs.SUPER_STYLES else caps.get("super_style", subs.DEFAULT_SUPER)
     ass = subs.build_ass(vo, supers, counter, root / "work" / "subs.ass", vo_scale=scale, style=style, font=font, super_style=super_style)
     dark = (float(counter["start"]) - 0.6, float(counter["end"])) if counter else None
-    video = subs.burn(base, ass, root / "work" / "video.mp4", dark)
+    video = subs.burn(base, ass, root / "work" / "video.mp4", dark, pad=pad)
 
     # 5. export
     files = mix.mux_and_export(video, root / "work" / "mix.wav", root / "out", plan.get("export", {}).get("stem", "final"))
