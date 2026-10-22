@@ -3,7 +3,7 @@ import { api, verLabel, type DeliverableVersion, type LineEdit, type QuickEdits,
 import { RecBar, SheetHead, useRecorder } from './Recorder'
 import { FixSay } from './Pronounce'
 import { sayCached, useLinePreview } from './preview'
-import { IcMic, IcMinus, IcPencil, IcPlay, IcSpeech, IcStop, IcUndo } from './icons'
+import { IcCheck, IcClip, IcMic, IcMinus, IcPencil, IcPlay, IcSpeech, IcStop, IcUndo } from './icons'
 
 /* 校對旁白 (輕鬆模式): the finished video and its narration, one big row per line. Each row can be
    listened to, re-read by the owner (speech-to-speech in the video's voice) or dropped — the picture
@@ -116,7 +116,7 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
   return (
     <div className="pf-scrim" onClick={e => { if (e.target === e.currentTarget) cancel() }}>
       <div className="pf" role="dialog" aria-label="改配音">
-        <SheetHead title="改配音" badge={version ? verLabel(version.version) : undefined} sub={changed ? '改了還沒套用 · 可先逐句聽，影片套用後才更新' : '一句一句聽，不對就改'} onCancel={cancel} cancelLabel="← 返回"
+        <SheetHead title="改配音" badge={version ? verLabel(version.version) : undefined} sub={changed ? '先聽，再套用' : '一句一句聽，不對就改'} onCancel={cancel} cancelLabel="← 返回"
           right={<button className="btn primary small" disabled={changed === 0 || applying} onClick={apply}>{applying ? '輸出中…' : '套用'}</button>} />
         <div className="pf-body">
           <div className="pf-video">
@@ -126,7 +126,10 @@ export function Proof({ projectId, version, onClose, onUsage, onDone, onOwnVoice
               <div className="pv-bar on" role="status" aria-live="polite"><i className="own-eq"><b /><b /><b /></i>
                 <span>正在聽改好的第 {Math.max(1, keptRows.findIndex(r => r.line.key === pv.on) + 1)} 句 · 畫面是原本的，配音是新的</span><a onClick={pv.stop}>停</a></div>
             ) : changed > 0 ? (
-              <div className="pv-bar"><i aria-hidden="true">ⓘ</i><span>改好的句子可以先按「聽改好的」；整支影片要按「套用修改」重新輸出後才會更新。{info?.say_points ? `生成新配音每句 ${info.say_points} 點，自己唸的免費。` : ''}</span></div>
+              <div className="pv-steps" role="note" aria-label="改好後：先聽，再套用，影片才會更新">
+                <span><i><IcPlay /></i>先聽</span><b aria-hidden="true">›</b><span><i><IcCheck /></i>套用</span><b aria-hidden="true">›</b><span><i><IcClip /></i>影片更新</span>
+                {info?.say_points ? <small>每句 {info.say_points} 點 · 自己唸免費</small> : null}
+              </div>
             ) : null}
           </div>
           <ol className="pf-lines ez">

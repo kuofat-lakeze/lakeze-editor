@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type Me, type Providers } from './api'
-import logo from './assets/logo.png'
-import { Logo } from './Logo'
+import { Logo, PoweredBy } from './Logo'
 import { IN_FB } from './InApp'
 
 const STEPS = [
@@ -49,7 +48,7 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
   return (
     <div className="auth">
       <aside className="auth-visual">
-        <img className="logo" src={logo} alt="Lakeze 人客多" onClick={onBack} style={{ cursor: onBack ? 'pointer' : undefined }} />
+        <a className="auth-home" onClick={onBack} style={{ cursor: onBack ? 'pointer' : undefined }}><Logo size={28} /></a>
         <div className="auth-copy">
           <h1><Logo size={64} tagline /></h1>
           <p>給素材和賣點，就能收到有旁白、配樂、雙層字幕的直式影片與封面。註冊送 110 點，夠做第一支。</p>
@@ -57,7 +56,7 @@ export function Login({ onDone, initialMode = 'login', onBack, initialError = ''
             {STEPS.map(s => <li key={s.n}><span className="n">{s.n}</span><div><b>{s.t}</b><div className="muted small">{s.d}</div></div></li>)}
           </ol>
         </div>
-        <div className="auth-foot muted small">旅剪 TravelCut · 人客多 Lakeze · 旅遊短影音自動剪片軟體</div>
+        <div className="auth-foot muted small"><PoweredBy /> · 旅遊短影音自動剪片軟體</div>
       </aside>
 
       <main className="auth-panel">

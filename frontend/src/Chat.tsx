@@ -7,7 +7,7 @@ import { OwnRead, type Take } from './OwnRead'
 import { Timeline } from './Timeline'
 import { Deliverables } from './Deliverables'
 import { RecBar, useRecorder } from './Recorder'
-import { IcClip, IcKeyboard, IcPencil } from './icons'
+import { IcClip, IcKeyboard } from './icons'
 import { CAPTION_STYLES, CapPicker, FONTS, FontPicker, SUPER_STYLES, SuperPicker, StyleHint } from './captionStyles'
 import { VoiceCloneDialog } from './VoiceClone'
 import { CLOUD_SECS_PER_VIDEO, CloudDl, DropZone, PickGuide, needsPickGuide, MAX_FILES, MAX_FILE_BYTES, UploadQueue, fmtMB, type Up } from './Uploads'
@@ -617,7 +617,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
     return (
       <div className={`an-sec miss ${brief ? 'ez-miss' : ''}`}>
         <div className="miss-h"><b>{brief ? '還要補的' : '還缺'}</b>
-          <span className="muted small">{!items.length ? '都齊了' : !open.length ? '都處理好了' : brief ? '補了影片更完整，也可以先不補' : '改那句旁白、直接填或補素材，也可以先不補'}</span>
+          <span className="muted small">{!items.length ? '都齊了' : !open.length ? '都處理好了' : brief ? '補了影片更完整，也可以先不補' : '直接填或補素材，也可以先不補'}</span>
           {open.length > 1 && <a className="small" onClick={() => open.forEach(i => skipMiss(i.m, true))}>全部先不補</a>}
         </div>
         {items.map(it => {
@@ -631,20 +631,19 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                 <span className="spacer" />
                 {it.state === 'skip' && <a className="small" onClick={() => skipMiss(it.m, false)}>還是要補</a>}
                 {it.state === 'line' && <a className="small" onClick={() => (brief ? (goStep(1), setTimeout(() => jumpMissing(it), 80)) : jumpMissing(it))}>再改</a>}
-                {it.state === 'fill' && !brief && missOpen !== it.m && <a className="small" onClick={() => setMissOpen(it.m)}>改</a>}
+                {it.state === 'fill' && missOpen !== it.m && <a className="small" onClick={() => setMissOpen(it.m)}>改</a>}
                 {it.state === 'footage' && missBusy !== it.m && <a className="small" onClick={() => addFootage(it.m)}>再加</a>}
               </div>
               {boxOpen && (
                 <div className="miss-in">
-                  <input value={fills[it.m] ?? ''} placeholder={hint(it.m) || `寫在這裡`} autoFocus={!brief && missOpen === it.m && !fills[it.m]} inputMode={/價格|價錢|費用|電話/.test(it.m) ? 'text' : undefined}
+                  <input value={fills[it.m] ?? ''} placeholder={hint(it.m) || `寫在這裡`} autoFocus={missOpen === it.m && !fills[it.m]} inputMode={/價格|價錢|費用|電話/.test(it.m) ? 'text' : undefined}
                     onChange={e => setFills(f => ({ ...f, [it.m]: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { (e.target as HTMLInputElement).blur(); setMissOpen(null) } }} />
-                  {!brief && <button type="button" className="btn small primary" onClick={() => setMissOpen(null)}>好了</button>}
+                  <button type="button" className="btn small primary" onClick={() => setMissOpen(null)}>好了</button>
                 </div>
               )}
               {it.state === 'open' && missBusy !== it.m && (
                 <div className="miss-acts">
-                  {it.kind === 'info' && it.line && <button type="button" className="pf-tb" onClick={() => (brief ? (goStep(1), setTimeout(() => jumpMissing(it), 80)) : jumpMissing(it))}><i><IcPencil /></i>改那句旁白</button>}
-                  {it.kind === 'info' && !brief && !boxOpen && <button type="button" className="pf-tb" onClick={() => setMissOpen(it.m)}><i><IcKeyboard /></i>直接填</button>}
+                  {it.kind === 'info' && !boxOpen && <button type="button" className="pf-tb" onClick={() => setMissOpen(it.m)}><i><IcKeyboard /></i>直接填</button>}
                   {it.kind === 'footage' && <button type="button" className="pf-tb" onClick={() => addFootage(it.m)}><i><IcClip /></i>補上傳素材</button>}
                   <button type="button" className="pf-tb quiet" onClick={() => skipMiss(it.m, true)}>先不補</button>
                 </div>
@@ -905,7 +904,7 @@ export function Chat({ projectId, name, easy = false, onUsage, onTopUp, onCredit
                       </div>
                       {theme === 'custom' && (
                         <div className="theme-in">
-                          <input autoFocus value={themeText} maxLength={30} placeholder="例如：老屋改建、親子一日遊、手沖咖啡" onChange={e => setThemeText(e.target.value)} />
+                          <input autoFocus value={themeText} maxLength={30} placeholder="例如：老屋改建、親子一日遊、手沖咖啡" name="video-topic" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} enterKeyHint="done" data-lpignore="true" data-form-type="other" onChange={e => setThemeText(e.target.value)} />
                           <div className="chips inline">{['老屋改建', '親子一日遊', '手沖咖啡', '夜市美食', '露營車', '婚禮花絮'].map(x => <a key={x} className={`chipbtn ${themeText === x ? 'on' : ''}`} onClick={() => setThemeText(x)}>{x}</a>)}</div>
                         </div>
                       )}

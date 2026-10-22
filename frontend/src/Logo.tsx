@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import lakeze from './assets/logo.png'
 
 /* 旅剪 TravelCut identity (CI "T3c"). One shape: a location pin (旅遊) with a play triangle inside (影片)
    and a dark clapper head cut across its top (剪接, 開拍) — three tiny white slate marks on the head.
@@ -50,6 +51,11 @@ export function Wordmark({ lang = 'both', className = '' }: { lang?: 'both' | 'e
   if (lang === 'en') return <span className={`tc-word en ${className}`} aria-label="TravelCut">{en}</span>
   if (lang === 'zh') return <span className={`tc-word zh ${className}`} aria-label="旅剪"><span>旅</span><span className="tc-cut" aria-hidden="true">剪</span><span className="sr-only">剪</span></span>
   return <span className={`tc-word both ${className}`} aria-label="旅剪 TravelCut"><span className="tc-zh">旅剪</span>{en}</span>
+}
+
+/* The company credit: a quiet "powered by" with the 人客多 Lakeze logo, never competing with the product lockup. */
+export function PoweredBy({ className = '' }: { className?: string }) {
+  return <span className={`pwr ${className}`}><span>powered by</span><img src={lakeze} alt="人客多 Lakeze" title="人客多 Lakeze" /></span>
 }
 
 /* Lockup: mark + wordmark, optionally a tagline line under it. `--mj` is the mark size; every other

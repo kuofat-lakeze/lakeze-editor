@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, type PricePreview, type Costs, type Order, type AdminUser, type AdminUserDetail, type Dashboard, type DashRow, type Me, type Stage } from './api'
-import logo from './assets/logo.png'
-import { Mark } from './Logo'
+import { Mark, PoweredBy } from './Logo'
 import { ask } from './Dialog'
 
 /* 管理後台 / CRM. Served at /dashboard on the app host and as the whole page on dashboard.editor.lakeze.com. */
@@ -34,7 +33,7 @@ export function DashboardApp({ me, onLogout }: { me: Me; onLogout: () => void })
       <header className="dash-top">
         <Mark size={26} />
         <span className="dash-title">旅剪 TravelCut 管理後台 <small>CRM</small></span>
-        <img className="logo dash-by" src={logo} alt="Lakeze" />
+        <PoweredBy className="dash-by" />
         <nav className="dnav">
           <a className={tab === 'overview' ? 'on' : ''} onClick={() => setTab('overview')}>總覽</a>
           <a className={tab === 'users' ? 'on' : ''} onClick={() => setTab('users')}>用戶 {users.length ? <span className="cnt">{users.length}</span> : null}</a>

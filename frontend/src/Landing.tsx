@@ -1,5 +1,4 @@
-import logo from './assets/logo.png'
-import { Logo } from './Logo'
+import { Logo, PoweredBy } from './Logo'
 import { HowItWorks } from './HowItWorks'
 import { useEffect, useState } from 'react'
 import { api } from './api'
@@ -47,7 +46,7 @@ export function Landing({ onStart, onLogin }: { onStart: () => void; onLogin: ()
     <div className="landing">
       <header className="ld-nav">
         <Logo size={28} />
-        <img className="logo ld-by" src={logo} alt={PRODUCT.brand} title={PRODUCT.brand} />
+        <PoweredBy className="ld-by" />
         <span className="spacer" />
         <a className="btn ghost" onClick={onLogin}>登入</a>
         <a className="btn primary" onClick={onStart}>免費試做第一支</a>

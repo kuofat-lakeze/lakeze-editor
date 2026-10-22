@@ -7,9 +7,8 @@ import { DashboardApp } from './Dashboard'
 import { Gallery } from './Gallery'
 import { SharePage } from './SharePage'
 import { Landing } from './Landing'
-import logo from './assets/logo.png'
 import { StorageMeter } from './Storage'
-import { Logo } from './Logo'
+import { Logo, PoweredBy } from './Logo'
 import { PayResult } from './Pay'
 import { InAppGuide } from './InApp'
 import { ask, DialogHost } from './Dialog'
@@ -140,7 +139,7 @@ function Workspace() {
       {menu && <div className="scrim" onClick={() => setMenu(false)} />}
 
       <aside className={`sidebar ${menu ? 'open' : ''}`}>
-        <div className="brand"><Logo size={30} /><img className="logo brand-by" src={logo} alt="人客多 Lakeze" title="人客多 Lakeze" /></div>
+        <div className="brand"><Logo size={30} /><PoweredBy className="brand-by" /></div>
         <div className={`balance card ${view === 'credits' ? 'active' : ''}`} onClick={() => showCredits()}>
           <div className="muted small">點數餘額</div>
           <div className="big">{me.balance}</div>

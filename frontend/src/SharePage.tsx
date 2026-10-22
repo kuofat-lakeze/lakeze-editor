@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type ShareView, type ThreadMsg } from './api'
-import logo from './assets/logo.png'
-import { Logo } from './Logo'
+import { Logo, PoweredBy } from './Logo'
 import { FbIcon, LineIcon, MessengerIcon, promoText, shareToFacebook, shareToLine, shareToMessenger } from './share'
 
 /* The share page is a small discussion board around one video: the video, then the thread right under it
@@ -65,7 +64,7 @@ export function SharePage({ token }: { token: string }) {
     <div className="share-page">
       <header className="share-head">
         <Logo size={26} />
-        <img className="logo share-by" src={logo} alt="人客多 Lakeze" />
+        <PoweredBy className="share-by" />
         <span className="spacer" />
         <a className="btn small primary" href={data?.signup_url ?? '/signup'}>我也要做</a>
       </header>
