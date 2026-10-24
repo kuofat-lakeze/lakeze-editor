@@ -3,7 +3,7 @@ import { api, verLabel, type Asset, type DeliverableVersion, type DeliverablesDa
 import { StorageMeter, fmtBytes } from './Storage'
 import { ask } from './Dialog'
 import { FbIcon, LineIcon, MessengerIcon, promoText, shareToFacebook, shareToLine, shareToMessenger } from './share'
-import { IcCheck, IcCopy, IcPlay, IcRefresh, IcShare, IcTrash } from './icons'
+import { IcBox, IcCheck, IcCopy, IcPlay, IcRefresh, IcShare, IcTrash } from './icons'
 import { SheetHead } from './Recorder'
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
@@ -39,6 +39,7 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak
   const [sharing, setSharing] = useState<number | null | 'final'>(null)  // version being shared ('final' = follow final)
   const [copied, setCopied] = useState<string | null>(null)
   const [busy, setBusy] = useState<number | null>(null)
+  const [packing, setPacking] = useState(false)
   const load = () => Promise.all([api.deliverables(projectId).then(setData), api.storage().then(setSt).catch(() => {})])
   useEffect(() => { load() }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -57,6 +58,11 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak
     if (!await ask.confirm(`刪除${verLabel(v)}（影片與封面，約 ${fmtBytes(mb)}）？刪了就拿不回來，指向這一版的朋友連結也會失效。`, { ok: '刪除', danger: true })) return
     setBusy(v)
     try { await api.deleteVersion(projectId, v); await load(); onChanged?.() } catch (e) { ask.alert((e as Error).message) } finally { setBusy(null) }
+  }
+  // CapCut 素材包: the latest version taken apart into clips, narration, music, SRT and covers
+  const makePack = async () => {
+    setPacking(true)
+    try { await api.pack(projectId); await load() } catch (e) { ask.alert((e as Error).message) } finally { setPacking(false) }
   }
   const rename = async (v: DeliverableVersion) => {
     const name = await ask.prompt('這一版叫什麼？也會是下載的檔名。', { value: v.name ?? '', ok: '改好了' })
@@ -119,6 +125,26 @@ export function Deliverables({ projectId, onChanged, onStorage, onProof, onTweak
                     {v.videos.filter(x => x !== v.main).map(x => (
                       <div key={x.id} className="ver-meta"><span>{x.name}{x.meta?.size_mb ? ` · ${x.meta.size_mb} MB` : ''}</span><a href={x.url} download>下載</a></div>))}
                   </details>
+                )}
+                {v.main && v === versions[0] && (
+                  <div className="ver-pack">
+                    {v.pack
+                      ? <>
+                          <div className="ver-meta"><span><IcBox size={14} />CapCut 素材包{v.pack.meta?.size_mb ? ` · ${v.pack.meta.size_mb} MB` : ''}</span><a href={v.pack.url} download>下載</a></div>
+                          <details className="others pack-how">
+                            <summary className="small">怎麼在 CapCut 裡用</summary>
+                            <ol className="small">
+                              <li>解壓縮，把「02_片段」存進相簿，依編號加入 CapCut 新專案。</li>
+                              <li>音訊匯入「03_旁白／整軌旁白.wav」和「04_配樂」，對齊到開頭。</li>
+                              <li>字幕照「05_字幕」加，或只用「01_影片／無字幕版」當底重新加字。</li>
+                            </ol>
+                            <a className="small" onClick={makePack}>{packing ? '重新打包中…' : '重新打包（改過之後）'}</a>
+                          </details>
+                        </>
+                      : <button type="button" className="btn small pack-btn" disabled={packing} onClick={makePack} title="每段畫面、每句旁白、配樂、字幕 SRT、封面分開打包，CapCut 手機版和電腦版都能直接匯入">
+                          {packing ? <><span className="spinner" />打包中…</> : <><IcBox size={14} />輸出 CapCut 素材包</>}
+                        </button>}
+                  </div>
                 )}
               </div>
               <div className="ver-covers">

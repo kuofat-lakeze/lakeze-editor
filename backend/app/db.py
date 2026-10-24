@@ -419,7 +419,7 @@ class Store:
             exports = (p.exports if p else 0) or 0
             if meta.get("deliverable"):      # export_video output: the export counter is bumped after the tool returns
                 version = exports + 1
-            elif meta.get("cover"):          # a cover belongs to the latest export (or v1 before any export)
+            elif meta.get("cover") or meta.get("pack"):   # a cover / 素材包 belongs to the latest export (or v1 before any export)
                 version = max(exports, 1)
             a = Asset(project_id=project_id, kind=kind, name=name, rel_path=str(dest.relative_to(root)),
                       meta=json.dumps(meta, ensure_ascii=False), version=version,

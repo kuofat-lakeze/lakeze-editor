@@ -2496,3 +2496,9 @@ body.easy .recbar-lab em { font-size: 22px; } body.easy .recbar-stop { font-size
 .own-tips span i { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; color: var(--brand); } .own-tips span i svg { width: 12px; height: 12px; }
 .recbar.warn { background: #5A2A14; } .recbar-hint.live { display: block; color: #FFD23F; font-weight: 700; }
 @media (max-width: 639px) { .recbar-hint.live { display: block; } .recbar.warn .recbar-meter { display: none; } }
+
+/* CapCut 素材包: under the main video, one quiet button, then the download row and a three-step how-to */
+.ver-pack { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.ver-pack .pack-btn { display: inline-flex; align-items: center; gap: 6px; } .ver-pack .pack-btn .spinner { width: 14px; height: 14px; }
+.ver-pack .ver-meta span { display: inline-flex; align-items: center; gap: 6px; }
+.pack-how ol { margin: 6px 0 4px; padding-left: 18px; color: var(--muted); line-height: 1.6; } .pack-how a { cursor: pointer; color: var(--brand); }

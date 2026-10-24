@@ -688,3 +688,59 @@ def test_quick_take_holds_last_frame(client, monkeypatch, tmp_path: Path):
     assert abs(seen["pad"] - (end + Q.TAIL - 12)) < 0.02   # …and the picture is held for the rest
     assert abs(seen["dur"] - (end + Q.TAIL)) < 0.02 and seen["vo"][-1]["end"] <= seen["dur"]
     assert T.plan_load(root)["compose"]["duration"] == seen["dur"]
+
+
+def test_capcut_pack(client, monkeypatch, tmp_path: Path):
+    """CapCut 素材包: the latest version taken apart — segments in order, one file per narration line, the aligned
+    narration track, music, SRT captions with markup stripped, covers, a timeline sheet and the how-to; listed
+    on the version; a second pack replaces the first."""
+    import zipfile
+    from app import config as C
+    from app.agent import tools as T
+    from app.pipeline import ff
+    c, holder = client
+    admin, a, b, idle = asyncio.run(_seed())
+    holder["u"] = b
+    monkeypatch.setattr(C, "DATA_DIR", tmp_path)
+    pid = c.post("/api/projects", json={"name": "民宿"}).json()["id"]
+    root = M.project_dir(pid)
+    work = root / "work"
+    for d in (work / "vo", work / "seg", root / "sheets", root / "raw", root / "out"):
+        d.mkdir(parents=True, exist_ok=True)
+    for k in "AB":
+        (work / "vo" / f"{k}.wav").write_bytes(b"RIFF")
+    for n in ("base.mp4", "mix.wav", "vo_only.wav", "calm.mp3"):
+        (work / n).write_bytes(b"x")
+    (work / "seg" / "00.mp4").write_bytes(b"s0"); (work / "seg" / "01.mp4").write_bytes(b"s1")
+    (work / "cut.json").write_text('[{"i":0,"clip":1,"start":2.0,"dur":4.0,"at":0},{"i":1,"clip":2,"start":0.0,"dur":3.5,"at":4.0}]')
+    (root / "sheets" / "index.tsv").write_text("1\tv\t0\t0\tIMG_1.mov\n2\tv\t0\t0\tIMG_2.mov\n")
+    T.plan_update(root, "voice", {"voice_id": "v1", "lines": {"A": "宜蘭**海邊**", "B": "點連結查空房"}})
+    T.plan_update(root, "compose", {"placements": [{"key": "A", "at": 0.3}, {"key": "B", "at": 4.2}], "music": "calm", "music_gain": .5, "duck_ratio": 6, "sfx": [], "duration": 7.5})
+    T.plan_update(root, "captions", {"vo": [{"start": 0.3, "end": 3.0, "text": "宜蘭**海邊**"}, {"start": 4.2, "end": 7.0, "text": "點連結查空房"}],
+                                     "supers": [{"start": 0.5, "end": 2.5, "text": "25 米泳池"}], "counter": {"start": 5, "end": 7, "amount": 1500, "prefix": "NT$", "label": "平日每人"}})
+    monkeypatch.setattr(ff, "ffmpeg", lambda *args: Path(args[-1]).write_bytes(b"out"))
+    cover = root / "out" / "cover.jpg"; cover.write_bytes(b"jpg")
+    asyncio.run(D.Store(b.id).add_asset(pid, cover, "image", "封面", {"role": "cover", "cover": True}))
+    r = c.post(f"/api/projects/{pid}/pack")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["version"] == 1 and d["segments"] == 2 and d["lines"] == 2
+    dv = c.get(f"/api/projects/{pid}/deliverables").json()
+    v = dv["versions"][0]
+    assert v["pack"] and v["pack"]["name"] == "CapCut 素材包" and v["pack"]["meta"]["segments"] == 2
+    assert all(x["name"] != "CapCut 素材包" for x in v["videos"])
+    zp = next(root.glob("out/*CapCut素材包.zip"))
+    names = zipfile.ZipFile(zp).namelist()
+    assert "01_影片/無字幕版.mp4" in names and "02_片段/01.mp4" in names and "02_片段/02.mp4" in names
+    assert "03_旁白/01_宜蘭海邊.mp3" in names and "03_旁白/02_點連結查空房.mp3" in names and "03_旁白/整軌旁白.wav" in names
+    assert "04_配樂/配樂.mp3" in names and "06_封面/封面1.jpg" in names and "讀我.txt" in names
+    srt = zipfile.ZipFile(zp).read("05_字幕/旁白字幕.srt").decode()
+    assert "00:00:00,300 --> 00:00:03,000\n宜蘭海邊" in srt and "**" not in srt
+    sup = zipfile.ZipFile(zp).read("05_字幕/重點字卡.srt").decode()
+    assert "25 米泳池" in sup
+    sheet = zipfile.ZipFile(zp).read("時間軸.csv").decode("utf-8-sig")
+    assert "IMG_1.mov" in sheet and "點連結查空房" in sheet and "NT$1500" in sheet
+    # packing again replaces the zip instead of stacking a second one
+    c.post(f"/api/projects/{pid}/pack")
+    assert len(list(root.glob("out/*CapCut素材包.zip"))) == 1
+    assert c.get(f"/api/projects/{pid}/deliverables").json()["versions"][0]["pack"]["name"] == "CapCut 素材包"

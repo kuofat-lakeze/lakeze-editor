@@ -26,7 +26,7 @@ from .oauth import router as oauth_router
 from .pipeline import footage
 from .db import (GB, Asset, CreditTx, Message, Order, Project, Session, Share, ShareComment, Store, Usage, User, add_credits, asset_dict,
                  backfill_sizes, backfill_versions, balance, deliverable_expiry, get_setting, has_paid, init_db, storage_quota_bytes, storage_state, storage_used)
-from .pipeline import eleven, ff
+from .pipeline import eleven, ff, pack as packer
 from .pipeline.fonts import ensure_fonts
 from .storage import project_dir, safe_join
 
@@ -1703,7 +1703,10 @@ def _versions(assets: list[Asset], owner: User | None = None, names: dict[int, s
         if exp is not None and (v["expires_at"] is None or exp.isoformat() < v["expires_at"]):
             v["expires_at"] = exp.isoformat()
         d = asset_dict(a)
-        (v["covers"] if a.kind == "image" else v["videos"]).append(d)
+        if a.kind == "zip":
+            v["pack"] = d              # the CapCut 素材包 made from this version (the newest one wins)
+        else:
+            (v["covers"] if a.kind == "image" else v["videos"]).append(d)
         v["created_at"] = max(v["created_at"], a.created_at.isoformat())
     for v in by.values():
         order = {"upload": 0, "master": 1, "preview": 2}
@@ -1711,6 +1714,7 @@ def _versions(assets: list[Asset], owner: User | None = None, names: dict[int, s
         v["main"] = next((x for x in v["videos"] if x.get("role") == "upload"), v["videos"][0] if v["videos"] else None)
         chosen = next((c for c in v["covers"] if (c.get("meta") or {}).get("poster")), v["covers"][-1] if v["covers"] else None)
         v["poster"] = chosen["url"] if chosen else None   # the cover shown on the video before it plays
+        v.setdefault("pack", None)
     return [by[k] for k in sorted(by, reverse=True)]
 
 
@@ -1774,6 +1778,41 @@ async def deliverables(project_id: str, user: User = CurrentUser):
 
 class FinalBody(BaseModel):
     version: int | None
+
+
+@app.post("/api/projects/{project_id}/pack")
+async def make_pack(project_id: str, user: User = CurrentUser):
+    """CapCut 素材包 for the latest version: segments, narration lines, music, SRT captions, covers, a
+    caption-free video, a timeline sheet and a how-to, zipped as one download. Free; replaces an older pack
+    of the same version so storage is not spent twice."""
+    p = await _own(project_id, user)
+    root = project_dir(project_id)
+    version = max(p.exports or 0, 1)
+    async with Session() as s:
+        assets = (await s.execute(select(Asset).where(Asset.project_id == p.id, Asset.version == version).order_by(Asset.created_at))).scalars().all()
+    covers = [root / a.rel_path for a in assets if a.kind == "image" and (root / a.rel_path).exists()]
+    final = next((root / a.rel_path for a in assets if a.kind == "video" and json.loads(a.meta or "{}").get("role") == "upload" and (root / a.rel_path).exists()), None)
+    name = _version_names(p).get(version) or f"{p.name}_{version_label(version)}"
+    dest = root / "work" / f"{name.replace('/', '-')}_CapCut素材包.zip"
+    try:
+        info = await asyncio.to_thread(packer.build_pack, root, dest, project_name=p.name, version_label=version_label(version), covers=covers, final_video=final)
+    except FileNotFoundError as e:
+        raise HTTPException(409, str(e) or "這支影片的工作檔已經清掉了，沒辦法再拆")
+    except Exception as e:
+        log.exception("pack failed")
+        raise HTTPException(502, f"打包失敗：{str(e)[:160]}")
+    store = Store(user.id)
+    async with Session() as s:   # one pack per version: the old zip goes away before the new one is counted
+        for a in assets:
+            if a.kind == "zip":
+                f = root / a.rel_path
+                if f.exists():
+                    f.unlink()
+                await s.delete(a)
+        await s.commit()
+    a = await store.add_asset(project_id, dest, "zip", "CapCut 素材包", {"role": "pack", "pack": True, "size_mb": round(info["bytes"] / 2**20, 1),
+                                                                         "segments": info["segments"], "lines": info["lines"], "files": info["files"]})
+    return {"ok": True, "pack": a, "version": version, **{k: info[k] for k in ("segments", "lines", "files")}}
 
 
 @app.post("/api/projects/{project_id}/final")
